@@ -45,3 +45,4 @@
 - Check off items as they are completed.
 - Add new work under the right section — do not mix Completed with Next Steps.
 - Update `CHANGELOG.md` with every meaningful change.
+- **Everything must be built from scratch in Prism itself or in C as part of the interpreter core. Do not rely on or wrap external C modules, third-party libraries, or language bindings. If a feature needs a standard library, implement it natively.**
