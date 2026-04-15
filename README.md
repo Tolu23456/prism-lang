@@ -1,1 +1,1 @@
-# prism-lang
+# prism-lang\n\nPrism is a general-purpose programming language built in C. It currently runs as an interpreted language with a `.pm` extension, and the next step is a faster VM-based runtime.\n
