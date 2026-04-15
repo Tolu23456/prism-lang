@@ -1,14 +1,47 @@
 # Prism TODO
-## Next steps
-- Design the Prism VM architecture
-- Define the bytecode format
-- Add assembly support in the VM for low-level operations
-- Keep Prism syntax simple and easy to use
-- - Make Prism blazing fast
-- Update the interpreter into a compile-to-bytecode pipeline
-- Add a clearer standard library plan
-- Improve error messages and runtime diagnostics
+
+## Completed
+- [x] Tree-walking interpreter in C
+- [x] All core data types (int, float, complex, string, bool, array, dict, set, tuple)
+- [x] f-strings, verbatim strings, triple-quoted strings
+- [x] Functions, closures, recursion
+- [x] Control flow (if/elif/else, while, for, break, continue)
+- [x] Undeclared variable assignment now raises a runtime error
+- [x] GUI support via `gui_window`, `gui_label`, `gui_button`, `gui_input`, `gui_run`
+
+## Next Steps — VM
+
+- [ ] Design the Prism bytecode instruction set (opcodes)
+- [ ] Write a bytecode compiler: walk the AST and emit instructions
+- [ ] Build the Prism VM: a stack-based virtual machine that executes bytecode
+- [ ] Add a constant pool for strings and numbers
+- [ ] Add call frames for function calls in the VM
+- [ ] Profile and benchmark: compare tree-walker vs VM speed
+- [ ] Add inline caching for faster property/method lookup
+- [ ] Explore assembly (x86-64) for hot paths in the VM (e.g., arithmetic dispatch)
+- [ ] Add a serializer: save compiled bytecode to `.pmc` files (prism bytecode cache)
+
+## GUI Roadmap
+- [ ] Add `gui_image(path)` for displaying images
+- [ ] Add `gui_layout_row()` / `gui_layout_col()` for layout control
+- [ ] Add event handlers: `gui_on_click(button_id, func)`
+- [ ] Interactive HTML output with JS event wiring
+- [ ] Optional: native GUI via GTK3 when running outside browser
+
+## Standard Library
+- [ ] `math` module: sin, cos, sqrt, log, pow, etc.
+- [ ] `fs` module: read_file, write_file, path operations
+- [ ] `os` module: env vars, exit, args
+- [ ] `net` module: basic HTTP requests
+- [ ] `json` module: parse and serialize JSON
+
+## Quality
+- [ ] Improve error messages with source location context
+- [ ] Add stack traces for runtime errors
+- [ ] REPL improvements: history, multiline input
+
 ## Instruction for the next agent
-- Update this todo.md first whenever the plan changes.
-- Keep the list current and remove completed items.
-- Add only the next immediate work, not the whole future roadmap.
+- Read this `todo.md` first, then `CHANGELOG.md`.
+- Check off items as they are completed.
+- Add new work under the right section — do not mix Completed with Next Steps.
+- Update `CHANGELOG.md` with every meaningful change.

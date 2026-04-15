@@ -8,6 +8,34 @@
 #include "parser.h"
 #include "value.h"
 
+/* ================================================================== GUI State */
+
+typedef struct {
+    char  title[256];
+    int   width, height;
+    char *body;   /* heap-allocated HTML fragments */
+    int   body_len, body_cap;
+    int   active; /* 1 after gui_window() called */
+} GuiState;
+
+static GuiState g_gui = {"Prism Window", 800, 600, NULL, 0, 0, 0};
+
+static void gui_body_append(const char *html) {
+    int add = (int)strlen(html);
+    if (!g_gui.body) {
+        g_gui.body_cap = 4096;
+        g_gui.body = malloc(g_gui.body_cap);
+        g_gui.body[0] = '\0';
+        g_gui.body_len = 0;
+    }
+    while (g_gui.body_len + add + 1 >= g_gui.body_cap) {
+        g_gui.body_cap *= 2;
+        g_gui.body = realloc(g_gui.body, g_gui.body_cap);
+    }
+    memcpy(g_gui.body + g_gui.body_len, html, add + 1);
+    g_gui.body_len += add;
+}
+
 /* ================================================================== Environment */
 
 Env *env_new(Env *parent) {
@@ -195,17 +223,92 @@ static Value *builtin_type_fn(Value **args, int argc) {
     return value_string(value_type_name(args[0]->type));
 }
 
+/* ------------------------------------------------------------------ GUI builtins */
+
+static Value *builtin_gui_window(Value **args, int argc) {
+    if (argc >= 1 && args[0]->type == VAL_STRING)
+        snprintf(g_gui.title, sizeof(g_gui.title), "%s", args[0]->str_val);
+    if (argc >= 2 && args[1]->type == VAL_INT) g_gui.width  = (int)args[1]->int_val;
+    if (argc >= 3 && args[2]->type == VAL_INT) g_gui.height = (int)args[2]->int_val;
+    g_gui.active = 1;
+    return value_null();
+}
+
+static Value *builtin_gui_label(Value **args, int argc) {
+    char buf[2048];
+    const char *text = (argc >= 1 && args[0]->type == VAL_STRING) ? args[0]->str_val : "";
+    snprintf(buf, sizeof(buf), "  <p class=\"gui-label\">%s</p>\n", text);
+    gui_body_append(buf);
+    return value_null();
+}
+
+static Value *builtin_gui_button(Value **args, int argc) {
+    char buf[2048];
+    const char *text = (argc >= 1 && args[0]->type == VAL_STRING) ? args[0]->str_val : "Button";
+    snprintf(buf, sizeof(buf), "  <button class=\"gui-btn\">%s</button>\n", text);
+    gui_body_append(buf);
+    return value_null();
+}
+
+static Value *builtin_gui_input(Value **args, int argc) {
+    char buf[2048];
+    const char *ph = (argc >= 1 && args[0]->type == VAL_STRING) ? args[0]->str_val : "";
+    snprintf(buf, sizeof(buf), "  <input class=\"gui-input\" type=\"text\" placeholder=\"%s\" />\n", ph);
+    gui_body_append(buf);
+    return value_null();
+}
+
+static Value *builtin_gui_run(Value **args, int argc) {
+    (void)args; (void)argc;
+    if (!g_gui.active) {
+        fprintf(stderr, "[prism] gui_run() called without gui_window()\n");
+        return value_null();
+    }
+    FILE *f = fopen("prism_gui.html", "w");
+    if (!f) { fprintf(stderr, "[prism] could not write prism_gui.html\n"); return value_null(); }
+    fprintf(f,
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
+        "  <meta charset=\"UTF-8\">\n"
+        "  <title>%s</title>\n"
+        "  <style>\n"
+        "    body { font-family: sans-serif; margin: 0; padding: 20px;"
+        "           width: %dpx; min-height: %dpx; box-sizing: border-box; }\n"
+        "    .gui-label  { font-size: 16px; margin: 8px 0; }\n"
+        "    .gui-btn    { padding: 8px 18px; font-size: 15px; cursor: pointer;"
+        "                  background: #4f8ef7; color: #fff; border: none;"
+        "                  border-radius: 4px; margin: 6px 4px; }\n"
+        "    .gui-btn:hover { background: #2563c7; }\n"
+        "    .gui-input  { padding: 7px 12px; font-size: 15px; border: 1px solid #ccc;"
+        "                  border-radius: 4px; margin: 6px 0; width: 100%%; box-sizing: border-box; }\n"
+        "  </style>\n"
+        "</head>\n<body>\n"
+        "  <h2>%s</h2>\n"
+        "%s"
+        "</body>\n</html>\n",
+        g_gui.title, g_gui.width, g_gui.height,
+        g_gui.title,
+        g_gui.body ? g_gui.body : "");
+    fclose(f);
+    printf("[prism] GUI written to prism_gui.html\n");
+    return value_null();
+}
+
 static void register_builtins(Interpreter *interp) {
     struct { const char *name; BuiltinFn fn; } builtins[] = {
-        {"output",  builtin_output},
-        {"input",   builtin_input},
-        {"len",     builtin_len},
-        {"bool",    builtin_bool_fn},
-        {"int",     builtin_int_fn},
-        {"float",   builtin_float_fn},
-        {"str",     builtin_str_fn},
-        {"set",     builtin_set_fn},
-        {"type",    builtin_type_fn},
+        {"output",      builtin_output},
+        {"input",       builtin_input},
+        {"len",         builtin_len},
+        {"bool",        builtin_bool_fn},
+        {"int",         builtin_int_fn},
+        {"float",       builtin_float_fn},
+        {"str",         builtin_str_fn},
+        {"set",         builtin_set_fn},
+        {"type",        builtin_type_fn},
+        {"gui_window",  builtin_gui_window},
+        {"gui_label",   builtin_gui_label},
+        {"gui_button",  builtin_gui_button},
+        {"gui_input",   builtin_gui_input},
+        {"gui_run",     builtin_gui_run},
         {NULL, NULL}
     };
     for (int i = 0; builtins[i].name; i++) {
@@ -747,8 +850,11 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
 
         if (target->type == NODE_IDENT) {
             if (!env_assign(env, target->ident.name, val)) {
-                /* not found: define in current scope */
-                env_set(env, target->ident.name, val, false);
+                char msg[256];
+                snprintf(msg, sizeof(msg),
+                    "variable '%s' is not declared; use 'let %s = ...' to declare it",
+                    target->ident.name, target->ident.name);
+                runtime_error(interp, msg, node->line);
             }
         } else if (target->type == NODE_INDEX) {
             Value *obj = eval_node(interp, target->index_expr.obj, env);
@@ -803,8 +909,13 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         if (!result) { runtime_error(interp, "invalid compound assignment", node->line); return value_null(); }
 
         if (target->type == NODE_IDENT) {
-            if (!env_assign(env, target->ident.name, result))
-                env_set(env, target->ident.name, result, false);
+            if (!env_assign(env, target->ident.name, result)) {
+                char msg[256];
+                snprintf(msg, sizeof(msg),
+                    "variable '%s' is not declared; use 'let %s = ...' to declare it",
+                    target->ident.name, target->ident.name);
+                runtime_error(interp, msg, node->line);
+            }
         }
         value_release(result);
         return value_null();
