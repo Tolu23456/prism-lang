@@ -1,1 +1,14 @@
-# Prism TODO\n\n## Next steps\n- Design the Prism VM architecture\n- Define the bytecode format\n- Add assembly support in the VM for low-level operations\n- Keep Prism syntax simple and easy to use\n- Make Prism blazing fast\n- Update the interpreter into a compile-to-bytecode pipeline\n- Add a clearer standard library plan\n- Improve error messages and runtime diagnostics\n\n## Instruction for the next agent\n- Update this todo.md first whenever the plan changes.\n- Keep the list current and remove completed items.\n- Add only the next immediate work, not the whole future roadmap.\n
+# Prism TODO
+## Next steps
+- Design the Prism VM architecture
+- Define the bytecode format
+- Add assembly support in the VM for low-level operations
+- Keep Prism syntax simple and easy to use
+- - Make Prism blazing fast
+- Update the interpreter into a compile-to-bytecode pipeline
+- Add a clearer standard library plan
+- Improve error messages and runtime diagnostics
+## Instruction for the next agent
+- Update this todo.md first whenever the plan changes.
+- Keep the list current and remove completed items.
+- Add only the next immediate work, not the whole future roadmap.

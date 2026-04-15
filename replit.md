@@ -18,6 +18,8 @@ examples/
 
 Makefile                  — Build system (gcc)
 RULES.txt                 — Language specification
+CHANGELOG.md              — Project changes and history
+todo.md                   — Next development tasks
 ```
 
 ## Building
@@ -34,6 +36,13 @@ make run      # builds and runs examples/hello.pm
 ./prism file.pm    # run a .pm source file
 ./prism            # start the interactive REPL
 ```
+
+## Instructions for the next agent
+
+- Read `todo.md` first.
+- Read `CHANGELOG.md` second.
+- Update `todo.md` whenever the plan changes.
+- Keep both files current and consistent.
 
 ## Language Features
 
