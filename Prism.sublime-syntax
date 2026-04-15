@@ -1,0 +1,94 @@
+%YAML 1.2
+---
+name: Prism
+file_extensions:
+  - pm
+scope: source.prism
+variables:
+  ident: '[A-Za-z_][A-Za-z0-9_]*'
+  number: '(?:0x[0-9A-Fa-f]+|0b[01]+|\d+\.\d+|\d+)(?:j)?'
+contexts:
+  main:
+    - match: '#.*$'
+      scope: comment.line.number-sign.prism
+    - match: '\b(let|const|func|return|if|elif|else|while|for|in|break|continue|true|false|unknown|null|and|or|not|output|input|len|bool|int|float|str|set|arr|type)\b'
+      scope: keyword.control.prism
+    - match: '\b{{number}}\b'
+      scope: constant.numeric.prism
+    - match: 'f"'
+      push: fstring_double
+    - match: "f'"
+      push: fstring_single
+    - match: '"""'
+      push: triple_double
+    - match: "'''"
+      push: triple_single
+    - match: '"'
+      push: double_string
+    - match: "'"
+      push: single_string
+    - match: '\['
+      scope: punctuation.section.brackets.begin.prism
+    - match: '\]'
+      scope: punctuation.section.brackets.end.prism
+    - match: '\{'
+      scope: punctuation.section.braces.begin.prism
+    - match: '\}'
+      scope: punctuation.section.braces.end.prism
+    - match: '\('
+      scope: punctuation.section.parens.begin.prism
+    - match: '\)'
+      scope: punctuation.section.parens.end.prism
+    - match: '[+\-*/%=!<>|&^~]+'
+      scope: keyword.operator.prism
+
+  double_string:
+    - meta_scope: string.quoted.double.prism
+    - match: '\\.'
+      scope: constant.character.escape.prism
+    - match: '"'
+      pop: true
+
+  single_string:
+    - meta_scope: string.quoted.single.prism
+    - match: '\\.'
+      scope: constant.character.escape.prism
+    - match: "'"
+      pop: true
+
+  triple_double:
+    - meta_scope: string.quoted.double.multiline.prism
+    - match: '"""'
+      pop: true
+
+  triple_single:
+    - meta_scope: string.quoted.single.multiline.prism
+    - match: "'''"
+      pop: true
+
+  fstring_double:
+    - meta_scope: string.quoted.double.interpolated.prism
+    - match: '\{'
+      push: fstring_brace
+    - match: '\\.'
+      scope: constant.character.escape.prism
+    - match: '"'
+      pop: true
+
+  fstring_single:
+    - meta_scope: string.quoted.single.interpolated.prism
+    - match: '\{'
+      push: fstring_brace
+    - match: '\\.'
+      scope: constant.character.escape.prism
+    - match: "'"
+      pop: true
+
+  fstring_brace:
+    - meta_scope: meta.interpolation.prism
+    - match: '\{'
+      push: fstring_brace
+    - match: '\}'
+      pop: true
+    - include: main
+...
