@@ -16,6 +16,8 @@
 #include "gui_native.h"
 #include "gc.h"
 
+#define PRISM_VERSION "0.2.0"
+
 /* ------------------------------------------------------------------ file reader */
 
 static char *read_file(const char *path) {
@@ -152,7 +154,7 @@ static int run_benchmark(const char *source, const char *filename) {
 /* ------------------------------------------------------------------ REPL */
 
 static void run_repl(void) {
-    printf("Prism 0.2.0 - Interactive Mode (type 'exit' or Ctrl-D to quit)\n\n");
+    printf("Prism %s - Interactive Mode (type 'exit' or Ctrl-D to quit)\n\n", PRISM_VERSION);
 
     /* REPL workload: prioritise responsiveness */
     gc_set_workload(gc_global(), GC_WORKLOAD_REPL);
@@ -267,6 +269,22 @@ int main(int argc, char **argv) {
     /* Initialise immortal singleton cache before anything else */
     value_immortals_init();
 
+    /* --version: print version info and exit immediately */
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-v") == 0) {
+            printf("Prism %s\n", PRISM_VERSION);
+            printf("Built:    %s %s\n", __DATE__, __TIME__);
+#ifdef HAVE_X11
+            printf("X11 GUI:  yes\n");
+#else
+            printf("X11 GUI:  no (install libX11-dev and recompile to enable)\n");
+#endif
+            value_immortals_free();
+            gc_shutdown(gc_global());
+            return 0;
+        }
+    }
+
     /* Check for formatter flags before GC setup (no GC needed for format-only) */
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--format") == 0 || strcmp(argv[i], "--format-write") == 0) {
@@ -318,6 +336,7 @@ int main(int argc, char **argv) {
     fprintf(stderr,
         "Usage: prism [options] [file.pm]\n"
         "Options:\n"
+        "  --version, -v            print version, build date, and feature flags\n"
         "  --emit-bytecode          write compiled .pmc bytecode file\n"
         "  --bench                  compare tree-walker vs VM speed\n"
         "  --format <file>          print formatted source\n"
