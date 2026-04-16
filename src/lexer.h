@@ -103,6 +103,7 @@ typedef enum {
 typedef struct {
     TokenType type;
     char     *value;
+    bool      interned; /* true = value is an interned canonical ptr (do not free) */
     int       line;
     int       col;
 } Token;

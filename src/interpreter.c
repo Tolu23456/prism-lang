@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <math.h>
 #include <ctype.h>
 #include "interpreter.h"
@@ -39,71 +40,126 @@ static void gui_body_append(const char *html) {
     g_gui.body_len += add;
 }
 
-/* ================================================================== Environment */
+/* ================================================================== Environment
+ *
+ * Open-address hash map keyed on interned const char* pointers.
+ * Because all identifier strings are interned through gc_intern_cstr(),
+ * the same name always has exactly one address — comparison is a pointer
+ * equality check, and hashing is done on the pointer value itself.
+ *
+ * Hash:   mix the pointer bits with a Knuth multiplicative step
+ * Probe:  linear probing
+ * Resize: when load > 75%
+ * ================================================================== */
+
+#define ENV_INITIAL_CAP 16
+
+/* Mix pointer bits for a well-distributed hash index. */
+static inline unsigned env_ptr_slot(const char *key, int cap) {
+    uintptr_t v = (uintptr_t)key;
+    v = (v ^ (v >> 16)) * 0x45d9f3b5u;
+    v = v ^ (v >> 16);
+    return (unsigned)v & (unsigned)(cap - 1);
+}
+
+/* Intern the name through the global GC so we always have a canonical ptr. */
+static inline const char *env_intern(const char *name) {
+    return gc_intern_cstr(gc_global(), name);
+}
+
+static void env_rehash(Env *env, int new_cap) {
+    EnvSlot *old   = env->slots;
+    int      old_c = env->cap;
+    env->slots = calloc((size_t)new_cap, sizeof(EnvSlot));
+    env->cap   = new_cap;
+    env->size  = 0;
+    for (int i = 0; i < old_c; i++) {
+        if (!old[i].key) continue;
+        /* re-insert into new table */
+        unsigned h = env_ptr_slot(old[i].key, new_cap);
+        while (env->slots[h].key) h = (h + 1) & (unsigned)(new_cap - 1);
+        env->slots[h] = old[i];
+        env->size++;
+    }
+    free(old);
+}
 
 Env *env_new(Env *parent) {
-    Env *e     = calloc(1, sizeof(Env));
-    e->cap     = 16;
-    e->keys    = malloc(e->cap * sizeof(char *));
-    e->values  = malloc(e->cap * sizeof(Value *));
-    e->is_const= calloc(e->cap, sizeof(bool));
-    e->size    = 0;
-    e->parent  = parent;
+    Env *e  = calloc(1, sizeof(Env));
+    e->cap  = ENV_INITIAL_CAP;
+    e->slots= calloc((size_t)e->cap, sizeof(EnvSlot));
+    e->size = 0;
+    e->parent = parent;
     return e;
 }
 
 void env_free(Env *env) {
     if (!env) return;
-    for (int i = 0; i < env->size; i++) {
-        free(env->keys[i]);
-        value_release(env->values[i]);
+    for (int i = 0; i < env->cap; i++) {
+        if (env->slots[i].key)
+            value_release(env->slots[i].val);
     }
-    free(env->keys);
-    free(env->values);
-    free(env->is_const);
+    free(env->slots);
     free(env);
 }
 
 Value *env_get(Env *env, const char *name) {
+    const char *key = env_intern(name);
     for (Env *e = env; e; e = e->parent) {
-        for (int i = 0; i < e->size; i++)
-            if (strcmp(e->keys[i], name) == 0)
-                return e->values[i];
+        unsigned h = env_ptr_slot(key, e->cap);
+        for (int i = 0; i < e->cap; i++) {
+            unsigned idx = (h + (unsigned)i) & (unsigned)(e->cap - 1);
+            if (!e->slots[idx].key) break;           /* empty slot → not here */
+            if (e->slots[idx].key == key) return e->slots[idx].val;
+        }
     }
     return NULL;
 }
 
 bool env_set(Env *env, const char *name, Value *val, bool is_const) {
-    /* define in current scope */
-    for (int i = 0; i < env->size; i++) {
-        if (strcmp(env->keys[i], name) == 0) {
-            if (env->is_const[i]) return false; /* const violation */
-            value_release(env->values[i]);
-            env->values[i]  = value_retain(val);
-            env->is_const[i]= is_const;
+    const char *key = env_intern(name);
+    /* check if key already exists in current scope */
+    unsigned h = env_ptr_slot(key, env->cap);
+    for (int i = 0; i < env->cap; i++) {
+        unsigned idx = (h + (unsigned)i) & (unsigned)(env->cap - 1);
+        if (!env->slots[idx].key) break;
+        if (env->slots[idx].key == key) {
+            if (env->slots[idx].is_const) return false; /* const violation */
+            value_release(env->slots[idx].val);
+            env->slots[idx].val      = value_retain(val);
+            env->slots[idx].is_const = is_const;
             return true;
         }
     }
-    if (env->size >= env->cap) {
-        env->cap   *= 2;
-        env->keys    = realloc(env->keys,    env->cap * sizeof(char *));
-        env->values  = realloc(env->values,  env->cap * sizeof(Value *));
-        env->is_const= realloc(env->is_const,env->cap * sizeof(bool));
+    /* not found — insert new entry; resize if load > 75% */
+    if (env->size * 4 >= env->cap * 3) {
+        env_rehash(env, env->cap * 2);
+        h = env_ptr_slot(key, env->cap);
     }
-    env->keys[env->size]     = strdup(name);
-    env->values[env->size]   = value_retain(val);
-    env->is_const[env->size] = is_const;
-    env->size++;
-    return true;
+    unsigned idx = env_ptr_slot(key, env->cap);
+    for (;;) {
+        if (!env->slots[idx].key) {
+            env->slots[idx].key      = key;
+            env->slots[idx].val      = value_retain(val);
+            env->slots[idx].is_const = is_const;
+            env->size++;
+            return true;
+        }
+        idx = (idx + 1) & (unsigned)(env->cap - 1);
+    }
 }
 
 bool env_assign(Env *env, const char *name, Value *val) {
+    const char *key = env_intern(name);
     for (Env *e = env; e; e = e->parent) {
-        for (int i = 0; i < e->size; i++) {
-            if (strcmp(e->keys[i], name) == 0) {
-                if (e->is_const[i]) return false;
-                value_release(e->values[i]);
-                e->values[i] = value_retain(val);
+        unsigned h = env_ptr_slot(key, e->cap);
+        for (int i = 0; i < e->cap; i++) {
+            unsigned idx = (h + (unsigned)i) & (unsigned)(e->cap - 1);
+            if (!e->slots[idx].key) break;
+            if (e->slots[idx].key == key) {
+                if (e->slots[idx].is_const) return false;
+                value_release(e->slots[idx].val);
+                e->slots[idx].val = value_retain(val);
                 return true;
             }
         }
@@ -112,10 +168,14 @@ bool env_assign(Env *env, const char *name, Value *val) {
 }
 
 bool env_is_const(Env *env, const char *name) {
+    const char *key = env_intern(name);
     for (Env *e = env; e; e = e->parent) {
-        for (int i = 0; i < e->size; i++)
-            if (strcmp(e->keys[i], name) == 0)
-                return e->is_const[i];
+        unsigned h = env_ptr_slot(key, e->cap);
+        for (int i = 0; i < e->cap; i++) {
+            unsigned idx = (h + (unsigned)i) & (unsigned)(e->cap - 1);
+            if (!e->slots[idx].key) break;
+            if (e->slots[idx].key == key) return e->slots[idx].is_const;
+        }
     }
     return false;
 }
@@ -1058,6 +1118,12 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         for (int i = 0; i < node->dict_lit.count; i++) {
             Value *k = eval_node(interp, node->dict_lit.keys[i], env);
             if (interp->had_error) { value_release(dict); return value_null(); }
+            /* Intern string dict keys so pointer-equality comparison is O(1) */
+            if (k->type == VAL_STRING && !k->gc_immortal) {
+                Value *ik = gc_intern_string(gc_global(), k->str_val);
+                value_release(k);
+                k = ik;
+            }
             Value *v = eval_node(interp, node->dict_lit.vals[i], env);
             if (interp->had_error) { value_release(k); value_release(dict); return value_null(); }
             value_dict_set(dict, k, v);

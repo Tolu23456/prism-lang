@@ -50,6 +50,7 @@ struct Value {
     unsigned char gc_immortal;    /* 1 = never freed by GC or value_release */
     unsigned char gc_generation;  /* 0 = young, 1 = old */
     struct Value *gc_next;
+    struct Value *gc_prev;        /* doubly-linked for O(1) untrack */
 
     union {
         long long  int_val;

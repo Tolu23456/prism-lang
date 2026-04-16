@@ -439,7 +439,10 @@ bool value_equals(Value *a, Value *b) {
         case VAL_INT:    return a->int_val   == b->int_val;
         case VAL_FLOAT:  return a->float_val == b->float_val;
         case VAL_BOOL:   return a->bool_val  == b->bool_val;
-        case VAL_STRING: return strcmp(a->str_val, b->str_val) == 0;
+        case VAL_STRING:
+            /* O(1) for interned strings: same content → same immortal Value pointer */
+            if (a->gc_immortal && b->gc_immortal) return a == b;
+            return strcmp(a->str_val, b->str_val) == 0;
         case VAL_COMPLEX:
             return a->complex_val.real == b->complex_val.real &&
                    a->complex_val.imag == b->complex_val.imag;

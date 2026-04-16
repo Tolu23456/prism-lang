@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.3.0 — O(1) Core Operations
+
+### Added
+- **String interning (`gc_intern_cstr`)**: added `gc_intern_cstr(gc, str)` to `gc.h`/`gc.c` which stores immortal canonical copies of strings in a hash table; all identifier tokens and dict-key string literals are now interned at lex/parse time via `TOKEN_IDENT` handling in `lexer.c`.
+- **Doubly-linked GC object list**: added `gc_prev` pointer to `Value` so that `gc_untrack_value` can splice out any node in O(1) rather than walking the list; both minor and major sweep passes maintain backward links correctly during collection.
+- **Open-address hash map `Env`**: replaced `Env`'s flat parallel arrays with a pointer-keyed open-address hash map (`EnvSlot` in `interpreter.h`); `env_get`, `env_set`, and `env_assign` are all O(1) average-case; `env_rehash` doubles capacity at 75 % load.
+- **O(1) method dispatch table in the VM**: added `s_method_table` (pointer-keyed open-address hash) to `vm.c`; `method_table_init` is called from `vm_new` and interns every built-in method name string; `vm_resolve_method_id` and slow-path dispatch now do a single hash lookup instead of a strcmp chain.
+
+### Changed
+- `value_equals` in `value.c`: immortal (interned) string comparison now uses `a == b` pointer equality — O(1) regardless of string length.
+- `token_free` in `lexer.c` skips freeing the string value for tokens marked `interned = true`.
+- `gc_mark_env` updated to iterate over hash map slots instead of the old flat arrays.
+
 ## v0.2.0 — Cross-platform build hardening
 
 ### Added

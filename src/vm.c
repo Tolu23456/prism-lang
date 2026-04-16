@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <math.h>
 #include "vm.h"
 #include "opcode.h"
@@ -607,6 +608,7 @@ static Value *vm_dispatch_method_slow(VM *vm, Value *obj, const char *method,
 static Value *vm_dispatch_method_cached(VM *vm, Value *obj, const char *method,
                                          VmMethodId method_id, Value **args,
                                          int argc, int line);
+static void method_table_init(void);
 
 /* ================================================================== VM new/free */
 
@@ -614,6 +616,7 @@ VM *vm_new(void) {
     VM *vm = calloc(1, sizeof(VM));
     vm->gc = gc_global();
     vm->globals = env_new(NULL);
+    method_table_init();  /* build O(1) method dispatch table */
     vm_register_builtins(vm);
     return vm;
 }
@@ -624,56 +627,100 @@ void vm_free(VM *vm) {
     free(vm);
 }
 
+/* ================================================================== method dispatch hash table
+ *
+ * Built once at VM startup after the GC intern table is ready.
+ * Keys are (ValueType, interned const char*) pairs stored in an open-address
+ * hash table.  Lookup is a pointer-equality comparison — O(1) per call.
+ * ================================================================== */
+
+#define METHOD_TABLE_CAP 128  /* power of 2; must be > 2× the number of methods */
+
+typedef struct {
+    const char *key;  /* interned method name pointer; NULL = empty slot */
+    ValueType   type;
+    VmMethodId  id;
+} MethodEntry;
+
+static MethodEntry s_method_table[METHOD_TABLE_CAP];
+static bool        s_method_table_ready = false;
+
+static inline unsigned method_slot(ValueType type, const char *key) {
+    uintptr_t v = (uintptr_t)key ^ ((uintptr_t)(unsigned)type * 2654435761u);
+    v ^= v >> 16;
+    return (unsigned)v & (METHOD_TABLE_CAP - 1);
+}
+
+static void method_table_put(ValueType type, const char *name, VmMethodId id) {
+    const char *key = gc_intern_cstr(gc_global(), name);
+    unsigned    h   = method_slot(type, key);
+    for (int i = 0; i < METHOD_TABLE_CAP; i++) {
+        unsigned idx = (h + (unsigned)i) & (METHOD_TABLE_CAP - 1);
+        if (!s_method_table[idx].key) {
+            s_method_table[idx].key  = key;
+            s_method_table[idx].type = type;
+            s_method_table[idx].id   = id;
+            return;
+        }
+    }
+}
+
+static void method_table_init(void) {
+    if (s_method_table_ready) return;
+    memset(s_method_table, 0, sizeof(s_method_table));
+    /* STRING */
+    method_table_put(VAL_STRING, "upper",      VM_METHOD_STRING_UPPER);
+    method_table_put(VAL_STRING, "lower",      VM_METHOD_STRING_LOWER);
+    method_table_put(VAL_STRING, "strip",      VM_METHOD_STRING_STRIP);
+    method_table_put(VAL_STRING, "lstrip",     VM_METHOD_STRING_LSTRIP);
+    method_table_put(VAL_STRING, "rstrip",     VM_METHOD_STRING_RSTRIP);
+    method_table_put(VAL_STRING, "len",        VM_METHOD_STRING_LEN);
+    method_table_put(VAL_STRING, "capitalize", VM_METHOD_STRING_CAPITALIZE);
+    method_table_put(VAL_STRING, "find",       VM_METHOD_STRING_FIND);
+    method_table_put(VAL_STRING, "index",      VM_METHOD_STRING_FIND);
+    method_table_put(VAL_STRING, "replace",    VM_METHOD_STRING_REPLACE);
+    method_table_put(VAL_STRING, "startswith", VM_METHOD_STRING_STARTSWITH);
+    method_table_put(VAL_STRING, "endswith",   VM_METHOD_STRING_ENDSWITH);
+    method_table_put(VAL_STRING, "split",      VM_METHOD_STRING_SPLIT);
+    method_table_put(VAL_STRING, "join",       VM_METHOD_STRING_JOIN);
+    method_table_put(VAL_STRING, "isdigit",    VM_METHOD_STRING_ISDIGIT);
+    method_table_put(VAL_STRING, "isalpha",    VM_METHOD_STRING_ISALPHA);
+    /* ARRAY */
+    method_table_put(VAL_ARRAY, "add",    VM_METHOD_ARRAY_ADD);
+    method_table_put(VAL_ARRAY, "pop",    VM_METHOD_ARRAY_POP);
+    method_table_put(VAL_ARRAY, "sort",   VM_METHOD_ARRAY_SORT);
+    method_table_put(VAL_ARRAY, "insert", VM_METHOD_ARRAY_INSERT);
+    method_table_put(VAL_ARRAY, "remove", VM_METHOD_ARRAY_REMOVE);
+    method_table_put(VAL_ARRAY, "extend", VM_METHOD_ARRAY_EXTEND);
+    method_table_put(VAL_ARRAY, "len",    VM_METHOD_ARRAY_LEN);
+    /* DICT */
+    method_table_put(VAL_DICT, "keys",   VM_METHOD_DICT_KEYS);
+    method_table_put(VAL_DICT, "values", VM_METHOD_DICT_VALUES);
+    method_table_put(VAL_DICT, "items",  VM_METHOD_DICT_ITEMS);
+    method_table_put(VAL_DICT, "erase",  VM_METHOD_DICT_ERASE);
+    method_table_put(VAL_DICT, "get",    VM_METHOD_DICT_GET);
+    /* SET */
+    method_table_put(VAL_SET, "add",     VM_METHOD_SET_ADD);
+    method_table_put(VAL_SET, "remove",  VM_METHOD_SET_REMOVE);
+    method_table_put(VAL_SET, "discard", VM_METHOD_SET_DISCARD);
+    method_table_put(VAL_SET, "update",  VM_METHOD_SET_UPDATE);
+    /* TUPLE */
+    method_table_put(VAL_TUPLE, "count", VM_METHOD_TUPLE_COUNT);
+    method_table_put(VAL_TUPLE, "index", VM_METHOD_TUPLE_INDEX);
+    s_method_table_ready = true;
+}
+
 /* ================================================================== method dispatch */
 
 static VmMethodId vm_resolve_method_id(ValueType type, const char *method) {
-    switch (type) {
-        case VAL_STRING:
-            if (strcmp(method, "upper") == 0) return VM_METHOD_STRING_UPPER;
-            if (strcmp(method, "lower") == 0) return VM_METHOD_STRING_LOWER;
-            if (strcmp(method, "strip") == 0) return VM_METHOD_STRING_STRIP;
-            if (strcmp(method, "lstrip") == 0) return VM_METHOD_STRING_LSTRIP;
-            if (strcmp(method, "rstrip") == 0) return VM_METHOD_STRING_RSTRIP;
-            if (strcmp(method, "len") == 0) return VM_METHOD_STRING_LEN;
-            if (strcmp(method, "capitalize") == 0) return VM_METHOD_STRING_CAPITALIZE;
-            if (strcmp(method, "find") == 0)  return VM_METHOD_STRING_FIND;
-            if (strcmp(method, "index") == 0) return VM_METHOD_STRING_FIND;
-            if (strcmp(method, "replace") == 0) return VM_METHOD_STRING_REPLACE;
-            if (strcmp(method, "startswith") == 0) return VM_METHOD_STRING_STARTSWITH;
-            if (strcmp(method, "endswith") == 0) return VM_METHOD_STRING_ENDSWITH;
-            if (strcmp(method, "split") == 0) return VM_METHOD_STRING_SPLIT;
-            if (strcmp(method, "join") == 0) return VM_METHOD_STRING_JOIN;
-            if (strcmp(method, "isdigit") == 0) return VM_METHOD_STRING_ISDIGIT;
-            if (strcmp(method, "isalpha") == 0) return VM_METHOD_STRING_ISALPHA;
-            break;
-        case VAL_ARRAY:
-            if (strcmp(method, "add") == 0) return VM_METHOD_ARRAY_ADD;
-            if (strcmp(method, "pop") == 0) return VM_METHOD_ARRAY_POP;
-            if (strcmp(method, "sort") == 0) return VM_METHOD_ARRAY_SORT;
-            if (strcmp(method, "insert") == 0) return VM_METHOD_ARRAY_INSERT;
-            if (strcmp(method, "remove") == 0) return VM_METHOD_ARRAY_REMOVE;
-            if (strcmp(method, "extend") == 0) return VM_METHOD_ARRAY_EXTEND;
-            if (strcmp(method, "len") == 0) return VM_METHOD_ARRAY_LEN;
-            break;
-        case VAL_DICT:
-            if (strcmp(method, "keys") == 0) return VM_METHOD_DICT_KEYS;
-            if (strcmp(method, "values") == 0) return VM_METHOD_DICT_VALUES;
-            if (strcmp(method, "items") == 0) return VM_METHOD_DICT_ITEMS;
-            if (strcmp(method, "erase") == 0) return VM_METHOD_DICT_ERASE;
-            if (strcmp(method, "get") == 0) return VM_METHOD_DICT_GET;
-            break;
-        case VAL_SET:
-            if (strcmp(method, "add") == 0) return VM_METHOD_SET_ADD;
-            if (strcmp(method, "remove") == 0) return VM_METHOD_SET_REMOVE;
-            if (strcmp(method, "discard") == 0) return VM_METHOD_SET_DISCARD;
-            if (strcmp(method, "update") == 0) return VM_METHOD_SET_UPDATE;
-            break;
-        case VAL_TUPLE:
-            if (strcmp(method, "count") == 0) return VM_METHOD_TUPLE_COUNT;
-            if (strcmp(method, "index") == 0) return VM_METHOD_TUPLE_INDEX;
-            break;
-        default:
-            break;
+    /* Intern the method name and look up in the O(1) hash table. */
+    const char *key = gc_intern_cstr(gc_global(), method);
+    unsigned    h   = method_slot(type, key);
+    for (int i = 0; i < METHOD_TABLE_CAP; i++) {
+        unsigned idx = (h + (unsigned)i) & (METHOD_TABLE_CAP - 1);
+        if (!s_method_table[idx].key) return VM_METHOD_UNKNOWN; /* empty slot = not found */
+        if (s_method_table[idx].type == type && s_method_table[idx].key == key)
+            return s_method_table[idx].id;
     }
     return VM_METHOD_UNKNOWN;
 }

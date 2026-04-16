@@ -5,12 +5,18 @@
 #include "value.h"
 #include "gc.h"
 
+/* Open-address hash map slot for Env.
+ * Keys are interned canonical const char* pointers — comparison is pointer equality. */
+typedef struct {
+    const char *key;      /* interned pointer; NULL = empty slot */
+    Value      *val;
+    bool        is_const;
+} EnvSlot;
+
 typedef struct Env {
-    char   **keys;
-    Value  **values;
-    bool    *is_const;
-    int      size;
-    int      cap;
+    EnvSlot    *slots;
+    int         cap;      /* power of 2 */
+    int         size;     /* number of active entries */
     struct Env *parent;
 } Env;
 

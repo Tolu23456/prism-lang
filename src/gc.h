@@ -168,6 +168,7 @@ size_t      gc_collect_major(PrismGC *gc, Env *env, VM *vm, Chunk *chunk); /* al
 
 /* ------------------------------------------------------------------ string interning */
 Value      *gc_intern_string(PrismGC *gc, const char *s);
+const char *gc_intern_cstr(PrismGC *gc, const char *s); /* canonical char* pointer */
 
 /* ------------------------------------------------------------------ policy / reporting */
 void        gc_set_policy(PrismGC *gc, GCPolicy policy);

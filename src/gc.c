@@ -152,6 +152,12 @@ Value *gc_intern_string(PrismGC *gc, const char *s) {
     return v;
 }
 
+const char *gc_intern_cstr(PrismGC *gc, const char *s) {
+    if (!s) return s;
+    Value *v = gc_intern_string(gc, s);
+    return v ? v->str_val : s;
+}
+
 /* ================================================================== helpers */
 
 static size_t gc_estimate_value_size(Value *value) {
@@ -344,6 +350,8 @@ void gc_track_value(Value *value) {
     value->gc_marked     = 0;
     value->gc_generation = GC_GEN_YOUNG;
     value->gc_next       = gc->objects;
+    value->gc_prev       = NULL;
+    if (gc->objects) gc->objects->gc_prev = value;
     gc->objects          = value;
 
     size_t size = gc_estimate_value_size(value);
@@ -371,20 +379,13 @@ void gc_untrack_value(Value *value) {
     if (!value || value->gc_immortal) return;
 
     PrismGC *gc = gc_global();
-    Value *prev = NULL;
-    Value *cur  = gc->objects;
 
-    while (cur) {
-        if (cur == value) {
-            if (prev) prev->gc_next = cur->gc_next;
-            else      gc->objects   = cur->gc_next;
-            break;
-        }
-        prev = cur;
-        cur  = cur->gc_next;
-    }
+    /* O(1) splice-out via doubly-linked list */
+    if (value->gc_prev) value->gc_prev->gc_next = value->gc_next;
+    else                gc->objects              = value->gc_next;
+    if (value->gc_next) value->gc_next->gc_prev = value->gc_prev;
 
-    if (cur) {
+    {
         size_t size = gc_estimate_value_size(value);
         gc->stats.bytes_freed   += size;
         if (gc->stats.live_objects > 0) gc->stats.live_objects--;
@@ -405,6 +406,7 @@ void gc_untrack_value(Value *value) {
     }
 
     value->gc_next   = NULL;
+    value->gc_prev   = NULL;
     value->gc_marked = 0;
 }
 
@@ -446,9 +448,11 @@ void gc_mark_value(PrismGC *gc, Value *value) {
 void gc_mark_env(PrismGC *gc, Env *env) {
     if (!gc || !env) return;
     for (Env *e = env; e; e = e->parent) {
-        for (int i = 0; i < e->size; i++) {
-            gc->stats.roots_marked++;
-            gc_mark_value(gc, e->values[i]);
+        for (int i = 0; i < e->cap; i++) {
+            if (e->slots[i].key) {
+                gc->stats.roots_marked++;
+                gc_mark_value(gc, e->slots[i].val);
+            }
         }
     }
 }
@@ -535,13 +539,16 @@ size_t gc_collect_minor(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
     size_t swept        = 0;
     size_t promoted     = 0;
 
-    Value **p = &gc->objects;
+    Value **p         = &gc->objects;
+    Value  *prev_kept = NULL;   /* last node kept so far — used to update gc_prev */
     while (*p) {
         Value *v = *p;
 
         if (v->gc_generation == GC_GEN_OLD) {
-            /* old objects: reset mark flag, skip */
+            /* old objects: reset mark flag, keep, update gc_prev */
             v->gc_marked = 0;
+            v->gc_prev   = prev_kept;
+            prev_kept    = v;
             p = &v->gc_next;
             continue;
         }
@@ -557,10 +564,13 @@ size_t gc_collect_minor(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
             gc->stats.old_live++;
             gc->stats.objects_promoted++;
             promoted++;
+            v->gc_prev = prev_kept;
+            prev_kept  = v;
             p = &v->gc_next;
         } else {
             /* unreachable young → free */
             *p = v->gc_next;
+            if (v->gc_next) v->gc_next->gc_prev = prev_kept;
 
             if (v->type <= VAL_BUILTIN) {
                 if (gc->stats.type_live[v->type] > 0) gc->stats.type_live[v->type]--;
@@ -608,14 +618,18 @@ size_t gc_collect_major(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
     size_t before = gc->stats.live_objects;
     size_t swept  = 0;
 
-    Value **p = &gc->objects;
+    Value **p         = &gc->objects;
+    Value  *prev_kept = NULL;
     while (*p) {
         Value *v = *p;
         if (v->gc_marked) {
             v->gc_marked = 0;
+            v->gc_prev   = prev_kept;
+            prev_kept    = v;
             p = &v->gc_next;
         } else {
             *p = v->gc_next;
+            if (v->gc_next) v->gc_next->gc_prev = prev_kept;
 
             if (v->type <= VAL_BUILTIN) {
                 if (gc->stats.type_live[v->type] > 0) gc->stats.type_live[v->type]--;

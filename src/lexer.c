@@ -4,6 +4,7 @@
 #include <string.h>
 #include <ctype.h>
 #include "lexer.h"
+#include "gc.h"
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -20,11 +21,12 @@ static void advance(Lexer *l) {
 }
 
 static Token *make_token(Lexer *l, TokenType type, const char *val) {
-    Token *t = malloc(sizeof(Token));
-    t->type  = type;
-    t->value = val ? strdup(val) : NULL;
-    t->line  = l->line;
-    t->col   = l->col;
+    Token *t    = malloc(sizeof(Token));
+    t->type     = type;
+    t->value    = val ? strdup(val) : NULL;
+    t->interned = false;
+    t->line     = l->line;
+    t->col      = l->col;
     return t;
 }
 
@@ -48,7 +50,10 @@ Lexer *lexer_new(const char *source) {
 void lexer_free(Lexer *l) { free(l); }
 
 void token_free(Token *t) {
-    if (t) { free(t->value); free(t); }
+    if (t) {
+        if (!t->interned) free(t->value);
+        free(t);
+    }
 }
 
 /* ------------------------------------------------------------------ keyword map */
@@ -257,6 +262,19 @@ Token *lexer_next(Lexer *l) {
         }
         buf[sz] = '\0';
         TokenType tt = keyword_type(buf);
+        if (tt == TOKEN_IDENT) {
+            /* Intern identifier tokens at lex time.
+             * The canonical pointer is immortal — no strdup, no free later. */
+            const char *canon = gc_intern_cstr(gc_global(), buf);
+            free(buf);
+            Token *t    = malloc(sizeof(Token));
+            t->type     = TOKEN_IDENT;
+            t->value    = (char *)canon;
+            t->interned = true;
+            t->line     = l->line;
+            t->col      = l->col;
+            return t;
+        }
         Token *t = make_token(l, tt, buf);
         free(buf);
         return t;

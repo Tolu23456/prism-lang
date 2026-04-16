@@ -38,12 +38,12 @@ The single architectural decision that brings most of Prism's hot paths to O(1) 
 
 These items must be done together as a coordinated change:
 
-- [ ] **Intern all identifiers at lex time**: every identifier token produced by the lexer (`TOKEN_IDENT`) should be passed through `gc_intern_string` before the token value is stored. After this point, the string `"x"` always has exactly one address — no matter how many times it appears in source.
-- [ ] **Intern all string literals used as dict keys**: string literals used as dictionary keys (the most common case) should also be interned so dict lookups can use pointer equality.
-- [ ] **Hash map per `Env` with pointer keys**: replace `Env`'s flat parallel arrays with a small open-address hash map keyed on interned `const char *` pointers. Lookup, insert, and assign all become O(1). Combined with interning, `env_get("x")` becomes a single pointer hash — no strcmp, no scope chain linear scan.
-- [ ] **Pointer-equality method dispatch**: intern all built-in method name strings at startup (e.g. `"upper"`, `"add"`, `"keys"`). Replace the `strcmp` chains in `vm_resolve_method_id` and `vm_dispatch_method_slow` with a hash table keyed on interned pointers — O(1) dispatch for every method call.
-- [ ] **Doubly-linked GC object list → O(1) untrack**: add `gc_prev` to `Value` so splice-out on free is O(1) instead of an O(n) list walk. (Also listed under GC correctness below.)
-- [ ] **Pointer equality for string comparison operator**: once strings are interned, `a == b` for two string values is a pointer compare — O(1) regardless of string length for any interned string.
+- [x] **Intern all identifiers at lex time**: every identifier token produced by the lexer (`TOKEN_IDENT`) should be passed through `gc_intern_string` before the token value is stored. After this point, the string `"x"` always has exactly one address — no matter how many times it appears in source.
+- [x] **Intern all string literals used as dict keys**: string literals used as dictionary keys (the most common case) should also be interned so dict lookups can use pointer equality.
+- [x] **Hash map per `Env` with pointer keys**: replace `Env`'s flat parallel arrays with a small open-address hash map keyed on interned `const char *` pointers. Lookup, insert, and assign all become O(1). Combined with interning, `env_get("x")` becomes a single pointer hash — no strcmp, no scope chain linear scan.
+- [x] **Pointer-equality method dispatch**: intern all built-in method name strings at startup (e.g. `"upper"`, `"add"`, `"keys"`). Replace the `strcmp` chains in `vm_resolve_method_id` and `vm_dispatch_method_slow` with a hash table keyed on interned pointers — O(1) dispatch for every method call.
+- [x] **Doubly-linked GC object list → O(1) untrack**: add `gc_prev` to `Value` so splice-out on free is O(1) instead of an O(n) list walk. (Also listed under GC correctness below.)
+- [x] **Pointer equality for string comparison operator**: once strings are interned, `a == b` for two string values is a pointer compare — O(1) regardless of string length for any interned string.
 
 **Impact**: variable lookup, method dispatch, dict key lookup, and string equality all drop from O(n) to O(1). This is the highest-leverage single architectural improvement available to Prism.
 
