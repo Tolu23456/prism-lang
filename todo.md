@@ -25,6 +25,13 @@
 - [x] Workload-aware GC hints: REPL, script, GUI, and bench modes tune initial thresholds and major-GC interval
 - [x] Memory diagnostics via `--mem-report`: per-type breakdown, generational summary, intern stats, adaptive metrics, health indicators
 - [x] Allocation site tracking: `--mem-report` prints top-10 allocation hotspots with source file, line number, count, and dominant type — works for both the VM and tree-walking interpreter paths
+- [x] Inline caching for method/property lookup in the VM (`CALL_METHOD` site caches `VmMethodId`)
+- [x] Richer error diagnostics: source-line context and VM runtime stack traces
+- [x] Built-in source formatter (`--format`, `--format-write`)
+- [x] Dictionaries reworked to use a native hash index with insertion-order entry array for iteration
+- [x] `--version` / `-v` flag: prints version, build date, and X11 support status
+- [x] `make install` / `make uninstall` targets with `PREFIX`/`DESTDIR` support
+- [x] Cross-platform X11 build hardening: `#ifdef HAVE_X11` guards, `PrismGC` rename to avoid X11 `GC` clash, graceful no-X11 stubs for all `xgui_*` builtins
 
 ## Next Steps — AGC
 - [ ] Add temporary root stack for expression/interpreter values
@@ -36,17 +43,13 @@
 - [ ] Add young/old generation counters to GC stats printed by `--gc-stats` (already tracked internally; expose clearly)
 - [ ] Promote major GC trigger from "every 8 minors" to threshold-based (when old-gen exceeds a size limit)
 
-## Next Steps — VM
-
-- [x] Design the Prism bytecode instruction set (opcodes)
-- [x] Write a bytecode compiler: walk the AST and emit instructions
-- [x] Build the Prism VM: a stack-based virtual machine that executes bytecode
-- [x] Add a constant pool for strings and numbers
-- [x] Add call frames for function calls in the VM
-- [x] Profile and benchmark: compare tree-walker vs VM speed
-- [x] Add inline caching for faster property/method lookup
-- [x] Explore assembly (x86-64) for hot paths in the VM (e.g., arithmetic dispatch)
-- [x] Add a serializer: save compiled bytecode to `.pmc` files (prism bytecode cache)
+## Next Steps — VM Performance
+- [ ] **Computed-goto dispatch** (`goto *dispatch_table[opcode]`): replaces the central `switch` with per-opcode direct branch targets. Each opcode jumps straight to the next without bouncing through a shared switch point. Guard with `#ifdef __GNUC__` so it falls back to `switch` on MSVC. Expected gain: **10–25%** on most workloads.
+- [ ] **Direct `uint8_t *ip` pointer**: replace the integer index `frame->ip` with a raw pointer into `chunk->code`. Eliminates a base-pointer add on every instruction fetch. Expected gain: **2–5%**.
+- [ ] **Strip push/pop bounds checks in release builds**: wrap `vm_push`/`vm_pop` overflow/underflow checks in `#ifndef NDEBUG` so they compile away when building with `-DNDEBUG`. Expected gain: **2–5%** on stack-heavy code.
+- [ ] **Local variable slots** (flat `Value *locals[]` per call frame): the compiler already knows which names are local to a function — emit `OP_LOAD_LOCAL n` / `OP_STORE_LOCAL n` that index a flat array instead of calling `env_get` (hash lookup + `strcmp` chain). Expected gain: **20–40%** for function-heavy code.
+- [ ] **Merge slow/cached method dispatch paths**: `vm_dispatch_method_slow` runs a full second `strcmp` chain even after a cache miss. Unify both paths so every method call goes through `vm_resolve_method_id` → `vm_dispatch_method_cached`, with the slow path only for truly unknown methods on class instances.
+- [ ] **NaN-boxing for scalar values**: encode integers, floats, bools, and null directly into a 64-bit `uint64_t` — no `malloc` for scalars at all. Trades code complexity for a **30–60%** speedup on arithmetic-heavy programs.
 
 ## GUI Roadmap
 - [ ] Add `gui_image(path)` for displaying images
@@ -63,13 +66,11 @@
 - [ ] Native `json` module: parse JSON into Prism dictionaries/arrays and serialize Prism dictionaries/arrays back to JSON
 
 ## Quality
-- [ ] Improve error messages with source location context
-- [ ] Add stack traces for runtime errors
+- [x] Improve error messages with source location context
+- [x] Add stack traces for runtime errors
 - [ ] REPL improvements: history, multiline input
-- [ ] Built-in formatter
-- [ ] Real dictionaries/hash maps
-- [ ] Better error handling
-- [ ] Excellent error handling
+- [ ] Better error handling for edge cases (division by zero, index out of bounds messages)
+- [ ] `make release` target: strip debug symbols, compile with `-O2`, package into `.tar.gz`
 
 ## Instruction for the next agent
 - Read this `todo.md` first, then `CHANGELOG.md`.
