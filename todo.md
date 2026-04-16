@@ -8,6 +8,7 @@
 - [x] Control flow (if/elif/else, while, for, break, continue)
 - [x] Undeclared variable assignment now raises a runtime error
 - [x] GUI support via `gui_window`, `gui_label`, `gui_button`, `gui_input`, `gui_run`
+- [x] Prism-native GTK3-style PGUI toolkit without external GTK, third-party modules, or language bindings
 - [x] AGC layer 1: allocation tracking, root audits, GC stats, policy flags
 - [x] AGC layer 2 started: opt-in mark/sweep reclamation path via `--gc-sweep`
 - [x] Prism bytecode instruction set and constant pool
@@ -43,7 +44,7 @@
 - [ ] Add `gui_layout_row()` / `gui_layout_col()` for layout control
 - [ ] Add event handlers: `gui_on_click(button_id, func)`
 - [ ] Interactive HTML output with JS event wiring
-- [ ] Optional: native GUI via GTK3 when running outside browser
+- [x] Build PGUI as Prism's native GTK3-style GUI layer without external GTK3 or bindings
 
 ## Standard Library
 - [ ] `math` module: sin, cos, sqrt, log, pow, etc.

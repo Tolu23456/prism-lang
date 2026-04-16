@@ -9,13 +9,17 @@ src/
   lexer.h / lexer.c       — Tokenizer: converts source text into tokens
   ast.h / ast.c           — AST node definitions and memory management
   parser.h / parser.c     — Recursive descent parser: builds AST from tokens
-  value.h / value.c       — Runtime value types with reference counting
+  value.h / value.c       — Runtime value types with reference counting and hash-indexed dictionaries
   gc.h / gc.c             — AGC scaffold: allocation tracking, root audits, memory stats
   interpreter.h / interpreter.c — Tree-walking interpreter
-  main.c                  — Entry point: REPL and file execution
+  gui_native.h / gui_native.c — Native framebuffer GUI and PGUI GTK-style toolkit
+  formatter.h / formatter.c — Built-in Prism source formatter
+  main.c                  — Entry point: REPL, formatter, and file execution
 
 examples/
   hello.pm                — Comprehensive feature demo
+  gui_demo.pm             — Original GUI helper demo
+  pgui_demo.pm            — PGUI GTK-style native toolkit demo
 
 Makefile                  — Build system (gcc)
 RULES.txt                 — Language specification
@@ -40,8 +44,10 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 ## Running
 
 ```bash
-./prism file.pm    # run a .pm source file
-./prism            # start the interactive REPL
+./prism file.pm              # run a .pm source file
+./prism --format file.pm     # print formatted Prism source
+./prism --format-write file.pm # format a Prism source file in place
+./prism                      # start the interactive REPL
 ```
 
 ## VM Performance Notes
@@ -69,6 +75,7 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 - **Control flow**: `if/elif/else`, `while`, `for x in iterable`, `break`, `continue`
 - **Functions**: `func name(type param) { ... }` with `return`
 - **I/O**: `output(...)`, `input(prompt)`
+- **PGUI**: native GTK3-style GUI helpers `pgui_window`, `pgui_label`, `pgui_button`, `pgui_input`, `pgui_box`, `pgui_run`
 - **Operators**: arithmetic `+ - * / % **`, comparison, logical `&& || !`, bitwise `& | ^ ~`
 - **Membership**: `x in arr`, `x not in arr`
 - **Slicing**: `s[start:stop:step]` for strings, arrays, tuples
@@ -79,4 +86,5 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 - **Compiler**: GCC
 - **Architecture**: Tree-walking interpreter (Lexer → Parser → AST → Interpreter)
 - **Memory**: Reference-counted values
+- **GUI**: PGUI is implemented in Prism's C core as a GTK3-style renderer without linking GTK3, third-party modules, or language bindings.
 - **AGC Roadmap**: `pipeline.md` describes the planned Adaptive Memory Engine. Current code includes an AGC scaffold that tracks runtime `Value` allocations, audits roots, and reports memory statistics while remaining compatible with existing reference counting.

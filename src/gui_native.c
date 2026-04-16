@@ -18,6 +18,18 @@
 
 GuiWindow *gui_global_window = NULL;
 
+typedef struct {
+    char  title[256];
+    int   width;
+    int   height;
+    char *body;
+    int   body_len;
+    int   body_cap;
+    int   active;
+} PguiState;
+
+static PguiState g_pgui = {"PGUI Window", 720, 480, NULL, 0, 0, 0};
+
 /* ------------------------------------------------------------------ HTML page */
 
 static const char *HTML_PAGE =
@@ -264,6 +276,195 @@ static int int_arg(Value **args, int argc, int idx, int def) {
     return def;
 }
 
+static const char *str_arg(Value **args, int argc, int idx, const char *def) {
+    if (idx >= argc || args[idx]->type != VAL_STRING) return def;
+    return args[idx]->str_val;
+}
+
+static void pgui_body_reserve(int add) {
+    if (!g_pgui.body) {
+        g_pgui.body_cap = 4096;
+        g_pgui.body = malloc((size_t)g_pgui.body_cap);
+        g_pgui.body[0] = '\0';
+        g_pgui.body_len = 0;
+    }
+    while (g_pgui.body_len + add + 1 >= g_pgui.body_cap) {
+        g_pgui.body_cap *= 2;
+        g_pgui.body = realloc(g_pgui.body, (size_t)g_pgui.body_cap);
+    }
+}
+
+static void pgui_body_append_raw(const char *html) {
+    int add = (int)strlen(html);
+    pgui_body_reserve(add);
+    memcpy(g_pgui.body + g_pgui.body_len, html, (size_t)add + 1);
+    g_pgui.body_len += add;
+}
+
+static char *pgui_escape(const char *text) {
+    size_t cap = strlen(text ? text : "") * 6 + 1;
+    char *out = malloc(cap);
+    size_t len = 0;
+    for (const char *p = text ? text : ""; *p; p++) {
+        const char *rep = NULL;
+        switch (*p) {
+            case '&': rep = "&amp;"; break;
+            case '<': rep = "&lt;"; break;
+            case '>': rep = "&gt;"; break;
+            case '"': rep = "&quot;"; break;
+            case '\'': rep = "&#39;"; break;
+            default: break;
+        }
+        if (rep) {
+            size_t n = strlen(rep);
+            memcpy(out + len, rep, n);
+            len += n;
+        } else {
+            out[len++] = *p;
+        }
+    }
+    out[len] = '\0';
+    return out;
+}
+
+static void pgui_append_widget(const char *kind, const char *text, const char *extra) {
+    char *safe = pgui_escape(text);
+    char buf[4096];
+    if (strcmp(kind, "label") == 0) {
+        snprintf(buf, sizeof(buf), "    <div class=\"pgui-label\">%s</div>\n", safe);
+    } else if (strcmp(kind, "button") == 0) {
+        snprintf(buf, sizeof(buf), "    <button class=\"pgui-button\" type=\"button\">%s</button>\n", safe);
+    } else if (strcmp(kind, "input") == 0) {
+        snprintf(buf, sizeof(buf), "    <input class=\"pgui-input\" placeholder=\"%s\" />\n", safe);
+    } else if (strcmp(kind, "box") == 0) {
+        snprintf(buf, sizeof(buf), "    <div class=\"pgui-box pgui-%s\"></div>\n", extra ? extra : "vertical");
+    } else if (strcmp(kind, "separator") == 0) {
+        snprintf(buf, sizeof(buf), "    <div class=\"pgui-separator\"></div>\n");
+    } else {
+        snprintf(buf, sizeof(buf), "    <div>%s</div>\n", safe);
+    }
+    pgui_body_append_raw(buf);
+    free(safe);
+}
+
+static Value *bi_pgui_window(Value **args, int argc) {
+    const char *title = "PGUI Window";
+    int width = 720;
+    int height = 480;
+    if (argc >= 1 && args[0]->type == VAL_STRING) {
+        title = args[0]->str_val;
+        width = int_arg(args, argc, 1, width);
+        height = int_arg(args, argc, 2, height);
+    } else {
+        width = int_arg(args, argc, 0, width);
+        height = int_arg(args, argc, 1, height);
+        title = str_arg(args, argc, 2, title);
+    }
+    snprintf(g_pgui.title, sizeof(g_pgui.title), "%s", title);
+    g_pgui.width = width > 0 ? width : 720;
+    g_pgui.height = height > 0 ? height : 480;
+    g_pgui.active = 1;
+    free(g_pgui.body);
+    g_pgui.body = NULL;
+    g_pgui.body_len = 0;
+    g_pgui.body_cap = 0;
+    return value_null();
+}
+
+static Value *bi_pgui_label(Value **args, int argc) {
+    pgui_append_widget("label", str_arg(args, argc, 0, ""), NULL);
+    return value_null();
+}
+
+static Value *bi_pgui_button(Value **args, int argc) {
+    pgui_append_widget("button", str_arg(args, argc, 0, "Button"), NULL);
+    return value_null();
+}
+
+static Value *bi_pgui_input(Value **args, int argc) {
+    pgui_append_widget("input", str_arg(args, argc, 0, ""), NULL);
+    return value_null();
+}
+
+static Value *bi_pgui_entry(Value **args, int argc) {
+    return bi_pgui_input(args, argc);
+}
+
+static Value *bi_pgui_box(Value **args, int argc) {
+    const char *orientation = str_arg(args, argc, 0, "vertical");
+    if (strcmp(orientation, "horizontal") != 0 && strcmp(orientation, "row") != 0)
+        orientation = "vertical";
+    pgui_append_widget("box", "", strcmp(orientation, "row") == 0 ? "horizontal" : orientation);
+    return value_null();
+}
+
+static Value *bi_pgui_separator(Value **args, int argc) {
+    (void)args; (void)argc;
+    pgui_append_widget("separator", "", NULL);
+    return value_null();
+}
+
+static Value *bi_pgui_backend(Value **args, int argc) {
+    (void)args; (void)argc;
+    return value_string("PGUI native GTK3-style renderer (Prism C core, no GTK or third-party bindings)");
+}
+
+static Value *bi_pgui_version(Value **args, int argc) {
+    (void)args; (void)argc;
+    return value_string("PGUI 0.1.0");
+}
+
+static Value *bi_pgui_run(Value **args, int argc) {
+    const char *path = str_arg(args, argc, 0, "pgui.html");
+    if (!g_pgui.active) {
+        bi_pgui_window(NULL, 0);
+    }
+    FILE *f = fopen(path, "w");
+    if (!f) {
+        fprintf(stderr, "[pgui] could not write %s\n", path);
+        return value_null();
+    }
+    char *safe_title = pgui_escape(g_pgui.title);
+    fprintf(f,
+        "<!DOCTYPE html>\n"
+        "<html lang=\"en\">\n"
+        "<head>\n"
+        "  <meta charset=\"UTF-8\">\n"
+        "  <title>%s</title>\n"
+        "  <style>\n"
+        "    :root { color-scheme: light; --pgui-bg: #f5f5f5; --pgui-panel: #ffffff; --pgui-border: #b8b8b8; --pgui-text: #242424; --pgui-accent: #3584e4; }\n"
+        "    body { margin: 0; min-height: 100vh; background: var(--pgui-bg); color: var(--pgui-text); font-family: Cantarell, Segoe UI, sans-serif; display: grid; place-items: center; }\n"
+        "    .pgui-window { width: %dpx; min-height: %dpx; background: var(--pgui-panel); border: 1px solid var(--pgui-border); border-radius: 9px; box-shadow: 0 18px 48px rgba(0,0,0,.22); overflow: hidden; }\n"
+        "    .pgui-header { height: 42px; display: flex; align-items: center; justify-content: center; font-weight: 700; background: linear-gradient(#eeeeee,#d9d9d9); border-bottom: 1px solid var(--pgui-border); }\n"
+        "    .pgui-content { padding: 18px; display: flex; flex-direction: column; gap: 12px; }\n"
+        "    .pgui-label { font-size: 15px; line-height: 1.45; }\n"
+        "    .pgui-button { align-self: flex-start; min-width: 88px; padding: 8px 18px; border-radius: 7px; border: 1px solid #1b63b7; background: linear-gradient(#4e9af2,#2f7bd8); color: white; font-weight: 700; }\n"
+        "    .pgui-button:active { background: linear-gradient(#2f7bd8,#4e9af2); }\n"
+        "    .pgui-input { padding: 9px 11px; border-radius: 6px; border: 1px solid var(--pgui-border); font: inherit; }\n"
+        "    .pgui-box { border: 1px dashed #c7c7c7; border-radius: 7px; min-height: 28px; background: #fafafa; }\n"
+        "    .pgui-horizontal { min-height: 42px; }\n"
+        "    .pgui-separator { height: 1px; background: var(--pgui-border); margin: 4px 0; }\n"
+        "    .pgui-footer { padding: 8px 12px; font-size: 12px; color: #666; border-top: 1px solid #ddd; background: #f1f1f1; }\n"
+        "  </style>\n"
+        "</head>\n"
+        "<body>\n"
+        "  <main class=\"pgui-window\" role=\"application\" aria-label=\"%s\">\n"
+        "    <header class=\"pgui-header\">%s</header>\n"
+        "    <section class=\"pgui-content\">\n"
+        "%s"
+        "    </section>\n"
+        "    <footer class=\"pgui-footer\">PGUI native GTK3-style toolkit — built into Prism, no GTK library or bindings required.</footer>\n"
+        "  </main>\n"
+        "</body>\n"
+        "</html>\n",
+        safe_title, g_pgui.width, g_pgui.height, safe_title, safe_title,
+        g_pgui.body ? g_pgui.body : "");
+    fclose(f);
+    printf("[pgui] PGUI window written to %s\n", path);
+    free(safe_title);
+    return value_null();
+}
+
 static Value *bi_gui_create(Value **args, int argc) {
     int w = int_arg(args, argc, 0, 640);
     int h = int_arg(args, argc, 1, 480);
@@ -371,6 +572,16 @@ void gui_register_builtins(Env *global_env) {
         {"__gui_running",   bi_gui_running},
         {"__gui_print_url", bi_gui_print_url},
         {"__gui_stop",      bi_gui_stop},
+        {"pgui_window",     bi_pgui_window},
+        {"pgui_label",      bi_pgui_label},
+        {"pgui_button",     bi_pgui_button},
+        {"pgui_input",      bi_pgui_input},
+        {"pgui_entry",      bi_pgui_entry},
+        {"pgui_box",        bi_pgui_box},
+        {"pgui_separator",  bi_pgui_separator},
+        {"pgui_run",        bi_pgui_run},
+        {"pgui_backend",    bi_pgui_backend},
+        {"pgui_version",    bi_pgui_version},
         {NULL, NULL}
     };
     for (int i = 0; tbl[i].name; i++) {

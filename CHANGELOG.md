@@ -13,6 +13,14 @@
   `&`, `|`, and `^` dispatch, with portable C fallbacks for other architectures.
 - Added VM inline caches for dictionary-backed attribute access and method-call
   resolution, caching per-bytecode-site dictionary slots and receiver-type method IDs.
+- Added a built-in Prism source formatter exposed with `--format` and
+  `--format-write`.
+- Reworked dictionaries to use a native hash index for key lookup while preserving
+  dense insertion-order entries for iteration, keys, values, and items.
+- Added richer diagnostics with source-line context and VM runtime stack traces.
+- Added PGUI, a Prism-native GTK3-style GUI toolkit exposed through `pgui_*`
+  built-ins and implemented in the C core without linking GTK, external modules,
+  third-party libraries, or language bindings.
 - GUI support via built-in functions: `gui_window()`, `gui_label()`, `gui_button()`,
   `gui_input()`, and `gui_run()`. Calling `gui_run()` generates a styled `prism_gui.html`
   file that can be opened in any browser.
