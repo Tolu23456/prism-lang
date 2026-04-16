@@ -33,15 +33,17 @@
 - [x] `make install` / `make uninstall` targets with `PREFIX`/`DESTDIR` support
 - [x] Cross-platform X11 build hardening: `#ifdef HAVE_X11` guards, `PrismGC` rename to avoid X11 `GC` clash, graceful no-X11 stubs for all `xgui_*` builtins
 
-## Next Steps — AGC
-- [ ] Add temporary root stack for expression/interpreter values
-- [ ] Make sweep the default collection mode (remove opt-in requirement)
-- [ ] Replace most retain/release runtime paths with AGC ownership
-- [ ] Add cycle-focused tests/examples for arrays, dicts, closures, and objects
-- [ ] Add AST arena allocator for parser/compiler memory
-- [ ] Add actual string interning call-sites: use `value_string_intern()` for dict keys and identifier strings
-- [ ] Add young/old generation counters to GC stats printed by `--gc-stats` (already tracked internally; expose clearly)
-- [ ] Promote major GC trigger from "every 8 minors" to threshold-based (when old-gen exceeds a size limit)
+## Next Steps — GC / Memory Management
+- [ ] **Make sweep the default collection mode**: remove the `--gc-sweep` opt-in requirement; `gc_collect_audit` should always sweep after marking. Most impactful correctness fix — in the current default mode cycles are never collected.
+- [ ] **Doubly-linked object list → O(1) untrack**: add a `gc_prev` pointer to `Value` so `gc_untrack_value` can splice out a node without walking the entire list. Currently every `value_release` that hits zero refcount is an O(n) scan.
+- [ ] **Iterative mark phase (explicit worklist)**: replace the recursive `gc_mark_value` with an explicit `Value *worklist[]` stack. Deep nesting (arrays of arrays, closure chains) currently risks a C stack overflow on the mark walk.
+- [ ] **Wire string interning at all call-sites**: `gc_intern_string` exists but the compiler and interpreter mostly call `strdup` directly. Dict keys and identifier strings should all go through `value_string_intern()` — pointer equality then replaces `strcmp` everywhere.
+- [ ] **Drop ref-counting, rely on pure tracing GC**: every `env_set` calls `value_retain`/`value_release` AND updates the GC list — double bookkeeping on every assignment. Long-term: remove ref-counting entirely and let the generational mark-sweep be the sole ownership mechanism.
+- [ ] **Add temporary root stack for expression/interpreter values**: in-flight values created mid-expression have no GC root, so a collection triggered during evaluation can free them. A small push/pop root stack fixes this.
+- [ ] **Promote major GC trigger to threshold-based**: currently a major collection runs every 8 minors regardless of heap size. Should trigger when old-gen exceeds a configurable byte limit instead.
+- [ ] **Expose young/old generation counters in `--gc-stats`**: already tracked internally in `gc->young_count` / `gc->old_count`; just needs to be printed clearly.
+- [ ] **Add cycle-focused tests/examples**: arrays, dicts, closures, and objects that form reference cycles — to verify sweep actually reclaims them once it is the default.
+- [ ] **Add AST arena allocator**: replace per-node `calloc` in the parser with a bump-pointer arena. The entire AST is freed at once after compilation, so individual frees are wasteful and cache-unfriendly.
 
 ## Next Steps — VM Performance
 - [ ] **Computed-goto dispatch** (`goto *dispatch_table[opcode]`): replaces the central `switch` with per-opcode direct branch targets. Each opcode jumps straight to the next without bouncing through a shared switch point. Guard with `#ifdef __GNUC__` so it falls back to `switch` on MSVC. Expected gain: **10–25%** on most workloads.
@@ -50,6 +52,24 @@
 - [ ] **Local variable slots** (flat `Value *locals[]` per call frame): the compiler already knows which names are local to a function — emit `OP_LOAD_LOCAL n` / `OP_STORE_LOCAL n` that index a flat array instead of calling `env_get` (hash lookup + `strcmp` chain). Expected gain: **20–40%** for function-heavy code.
 - [ ] **Merge slow/cached method dispatch paths**: `vm_dispatch_method_slow` runs a full second `strcmp` chain even after a cache miss. Unify both paths so every method call goes through `vm_resolve_method_id` → `vm_dispatch_method_cached`, with the slow path only for truly unknown methods on class instances.
 - [ ] **NaN-boxing for scalar values**: encode integers, floats, bools, and null directly into a 64-bit `uint64_t` — no `malloc` for scalars at all. Trades code complexity for a **30–60%** speedup on arithmetic-heavy programs.
+
+## Next Steps — Compiler
+- [ ] **Variable classification pre-pass**: add a scope-analysis pass before code generation that classifies every variable as local, upvalue, or global. Emit `OP_LOAD_LOCAL n` / `OP_STORE_LOCAL n` for locals (flat array index) instead of `OP_LOAD_NAME` (string lookup). This is the prerequisite for VM local variable slots.
+- [ ] **Constant folding**: if both operands of a binary expression are constant literals at compile time, evaluate the result once and emit a single `OP_PUSH_CONST`. Eliminates `PUSH 2`, `PUSH 3`, `ADD` → single `PUSH 5`.
+- [ ] **32-bit jump offsets**: `patch_jump` encodes the target as a signed `int16_t` (±32767 bytes). Large functions will silently corrupt jump targets. Widen to 32-bit — either always, or via a `OP_JUMP_WIDE` variant.
+- [ ] **Dead code elimination after `return`**: the compiler currently emits bytecode for statements that follow a `return` inside a function. Stop emitting once `OP_RETURN` / `OP_RETURN_NULL` has been emitted for the current block.
+- [ ] **Deduplicate constant pool entries**: verify `chunk_add_const_str` deduplicates — every use of the same variable name (e.g. `"x"` in a loop body) should add one entry, not one per reference.
+
+## Next Steps — Interpreter (tree-walker)
+- [ ] **Hash map per `Env`**: replace the flat parallel arrays (`keys[]`, `values[]`) with a small open-address hash map. Variable lookup (`env_get`, `env_set`, `env_assign`) goes from O(n) strcmp scan to O(1). Expected gain: **30–50%** faster tree-walker on variable-heavy code.
+- [ ] **Intern-keyed `Env`**: once string interning is wired at all call-sites, `Env` keys can be interned pointers — comparison becomes pointer equality (`==`) instead of `strcmp`, removing the last string comparison cost from variable lookup.
+- [ ] **Pre-parse f-string templates**: the interpreter currently re-scans the raw `{...}` template string on every execution of that expression. Pre-parse the template at parse time into a `[literal, expr_node, literal, ...]` segment list stored in the AST node so runtime evaluation is a direct walk with no string scanning.
+
+## Next Steps — Parser
+- [ ] **Token arena / ring buffer**: `lexer_next` mallocs every `Token` and `strdup`s its value. The parser only ever needs `current` and `peek` live simultaneously — a fixed ring buffer of 2–4 reusable token slots eliminates all per-token allocation.
+- [ ] **Panic-mode error recovery**: `p->had_error = 1` stops parsing immediately, so only the first error is ever reported. Add synchronization: on a parse error, skip forward to the next statement boundary (newline or `;`) and resume, collecting multiple errors per run.
+- [ ] **Column tracking in tokens**: the lexer records `line` but not column. Storing the byte offset of each token would enable `^`-style underline error messages pointing to the exact token, not just the line.
+- [ ] **Expand lookahead buffer**: the parser uses `current` + `peek` (LL(2)). A small 3–4 token lookahead buffer would let ambiguous grammar points (e.g. dict vs. set brace literal) be resolved cleanly without special-case peeking logic.
 
 ## GUI Roadmap
 - [ ] Add `gui_image(path)` for displaying images
