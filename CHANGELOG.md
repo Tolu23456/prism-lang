@@ -1,5 +1,46 @@
 # Changelog
 
+## v0.2.0 — Cross-platform build hardening
+
+### Added
+- **`--version` / `-v` flag**: prints the Prism version, build date and time
+  (`__DATE__ __TIME__`), and whether X11 GUI support was compiled in.
+- **`PRISM_VERSION` macro** defined in `main.c`; used in both the `--version`
+  output and the REPL banner so the version string is a single source of truth.
+
+### Fixed
+- **X11 build failure** (`fatal error: X11/Xlib.h: No such file or directory`):
+  `interpreter.c` and `vm.c` previously included `xgui.h` unconditionally at the
+  top of the file. On systems without X11 dev headers, `pkg-config` returns
+  nothing so `-DHAVE_X11` is never set, yet the bare `#include` still tried to
+  pull in X11 types and caused a hard compile error. Both includes are now
+  wrapped in `#ifdef HAVE_X11`.
+- **`xgui_*` runtime "not defined" error** on no-X11 builds: when compiled
+  without X11 the xgui builtin block was silently dropped, leaving all twelve
+  `xgui_*` names unregistered in the interpreter and VM. A single stub
+  (`bi_xgui_no_x11` / `vm_bi_xgui_no_x11`) is now registered for each name
+  when `HAVE_X11` is absent; calling any xgui function prints a clear message:
+  _"xgui: X11 support was not compiled in. Install libX11-dev / xorg-dev and
+  recompile."_
+- **`GC` type name collision with X11** (`conflicting types for 'GC'`): X11's
+  `Xlib.h` defines `GC` as `struct _XGC *` (a Graphics Context handle). Prism's
+  garbage collector also used `GC` as its top-level typedef. When both headers
+  were present in the same translation unit the compiler reported a type clash.
+  Prism's GC type has been renamed `PrismGC` throughout `gc.h`, `gc.c`,
+  `interpreter.h`, `vm.h`, and `main.c`. All public GC function signatures now
+  use `PrismGC *` and the internal singleton is `static PrismGC g_gc`.
+- **`gui_native.h` / `gui_native.c` version mismatch**: an older copy of
+  `gui_native.h` included `<X11/Xlib.h>` unconditionally and defined `GuiWindow`
+  with an `X11 GC gc` field instead of the `sock_fd` / `port` pair used by the
+  HTTP-server back-end. The canonical header (no X11 dependency, `sock_fd` +
+  `port` fields) is now documented clearly so local copies can be updated.
+
+### Changed
+- REPL startup banner now reads the version from `PRISM_VERSION` instead of a
+  hard-coded string.
+
+---
+
 ## Unreleased
 
 ### Added
