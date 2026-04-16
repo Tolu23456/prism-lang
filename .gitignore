@@ -2,3 +2,4 @@ prism
 src/*.o
 prism_gui.html
 *.pmc
+.ccls-cache
