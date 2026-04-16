@@ -1,4 +1,4 @@
-modules = ["c-clang20"]
+modules = ["bash", "nix"]
 [agent]
 expertMode = true
 
