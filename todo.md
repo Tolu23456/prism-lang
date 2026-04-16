@@ -33,7 +33,7 @@
 - [x] `make install` / `make uninstall` targets with `PREFIX`/`DESTDIR` support
 - [x] Cross-platform X11 build hardening: `#ifdef HAVE_X11` guards, `PrismGC` rename to avoid X11 `GC` clash, graceful no-X11 stubs for all `xgui_*` builtins
 
-## Next Steps — GC / Memory Management
+## Next Steps — GC / Memory Management (near-term correctness + speed)
 - [ ] **Make sweep the default collection mode**: remove the `--gc-sweep` opt-in requirement; `gc_collect_audit` should always sweep after marking. Most impactful correctness fix — in the current default mode cycles are never collected.
 - [ ] **Doubly-linked object list → O(1) untrack**: add a `gc_prev` pointer to `Value` so `gc_untrack_value` can splice out a node without walking the entire list. Currently every `value_release` that hits zero refcount is an O(n) scan.
 - [ ] **Iterative mark phase (explicit worklist)**: replace the recursive `gc_mark_value` with an explicit `Value *worklist[]` stack. Deep nesting (arrays of arrays, closure chains) currently risks a C stack overflow on the mark walk.
@@ -44,6 +44,32 @@
 - [ ] **Expose young/old generation counters in `--gc-stats`**: already tracked internally in `gc->young_count` / `gc->old_count`; just needs to be printed clearly.
 - [ ] **Add cycle-focused tests/examples**: arrays, dicts, closures, and objects that form reference cycles — to verify sweep actually reclaims them once it is the default.
 - [ ] **Add AST arena allocator**: replace per-node `calloc` in the parser with a bump-pointer arena. The entire AST is freed at once after compilation, so individual frees are wasteful and cache-unfriendly.
+
+## Next Steps — GC / Memory Management (Rust-level performance)
+These changes are prerequisites for reaching near-native speed. They go beyond correctness and into fundamental allocator and lifetime design.
+
+- [ ] **Bump-pointer slab allocator for the young generation**: instead of calling `malloc` for every new `Value`, pre-allocate a large contiguous slab (e.g. 4 MB) and advance a pointer. Allocation becomes a single pointer increment — the same cost as stack allocation. The slab is reclaimed wholesale during a minor GC.
+- [ ] **Compacting / moving collector**: after a major collection, copy live old-gen objects into a fresh contiguous region. Eliminates heap fragmentation and makes object traversal cache-friendly (live objects are packed together). Required before the slab allocator can be recycled efficiently.
+- [ ] **Escape analysis at compile time**: analyse which values created inside a function never outlive the call (i.e. they do not escape into closures, arrays, or return values). Allocate those directly on the C stack or VM local frame — they never touch the GC at all. This is what Rust's ownership system does implicitly; adding it to Prism requires a dataflow pass in the compiler.
+- [ ] **Stack allocation for short-lived VM values**: values proven not to escape a single bytecode instruction sequence (e.g. temporaries in `a + b * c`) can be allocated on the VM's value stack as raw `Value` structs rather than as `Value *` heap pointers. Zero allocation, zero GC pressure.
+- [ ] **Precise rooting — eliminate conservative scanning entirely**: ensure every GC root is explicitly registered (VM stack, call frame locals, live Env chains). Conservative scanning (treating every word as a potential pointer) causes false retention and prevents moving collection. Prism is mostly precise already; audit and complete it.
+- [ ] **Region / arena allocation by lifetime**: group allocations that share the same lifetime (e.g. all values created during one function call) into a single arena. Free the entire arena on function return instead of tracking each object individually. Used by ML Kit and some Rust arenas. Ideal for short-lived closures and list comprehensions.
+- [ ] **Thread-local allocation buffers (TLABs)**: when multithreading is added, give each thread its own private slab for allocation to avoid lock contention on the shared heap. Each thread bumps its own pointer; only when the slab is exhausted does it request a new one from the global allocator.
+- [ ] **Finaliser queue**: for objects that hold external resources (file handles, sockets, GPU buffers), add a finaliser queue processed at the end of each GC cycle instead of relying on ref-counting to trigger cleanup.
+
+## Next Steps — JIT / Native Code (to reach Rust-level speed)
+Interpretation overhead is the fundamental ceiling. These items describe the roadmap to cross it. They are large projects — each is weeks to months of work.
+
+- [ ] **Hot-loop detection (profiling counter)**: instrument the VM's backward-jump instruction (`OP_JUMP` with negative offset) with a counter. When a loop body executes more than a threshold (e.g. 1000 iterations), mark it as a JIT candidate. This is the entry point for all trace-based JIT work.
+- [ ] **Linear IR (intermediate representation)**: define a simple, flat instruction set between bytecode and machine code — operations like `IR_ADD_INT`, `IR_LOAD_LOCAL`, `IR_GUARD_INT`. The trace recorder fills this IR; the code generator consumes it. Keeping the IR simple (no SSA required initially) makes the first JIT tractable.
+- [ ] **Trace recorder**: when a hot loop is detected, switch from executing bytecode to recording every operation into the IR. Stop recording at loop back-edge (forming a complete loop trace) or on an exit condition (branch, call, type mismatch).
+- [ ] **Type guard emission**: JIT-compiled traces assume value types (e.g. "both operands are integers"). Emit a guard check before each typed operation; if the guard fails at runtime, exit the JIT trace and fall back to the interpreter. Guards are what make a dynamically-typed language safe to JIT.
+- [ ] **x86-64 native code generator**: walk the recorded IR and emit raw x86-64 machine code into a mmap'd executable buffer. Start with the most common operations: integer arithmetic, local variable load/store, comparisons, and loop back-edges. Expected gain: **5–20× speedup** on hot numeric loops vs. the interpreter.
+- [ ] **JIT code cache**: store compiled traces keyed by bytecode offset and entry type signature. On the next iteration of the same loop with the same types, execute the cached native code directly — no re-recording, no re-compiling.
+- [ ] **ARM64 / AArch64 code generator**: second backend targeting Apple Silicon and ARM Linux (Raspberry Pi, Chromebooks). Shares the same IR and recorder; only the final code-gen step is platform-specific.
+- [ ] **Inline hot function calls in JIT traces**: if a called function is small and always returns the same type, inline it into the current trace. Eliminates call frame setup and return overhead for short functions called in tight loops.
+- [ ] **LLVM IR backend (AOT path)**: alternative to hand-written JIT — translate Prism bytecode or AST to LLVM IR and call the LLVM optimizer. LLVM handles register allocation, instruction selection, and all optimisation passes. Output is a native binary or shared library. Requires type annotations or full type inference to be effective since LLVM needs typed IR. This is how Crystal, Nim, and Zig achieve near-C speed.
+- [ ] **C transpiler (simpler AOT path)**: translate Prism source to a self-contained `.c` file and compile it with GCC or Clang. Simpler than the LLVM backend; gets most of the same optimisations for free. Can be implemented entirely in Prism's existing compiler infrastructure by adding a C-emit backend alongside the bytecode backend.
 
 ## Next Steps — VM Performance
 - [ ] **Computed-goto dispatch** (`goto *dispatch_table[opcode]`): replaces the central `switch` with per-opcode direct branch targets. Each opcode jumps straight to the next without bouncing through a shared switch point. Guard with `#ifdef __GNUC__` so it falls back to `switch` on MSVC. Expected gain: **10–25%** on most workloads.
