@@ -3,6 +3,19 @@
 ## Unreleased
 
 ### Added
+- **Allocation site tracking**: `--mem-report` now shows a "Top allocation sites"
+  table at the end of the memory report.  For each Prism source line that
+  triggered a tracked Value allocation, the GC records the file path, line
+  number, total count, and dominant type.  The table is sorted by count and
+  shows the top 10 hotspots (with a count of remaining sites).  Allocation
+  sites are collected by a global `(file, line)` pair that the interpreter sets
+  via `gc_set_alloc_site()` at the top of every `eval_node` dispatch and the VM
+  sets at the top of every bytecode dispatch loop iteration.  Function call
+  frames in the VM inherit the source filename from the calling frame so
+  allocations inside user-defined functions are attributed correctly.
+  Pre-execution allocations (constant pool values created at compile time)
+  are labelled `<compile-time>` in the report.
+
 - **Immortal singleton cache**: `null`, `true`, `false`, `unknown`, and all integers
   −5–255 are now pre-allocated once and reused as immortal `Value*` pointers.
   Immortal values bypass reference counting and are never touched by the GC,

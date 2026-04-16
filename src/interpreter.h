@@ -15,14 +15,15 @@ typedef struct Env {
 } Env;
 
 typedef struct {
-    Env    *globals;
-    int     had_error;
-    char    error_msg[512];
-    Value  *return_val;
-    bool    returning;
-    bool    breaking;
-    bool    continuing;
-    GC     *gc;
+    Env        *globals;
+    int         had_error;
+    char        error_msg[512];
+    Value      *return_val;
+    bool        returning;
+    bool        breaking;
+    bool        continuing;
+    GC         *gc;
+    const char *filename;   /* source file path, used for alloc-site tracking */
 } Interpreter;
 
 Env         *env_new(Env *parent);

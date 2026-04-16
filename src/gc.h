@@ -38,6 +38,22 @@ typedef struct InternBucket {
     struct InternBucket *next;
 } InternBucket;
 
+/* ------------------------------------------------------------------ allocation site table
+ *
+ * Tracks how many Value allocations originated from each (file, line)
+ * pair in the Prism source.  The interpreter calls gc_set_alloc_site()
+ * before each eval step; gc_track_value() records the current site.
+ * Used by --mem-report to print the top allocation hotspots.
+ * ------------------------------------------------------------------ */
+#define GC_ALLOC_SITE_CAP 4096   /* must be a power of two */
+
+typedef struct {
+    const char *file;                       /* pointer into argv — stable lifetime   */
+    int         line;                       /* Prism source line (0 = empty slot)    */
+    size_t      count;                      /* total allocations from this site      */
+    size_t      type_counts[VAL_BUILTIN+1]; /* per-type breakdown                    */
+} AllocSite;
+
 /* ------------------------------------------------------------------ stats */
 typedef struct GCStats {
     /* byte / object accounting */
@@ -106,6 +122,10 @@ typedef struct GC {
     size_t         intern_count;
     size_t         intern_bytes_saved;
 
+    /* allocation site table (open-address hash, power-of-two cap) */
+    AllocSite alloc_sites[GC_ALLOC_SITE_CAP];
+    size_t    alloc_sites_used;   /* number of occupied slots */
+
     /* flags */
     bool initialized;
     bool log_enabled;
@@ -129,6 +149,9 @@ void        gc_shutdown(GC *gc);
 /* ------------------------------------------------------------------ tracking */
 void        gc_track_value(Value *value);
 void        gc_untrack_value(Value *value);
+
+/* ------------------------------------------------------------------ allocation site */
+void        gc_set_alloc_site(const char *file, int line);
 
 /* ------------------------------------------------------------------ marking */
 void        gc_mark_value(GC *gc, Value *value);

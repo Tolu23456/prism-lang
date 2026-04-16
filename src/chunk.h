@@ -28,6 +28,8 @@ typedef struct Chunk {
 
     InlineCache *inline_caches;
     int          inline_cache_count;
+
+    const char *source_file; /* path of the originating .pm file (not owned) */
 } Chunk;
 
 void     chunk_init(Chunk *c);

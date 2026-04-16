@@ -81,6 +81,7 @@ static int run_source_vm(const char *source, const char *filename) {
     }
 
     VM *vm = vm_new();
+    chunk.source_file = filename;
     gui_register_builtins(vm->globals);
 
     vm_run(vm, &chunk);
@@ -112,6 +113,7 @@ static int run_source_tree(const char *source, const char *filename) {
     }
 
     Interpreter *interp = interpreter_new();
+    interp->filename = filename;
     gui_register_builtins(interp->globals);
     Value *result = interpreter_eval(interp, program, interp->globals);
     if (result) value_release(result);

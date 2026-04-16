@@ -13,6 +13,51 @@
 
 static GC g_gc;
 
+/* ================================================================== allocation site globals
+ *
+ * The interpreter calls gc_set_alloc_site(file, line) at the top of
+ * each eval_node dispatch.  gc_track_value() reads these two globals
+ * and records the site.  No signatures are changed elsewhere.
+ * ================================================================== */
+
+static const char *s_alloc_file = "?";
+static int         s_alloc_line = 0;
+
+void gc_set_alloc_site(const char *file, int line) {
+    s_alloc_file = file ? file : "?";
+    s_alloc_line = line;
+}
+
+/* Find or create the AllocSite entry for (file, line).
+ * Uses open-address linear probing keyed on line number. */
+static AllocSite *alloc_site_find(GC *gc, const char *file, int line) {
+    if (line <= 0) return NULL;
+    uint32_t hash = (uint32_t)line * 2654435761u;
+    size_t   slot = hash & (GC_ALLOC_SITE_CAP - 1);
+
+    for (size_t i = 0; i < GC_ALLOC_SITE_CAP; i++) {
+        AllocSite *s = &gc->alloc_sites[slot];
+        if (s->line == 0) {
+            /* empty slot — claim it */
+            s->file = file;
+            s->line = line;
+            gc->alloc_sites_used++;
+            return s;
+        }
+        if (s->line == line && s->file == file) return s;
+        slot = (slot + 1) & (GC_ALLOC_SITE_CAP - 1);
+    }
+    return NULL; /* table full — silently drop (very unlikely) */
+}
+
+static void alloc_site_bump(GC *gc, ValueType type) {
+    AllocSite *s = alloc_site_find(gc, s_alloc_file, s_alloc_line);
+    if (!s) return;
+    s->count++;
+    if ((int)type >= 0 && type <= VAL_BUILTIN)
+        s->type_counts[type]++;
+}
+
 /* ================================================================== intern table
  *
  * Open-chaining hash map: string → immortal Value*.
@@ -313,6 +358,9 @@ void gc_track_value(Value *value) {
         gc->stats.type_live[value->type]++;
         gc->stats.type_allocated[value->type]++;
     }
+
+    /* record allocation site */
+    alloc_site_bump(gc, value->type);
 
     if (gc->log_enabled)
         fprintf(stderr, "[gc] track %s obj=%p gen=young live=%zu\n",
@@ -866,5 +914,56 @@ void gc_print_mem_report(GC *gc) {
         fprintf(stderr, "  [i] no major GC ran — try --gc-sweep to enable collection\n");
 
     fprintf(stderr, "\n");
+
+    /* ---- top allocation sites ---- */
+    if (gc->alloc_sites_used > 0) {
+        /* Collect pointers to occupied slots, then sort descending by count.
+         * Use a simple insertion sort — at most GC_ALLOC_SITE_CAP entries. */
+        AllocSite *sorted[GC_ALLOC_SITE_CAP];
+        size_t     n = 0;
+        for (size_t i = 0; i < GC_ALLOC_SITE_CAP; i++) {
+            if (gc->alloc_sites[i].line > 0)
+                sorted[n++] = &gc->alloc_sites[i];
+        }
+        /* insertion sort descending by count */
+        for (size_t i = 1; i < n; i++) {
+            AllocSite *key = sorted[i];
+            size_t j = i;
+            while (j > 0 && sorted[j-1]->count < key->count) {
+                sorted[j] = sorted[j-1];
+                j--;
+            }
+            sorted[j] = key;
+        }
+
+        size_t show = n < 10 ? n : 10;
+        fprintf(stderr, "Top allocation sites:\n");
+        for (size_t i = 0; i < show; i++) {
+            AllocSite *s = sorted[i];
+            /* find the dominant type at this site */
+            ValueType dom = VAL_NULL;
+            size_t    dom_count = 0;
+            for (int t = 0; t <= VAL_BUILTIN; t++) {
+                if (s->type_counts[t] > dom_count) {
+                    dom_count = s->type_counts[t];
+                    dom = (ValueType)t;
+                }
+            }
+            /* "?" means file was unset (compile-time or init) */
+            const char *label = (s->file && s->file[0] != '?') ? s->file : "<compile-time>";
+            fprintf(stderr, "  %2zu. %-32s line %-5d  %6zu allocs",
+                    i + 1,
+                    label,
+                    s->line,
+                    s->count);
+            if (dom_count > 0)
+                fprintf(stderr, "  (mostly %s)", gc_type_name(dom));
+            fprintf(stderr, "\n");
+        }
+        if (n > 10)
+            fprintf(stderr, "  ... (%zu more sites)\n", n - 10);
+        fprintf(stderr, "\n");
+    }
+
     fprintf(stderr, "=== End Memory Report ===\n\n");
 }
