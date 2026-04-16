@@ -12,7 +12,12 @@ src/
   value.h / value.c       — Runtime value types with reference counting and hash-indexed dictionaries
   gc.h / gc.c             — AGC scaffold: allocation tracking, root audits, memory stats
   interpreter.h / interpreter.c — Tree-walking interpreter
-  gui_native.h / gui_native.c — Native framebuffer GUI and PGUI GTK-style toolkit
+  vm.h / vm.c             — Stack-based bytecode VM
+  chunk.h / chunk.c       — Bytecode chunk format
+  compiler.h / compiler.c — AST → bytecode compiler
+  pss.h / pss.c           — PSS stylesheet parser (CSS-like)
+  xgui.h / xgui.c         — Native X11 GUI engine (Xlib + Xft)
+  gui_native.h / gui_native.c — PGUI GTK-style toolkit (legacy)
   formatter.h / formatter.c — Built-in Prism source formatter
   main.c                  — Entry point: REPL, formatter, and file execution
 
@@ -20,8 +25,20 @@ examples/
   hello.pm                — Comprehensive feature demo
   gui_demo.pm             — Original GUI helper demo
   pgui_demo.pm            — PGUI GTK-style native toolkit demo
+  default.pss             — Default PSS style sheet for XGUI
 
-Makefile                  — Build system (gcc)
+tests/
+  test_arithmetic.pm      — Arithmetic operators, augmented assignment, bitwise
+  test_collections.pm     — Arrays, dicts, sets, tuples
+  test_control.pm         — if/elif/else, while, for, break, continue, logic
+  test_functions.pm       — Functions, recursion, higher-order functions
+  test_pss.pm             — PSS stylesheet parser (no X11 needed)
+  test_strings.pm         — String methods, slicing, f-strings, operators
+  test_typecast.pm        — int/float/bool/str/complex/array/tuple/set casts
+  test_types.pm           — type() built-in and VAL_* type tags
+  run_tests.sh            — Shell test runner (used by `make test`)
+
+Makefile                  — Build system (gcc, pkg-config auto-detects X11)
 RULES.txt                 — Language specification
 CHANGELOG.md              — Project changes and history
 todo.md                   — Next development tasks
@@ -33,6 +50,7 @@ todo.md                   — Next development tasks
 make          # builds ./prism binary
 make clean    # removes build artifacts
 make run      # builds and runs examples/hello.pm
+make test     # builds and runs all tests/test_*.pm files
 ```
 
 ## Replit Environment
@@ -76,6 +94,7 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 - **Functions**: `func name(type param) { ... }` with `return`
 - **I/O**: `output(...)`, `input(prompt)`
 - **Typecasting**: `int(x)`, `float(x)`, `bool(x)`, `str(x)`, `complex(real, imag)`, `array(x)`, `tuple(x)`, `set(x)` — convert between all types. `int()` recognises `"0xFF"`, `"0b1010"`, `"0o17"` string literals.
+- **Assertions**: `assert(cond, msg)` — aborts with `[FAIL] msg` if `cond` is falsy. `assert_eq(a, b, msg)` — aborts with `[FAIL]` if `a != b`. Both work in interpreter and VM. Used by the `tests/` suite via `make test`.
 - **PGUI**: legacy web-rendered GUI helpers `gui_window`, `gui_label`, `gui_button`, `gui_input`, `gui_run` (generates HTML)
 - **XGUI**: native X11 desktop GUI — `xgui_init(w,h,title)`, `xgui_style(path)`, `xgui_running()`, `xgui_begin()`, `xgui_end()`, `xgui_label(text)`, `xgui_button(text)→bool`, `xgui_input(id,placeholder)→str`, `xgui_spacer(h)`, `xgui_row_begin()`, `xgui_row_end()`, `xgui_close()`. Requires X11 display (desktop Linux/macOS with XQuartz). Style loaded from `.pss` files.
 - **Operators**: arithmetic `+ - * / % **`, comparison, logical `&& || !`, bitwise `& | ^ ~`

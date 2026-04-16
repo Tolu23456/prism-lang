@@ -298,6 +298,35 @@ static Value *vm_builtin_type_fn(Value **args, int argc) {
     return value_string(value_type_name(args[0]->type));
 }
 
+static Value *vm_builtin_assert(Value **args, int argc) {
+    if (argc < 1 || !value_truthy(args[0])) {
+        const char *msg = (argc > 1 && args[1]->type == VAL_STRING)
+            ? args[1]->str_val : "assertion failed";
+        fprintf(stderr, "[FAIL] %s\n", msg);
+        exit(1);
+    }
+    return value_null();
+}
+
+static Value *vm_builtin_assert_eq(Value **args, int argc) {
+    if (argc < 2) {
+        fprintf(stderr, "[FAIL] assert_eq requires 2 arguments\n");
+        exit(1);
+    }
+    if (!value_equals(args[0], args[1])) {
+        if (argc > 2 && args[2]->type == VAL_STRING) {
+            fprintf(stderr, "[FAIL] %s\n", args[2]->str_val);
+        } else {
+            char *s0 = value_to_string(args[0]);
+            char *s1 = value_to_string(args[1]);
+            fprintf(stderr, "[FAIL] expected %s but got %s\n", s1, s0);
+            free(s0); free(s1);
+        }
+        exit(1);
+    }
+    return value_null();
+}
+
 /* ---- GUI built-ins (same as in interpreter.c) ---- */
 
 typedef struct {
@@ -472,6 +501,8 @@ void vm_register_builtins(VM *vm) {
         {"tuple",      vm_builtin_tuple_fn},
         {"complex",    vm_builtin_complex_fn},
         {"type",       vm_builtin_type_fn},
+        {"assert",     vm_builtin_assert},
+        {"assert_eq",  vm_builtin_assert_eq},
         {"gui_window", vmbi_gui_window},
         {"gui_label",  vmbi_gui_label},
         {"gui_button", vmbi_gui_button},
@@ -575,7 +606,8 @@ static VmMethodId vm_resolve_method_id(ValueType type, const char *method) {
             if (strcmp(method, "rstrip") == 0) return VM_METHOD_STRING_RSTRIP;
             if (strcmp(method, "len") == 0) return VM_METHOD_STRING_LEN;
             if (strcmp(method, "capitalize") == 0) return VM_METHOD_STRING_CAPITALIZE;
-            if (strcmp(method, "find") == 0) return VM_METHOD_STRING_FIND;
+            if (strcmp(method, "find") == 0)  return VM_METHOD_STRING_FIND;
+            if (strcmp(method, "index") == 0) return VM_METHOD_STRING_FIND;
             if (strcmp(method, "replace") == 0) return VM_METHOD_STRING_REPLACE;
             if (strcmp(method, "startswith") == 0) return VM_METHOD_STRING_STARTSWITH;
             if (strcmp(method, "endswith") == 0) return VM_METHOD_STRING_ENDSWITH;

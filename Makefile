@@ -15,38 +15,38 @@ else
 endif
 
 SRCS = \
-        src/main.c \
-        src/lexer.c \
-        src/ast.c \
-        src/parser.c \
-        src/value.c \
-        src/gc.c \
-        src/interpreter.c \
-        src/chunk.c \
-        src/compiler.c \
-        src/vm.c \
-        src/gui_native.c \
-        src/formatter.c \
-        $(X11_SRCS)
+	src/main.c \
+	src/lexer.c \
+	src/ast.c \
+	src/parser.c \
+	src/value.c \
+	src/gc.c \
+	src/interpreter.c \
+	src/chunk.c \
+	src/compiler.c \
+	src/vm.c \
+	src/gui_native.c \
+	src/formatter.c \
+	$(X11_SRCS)
 
 OBJS   = $(SRCS:.c=.o)
 TARGET = prism
 
 HEADERS = \
-        src/lexer.h \
-        src/ast.h \
-        src/value.h \
-        src/gc.h \
-        src/parser.h \
-        src/interpreter.h \
-        src/chunk.h \
-        src/compiler.h \
-        src/vm.h \
-        src/opcode.h \
-        src/gui_native.h \
-        src/formatter.h \
-        src/pss.h \
-        src/xgui.h
+	src/lexer.h \
+	src/ast.h \
+	src/value.h \
+	src/gc.h \
+	src/parser.h \
+	src/interpreter.h \
+	src/chunk.h \
+	src/compiler.h \
+	src/vm.h \
+	src/opcode.h \
+	src/gui_native.h \
+	src/formatter.h \
+	src/pss.h \
+	src/xgui.h
 
 all: $(TARGET)
 
@@ -62,4 +62,8 @@ clean:
 run: $(TARGET)
 	./prism examples/hello.pm
 
-.PHONY: all clean run
+test: $(TARGET)
+	@chmod +x tests/run_tests.sh
+	@bash tests/run_tests.sh
+
+.PHONY: all clean run test

@@ -298,6 +298,35 @@ static Value *vm_builtin_type_fn(Value **args, int argc) {
     return value_string(value_type_name(args[0]->type));
 }
 
+static Value *vm_builtin_assert(Value **args, int argc) {
+    if (argc < 1 || !value_truthy(args[0])) {
+        const char *msg = (argc > 1 && args[1]->type == VAL_STRING)
+            ? args[1]->str_val : "assertion failed";
+        fprintf(stderr, "[FAIL] %s\n", msg);
+        exit(1);
+    }
+    return value_null();
+}
+
+static Value *vm_builtin_assert_eq(Value **args, int argc) {
+    if (argc < 2) {
+        fprintf(stderr, "[FAIL] assert_eq requires 2 arguments\n");
+        exit(1);
+    }
+    if (!value_equals(args[0], args[1])) {
+        if (argc > 2 && args[2]->type == VAL_STRING) {
+            fprintf(stderr, "[FAIL] %s\n", args[2]->str_val);
+        } else {
+            char *s0 = value_to_string(args[0]);
+            char *s1 = value_to_string(args[1]);
+            fprintf(stderr, "[FAIL] expected %s but got %s\n", s1, s0);
+            free(s0); free(s1);
+        }
+        exit(1);
+    }
+    return value_null();
+}
+
 /* ---- GUI built-ins (same as in interpreter.c) ---- */
 
 typedef struct {
@@ -384,6 +413,78 @@ static Value *vmbi_gui_run(Value **args, int argc) {
     return value_null();
 }
 
+/* ================================================================== XGUI builtins (VM) */
+
+static XGui *g_vm_xgui = NULL;
+
+static Value *vm_bi_xgui_init(Value **args, int argc) {
+    int w = (argc > 0 && args[0]->type == VAL_INT) ? (int)args[0]->int_val : 800;
+    int h = (argc > 1 && args[1]->type == VAL_INT) ? (int)args[1]->int_val : 600;
+    const char *title = (argc > 2 && args[2]->type == VAL_STRING) ? args[2]->str_val : "Prism";
+    if (g_vm_xgui) xgui_destroy(g_vm_xgui);
+    g_vm_xgui = xgui_init(w, h, title);
+    return value_null();
+}
+
+static Value *vm_bi_xgui_style(Value **args, int argc) {
+    if (g_vm_xgui && argc > 0 && args[0]->type == VAL_STRING)
+        xgui_load_style(g_vm_xgui, args[0]->str_val);
+    return value_null();
+}
+
+static Value *vm_bi_xgui_running(Value **args, int argc) {
+    (void)args; (void)argc;
+    return value_bool(xgui_running(g_vm_xgui) ? 1 : 0);
+}
+
+static Value *vm_bi_xgui_begin(Value **args, int argc) {
+    (void)args; (void)argc;
+    xgui_begin(g_vm_xgui); return value_null();
+}
+
+static Value *vm_bi_xgui_end(Value **args, int argc) {
+    (void)args; (void)argc;
+    xgui_end(g_vm_xgui); return value_null();
+}
+
+static Value *vm_bi_xgui_label(Value **args, int argc) {
+    if (g_vm_xgui && argc > 0 && args[0]->type == VAL_STRING)
+        xgui_label(g_vm_xgui, args[0]->str_val);
+    return value_null();
+}
+
+static Value *vm_bi_xgui_button(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 1 || args[0]->type != VAL_STRING) return value_bool(0);
+    return value_bool(xgui_button(g_vm_xgui, args[0]->str_val) ? 1 : 0);
+}
+
+static Value *vm_bi_xgui_input(Value **args, int argc) {
+    if (!g_vm_xgui) return value_string("");
+    const char *id  = (argc > 0 && args[0]->type == VAL_STRING) ? args[0]->str_val : "input";
+    const char *ph  = (argc > 1 && args[1]->type == VAL_STRING) ? args[1]->str_val : "";
+    const char *val = xgui_input(g_vm_xgui, id, ph);
+    return value_string(val ? val : "");
+}
+
+static Value *vm_bi_xgui_spacer(Value **args, int argc) {
+    int h = (argc > 0 && args[0]->type == VAL_INT) ? (int)args[0]->int_val : 16;
+    xgui_spacer(g_vm_xgui, h); return value_null();
+}
+
+static Value *vm_bi_xgui_row_begin(Value **args, int argc) {
+    (void)args; (void)argc; xgui_row_begin(g_vm_xgui); return value_null();
+}
+
+static Value *vm_bi_xgui_row_end(Value **args, int argc) {
+    (void)args; (void)argc; xgui_row_end(g_vm_xgui); return value_null();
+}
+
+static Value *vm_bi_xgui_close(Value **args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) { xgui_destroy(g_vm_xgui); g_vm_xgui = NULL; }
+    return value_null();
+}
+
 /* ================================================================== register */
 
 void vm_register_builtins(VM *vm) {
@@ -405,6 +506,19 @@ void vm_register_builtins(VM *vm) {
         {"gui_button", vmbi_gui_button},
         {"gui_input",  vmbi_gui_input},
         {"gui_run",    vmbi_gui_run},
+        /* X11 native GUI */
+        {"xgui_init",      vm_bi_xgui_init},
+        {"xgui_style",     vm_bi_xgui_style},
+        {"xgui_running",   vm_bi_xgui_running},
+        {"xgui_begin",     vm_bi_xgui_begin},
+        {"xgui_end",       vm_bi_xgui_end},
+        {"xgui_label",     vm_bi_xgui_label},
+        {"xgui_button",    vm_bi_xgui_button},
+        {"xgui_input",     vm_bi_xgui_input},
+        {"xgui_spacer",    vm_bi_xgui_spacer},
+        {"xgui_row_begin", vm_bi_xgui_row_begin},
+        {"xgui_row_end",   vm_bi_xgui_row_end},
+        {"xgui_close",     vm_bi_xgui_close},
         {NULL, NULL}
     };
     for (int i = 0; bi[i].name; i++) {

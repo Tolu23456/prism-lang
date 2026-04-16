@@ -311,6 +311,35 @@ static Value *builtin_type_fn(Value **args, int argc) {
     return value_string(value_type_name(args[0]->type));
 }
 
+static Value *builtin_assert(Value **args, int argc) {
+    if (argc < 1 || !value_truthy(args[0])) {
+        const char *msg = (argc > 1 && args[1]->type == VAL_STRING)
+            ? args[1]->str_val : "assertion failed";
+        fprintf(stderr, "[FAIL] %s\n", msg);
+        exit(1);
+    }
+    return value_null();
+}
+
+static Value *builtin_assert_eq(Value **args, int argc) {
+    if (argc < 2) {
+        fprintf(stderr, "[FAIL] assert_eq requires 2 arguments\n");
+        exit(1);
+    }
+    if (!value_equals(args[0], args[1])) {
+        if (argc > 2 && args[2]->type == VAL_STRING) {
+            fprintf(stderr, "[FAIL] %s\n", args[2]->str_val);
+        } else {
+            char *s0 = value_to_string(args[0]);
+            char *s1 = value_to_string(args[1]);
+            fprintf(stderr, "[FAIL] expected %s but got %s\n", s1, s0);
+            free(s0); free(s1);
+        }
+        exit(1);
+    }
+    return value_null();
+}
+
 /* ------------------------------------------------------------------ GUI builtins */
 
 static Value *builtin_gui_window(Value **args, int argc) {
@@ -475,6 +504,8 @@ static void register_builtins(Interpreter *interp) {
         {"tuple",       builtin_tuple_fn},
         {"complex",     builtin_complex_fn},
         {"type",        builtin_type_fn},
+        {"assert",      builtin_assert},
+        {"assert_eq",   builtin_assert_eq},
         {"gui_window",  builtin_gui_window},
         {"gui_label",   builtin_gui_label},
         {"gui_button",  builtin_gui_button},
@@ -611,7 +642,8 @@ static Value *string_method(Interpreter *interp, Value *obj, const char *method,
     if (strcmp(method, "index") == 0) {
         if (argc < 1 || args[0]->type != VAL_STRING) return value_int(-1);
         const char *found = strstr(s, args[0]->str_val);
-        return value_int(found ? (long long)(found - s) : -1LL);
+        if (!found) { runtime_error(interp, "substring not found", line); return value_null(); }
+        return value_int((long long)(found - s));
     }
     if (strcmp(method, "replace") == 0) {
         if (argc < 2 || args[0]->type != VAL_STRING || args[1]->type != VAL_STRING)
