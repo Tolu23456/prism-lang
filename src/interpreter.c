@@ -7,7 +7,9 @@
 #include "interpreter.h"
 #include "parser.h"
 #include "value.h"
+#ifdef HAVE_X11
 #include "xgui.h"
+#endif
 
 /* ================================================================== GUI State */
 
@@ -412,6 +414,8 @@ static Value *builtin_gui_run(Value **args, int argc) {
 
 /* ================================================================== XGUI builtins */
 
+#ifdef HAVE_X11
+
 static XGui *g_xgui = NULL;
 
 static Value *bi_xgui_init(Value **args, int argc) {
@@ -490,6 +494,17 @@ static Value *bi_xgui_close(Value **args, int argc) {
     return value_null();
 }
 
+#else /* !HAVE_X11 — graceful stubs */
+
+static Value *bi_xgui_no_x11(Value **args, int argc) {
+    (void)args; (void)argc;
+    fprintf(stderr, "xgui: X11 support was not compiled in. "
+                    "Install libX11-dev / xorg-dev and recompile.\n");
+    return value_null();
+}
+
+#endif /* HAVE_X11 */
+
 static void register_builtins(Interpreter *interp) {
     struct { const char *name; BuiltinFn fn; } builtins[] = {
         {"output",      builtin_output},
@@ -512,6 +527,7 @@ static void register_builtins(Interpreter *interp) {
         {"gui_input",   builtin_gui_input},
         {"gui_run",     builtin_gui_run},
         /* X11 native GUI */
+#ifdef HAVE_X11
         {"xgui_init",      bi_xgui_init},
         {"xgui_style",     bi_xgui_style},
         {"xgui_running",   bi_xgui_running},
@@ -524,6 +540,20 @@ static void register_builtins(Interpreter *interp) {
         {"xgui_row_begin", bi_xgui_row_begin},
         {"xgui_row_end",   bi_xgui_row_end},
         {"xgui_close",     bi_xgui_close},
+#else
+        {"xgui_init",      bi_xgui_no_x11},
+        {"xgui_style",     bi_xgui_no_x11},
+        {"xgui_running",   bi_xgui_no_x11},
+        {"xgui_begin",     bi_xgui_no_x11},
+        {"xgui_end",       bi_xgui_no_x11},
+        {"xgui_label",     bi_xgui_no_x11},
+        {"xgui_button",    bi_xgui_no_x11},
+        {"xgui_input",     bi_xgui_no_x11},
+        {"xgui_spacer",    bi_xgui_no_x11},
+        {"xgui_row_begin", bi_xgui_no_x11},
+        {"xgui_row_end",   bi_xgui_no_x11},
+        {"xgui_close",     bi_xgui_no_x11},
+#endif
         {NULL, NULL}
     };
     for (int i = 0; builtins[i].name; i++) {

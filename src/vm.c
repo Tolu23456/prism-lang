@@ -8,7 +8,9 @@
 #include "chunk.h"
 #include "value.h"
 #include "interpreter.h"
+#ifdef HAVE_X11
 #include "xgui.h"
+#endif
 
 /* ================================================================== helpers */
 
@@ -415,6 +417,8 @@ static Value *vmbi_gui_run(Value **args, int argc) {
 
 /* ================================================================== XGUI builtins (VM) */
 
+#ifdef HAVE_X11
+
 static XGui *g_vm_xgui = NULL;
 
 static Value *vm_bi_xgui_init(Value **args, int argc) {
@@ -485,6 +489,17 @@ static Value *vm_bi_xgui_close(Value **args, int argc) {
     return value_null();
 }
 
+#else /* !HAVE_X11 — graceful stubs */
+
+static Value *vm_bi_xgui_no_x11(Value **args, int argc) {
+    (void)args; (void)argc;
+    fprintf(stderr, "xgui: X11 support was not compiled in. "
+                    "Install libX11-dev / xorg-dev and recompile.\n");
+    return value_null();
+}
+
+#endif /* HAVE_X11 */
+
 /* ================================================================== register */
 
 void vm_register_builtins(VM *vm) {
@@ -509,6 +524,7 @@ void vm_register_builtins(VM *vm) {
         {"gui_input",  vmbi_gui_input},
         {"gui_run",    vmbi_gui_run},
         /* X11 native GUI */
+#ifdef HAVE_X11
         {"xgui_init",      vm_bi_xgui_init},
         {"xgui_style",     vm_bi_xgui_style},
         {"xgui_running",   vm_bi_xgui_running},
@@ -521,6 +537,20 @@ void vm_register_builtins(VM *vm) {
         {"xgui_row_begin", vm_bi_xgui_row_begin},
         {"xgui_row_end",   vm_bi_xgui_row_end},
         {"xgui_close",     vm_bi_xgui_close},
+#else
+        {"xgui_init",      vm_bi_xgui_no_x11},
+        {"xgui_style",     vm_bi_xgui_no_x11},
+        {"xgui_running",   vm_bi_xgui_no_x11},
+        {"xgui_begin",     vm_bi_xgui_no_x11},
+        {"xgui_end",       vm_bi_xgui_no_x11},
+        {"xgui_label",     vm_bi_xgui_no_x11},
+        {"xgui_button",    vm_bi_xgui_no_x11},
+        {"xgui_input",     vm_bi_xgui_no_x11},
+        {"xgui_spacer",    vm_bi_xgui_no_x11},
+        {"xgui_row_begin", vm_bi_xgui_no_x11},
+        {"xgui_row_end",   vm_bi_xgui_no_x11},
+        {"xgui_close",     vm_bi_xgui_no_x11},
+#endif
         {NULL, NULL}
     };
     for (int i = 0; bi[i].name; i++) {
