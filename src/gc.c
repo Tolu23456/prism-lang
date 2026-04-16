@@ -140,9 +140,11 @@ void gc_configure_from_env(GC *gc) {
     const char *log = getenv("PRISM_GC_LOG");
     const char *stress = getenv("PRISM_GC_STRESS");
     const char *stats = getenv("PRISM_GC_STATS");
+    const char *sweep = getenv("PRISM_GC_SWEEP");
 
     gc->log_enabled = log && strcmp(log, "0") != 0;
     gc->stress_enabled = stress && strcmp(stress, "0") != 0;
+    gc->sweep_enabled = sweep && strcmp(sweep, "0") != 0;
     gc->stats_on_shutdown = stats && strcmp(stats, "0") != 0;
 
     if (gc->policy == GC_POLICY_DEBUG) {
@@ -152,6 +154,7 @@ void gc_configure_from_env(GC *gc) {
 
     if (gc->policy == GC_POLICY_STRESS) {
         gc->stress_enabled = true;
+        gc->sweep_enabled = true;
         gc->log_enabled = true;
         gc->stats_on_shutdown = true;
     }
@@ -318,7 +321,51 @@ void gc_collect_audit(GC *gc, Env *env, VM *vm, Chunk *chunk) {
                 gc->stats.live_objects);
     }
 
+    if (gc->sweep_enabled) gc_collect_sweep(gc, env, vm, chunk);
+    else gc_reset_marks(gc);
+}
+
+size_t gc_collect_sweep(GC *gc, Env *env, VM *vm, Chunk *chunk) {
+    if (!gc) return 0;
+
     gc_reset_marks(gc);
+    gc_mark_env(gc, env);
+    gc_mark_vm(gc, vm);
+    gc_mark_chunk(gc, chunk);
+
+    Value *previous = NULL;
+    Value *value = gc->objects;
+    size_t swept = 0;
+
+    while (value) {
+        if (value->gc_marked) {
+            value->gc_marked = 0;
+            previous = value;
+            value = value->gc_next;
+        } else {
+            Value *dead = value;
+            value = value->gc_next;
+            if (previous) previous->gc_next = value;
+            else gc->objects = value;
+
+            if (dead->type <= VAL_BUILTIN) {
+                if (gc->stats.type_live[dead->type] > 0) gc->stats.type_live[dead->type]--;
+                gc->stats.type_freed[dead->type]++;
+            }
+            if (gc->stats.live_objects > 0) gc->stats.live_objects--;
+            gc->stats.total_frees++;
+            gc_free_tracked_value(dead);
+            swept++;
+        }
+    }
+
+    if (gc->log_enabled || gc->policy == GC_POLICY_DEBUG || gc->policy == GC_POLICY_STRESS) {
+        fprintf(stderr, "[gc] sweep roots=%zu marked=%zu swept=%zu live=%zu\n",
+                gc->stats.roots_marked, gc->stats.objects_marked, swept, gc->stats.live_objects);
+    }
+
+    gc_reset_marks(gc);
+    return swept;
 }
 
 void gc_set_policy(GC *gc, GCPolicy policy) {

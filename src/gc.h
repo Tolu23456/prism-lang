@@ -35,6 +35,7 @@ typedef struct GC {
     bool initialized;
     bool log_enabled;
     bool stress_enabled;
+    bool sweep_enabled;
     bool stats_on_shutdown;
 } GC;
 
@@ -56,6 +57,7 @@ void gc_mark_vm(GC *gc, VM *vm);
 void gc_mark_chunk(GC *gc, Chunk *chunk);
 void gc_reset_marks(GC *gc);
 void gc_collect_audit(GC *gc, Env *env, VM *vm, Chunk *chunk);
+size_t gc_collect_sweep(GC *gc, Env *env, VM *vm, Chunk *chunk);
 
 void gc_set_policy(GC *gc, GCPolicy policy);
 const char *gc_policy_name(GCPolicy policy);

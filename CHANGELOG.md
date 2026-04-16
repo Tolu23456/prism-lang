@@ -13,7 +13,11 @@
 - Added shutdown-time AGC reclamation for remaining tracked runtime values after
   normal reference-count cleanup, giving Prism a safe first bridge toward cycle cleanup.
 - Added GC runtime flags: `--gc-stats`, `--gc-log`, `--gc-stress`, and
-  `--gc-policy=balanced|throughput|low-latency|debug|stress`.
+  `--gc-sweep`, plus `--gc-policy=balanced|throughput|low-latency|debug|stress`.
+- Began AGC layer 2 with an opt-in mark/sweep reclamation path that frees
+  unmarked tracked runtime values at safe collection audit points.
+- Updated `pipeline.md` and `todo.md` to reflect AGC layer 1 completion and
+  layer 2 sweep work in progress.
 - Added `pipeline.md` documenting the long-term Adaptive Memory Engine roadmap.
 
 ### Fixed

@@ -8,6 +8,17 @@
 - [x] Control flow (if/elif/else, while, for, break, continue)
 - [x] Undeclared variable assignment now raises a runtime error
 - [x] GUI support via `gui_window`, `gui_label`, `gui_button`, `gui_input`, `gui_run`
+- [x] AGC layer 1: allocation tracking, root audits, GC stats, policy flags
+- [x] AGC layer 2 started: opt-in mark/sweep reclamation path via `--gc-sweep`
+
+## Next Steps — AGC
+- [ ] Add temporary root stack for expression/interpreter values
+- [ ] Make mark/sweep safe as the default collection mode
+- [ ] Replace most retain/release runtime paths with AGC ownership
+- [ ] Add cycle-focused tests/examples for arrays, dicts, closures, and objects
+- [ ] Add AST arena allocator for parser/compiler memory
+- [ ] Add string interning and immortal cached values for `true`, `false`, `unknown`, `void`
+- [ ] Add young/old generational heap after sweep mode is stable
 
 ## Next Steps — VM
 

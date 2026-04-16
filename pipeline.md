@@ -10,6 +10,36 @@ The goal is not just to free memory automatically. The goal is to make Prism's r
 
 ---
 
+## Implementation Status
+
+### Completed
+
+- AGC layer 1 scaffold is in place.
+- `src/gc.h` and `src/gc.c` exist.
+- Runtime `Value` objects now carry GC metadata.
+- Runtime allocations are tracked in the AGC object list.
+- Reference counting remains active as a compatibility bridge.
+- Interpreter, VM, environment, stack, call-frame, and chunk root-audit hooks exist.
+- Per-type allocation/free/live statistics exist.
+- GC policy flags exist: balanced, throughput, low-latency, debug, stress.
+- CLI flags exist for GC stats, logs, stress, sweep mode, and policy selection.
+- Shutdown-time reclamation frees remaining tracked values after normal cleanup.
+
+### In Progress
+
+- AGC layer 2 has started with opt-in mark/sweep reclamation through `--gc-sweep`.
+- Sweep mode marks roots, finds unmarked tracked values, and frees unreachable values through non-recursive AGC cleanup.
+- Sweep remains opt-in until temporary roots and ownership conversion are complete.
+
+### Next
+
+- Add a temporary root stack for interpreter/VM transient values.
+- Promote sweep mode from opt-in to default after root coverage is complete.
+- Gradually retire retain/release-heavy runtime paths.
+- Add cycle-focused examples and stress checks.
+
+---
+
 ## Current Memory Model
 
 Important current files:
@@ -408,6 +438,7 @@ The sweep phase decides global object lifetime.
 - Implement `gc_free_all()`
 - Implement `gc_alloc_value()`
 - Do not replace reference counting yet
+- Status: mostly complete through allocation tracking and shutdown reclamation; explicit allocator API remains a future cleanup.
 
 Acceptance:
 
@@ -462,6 +493,7 @@ Acceptance:
 - Mark current local environment
 - Mark function closure environments
 - Mark temporary evaluation values where needed
+- Status: environment and closure marking started; temporary root stack still pending.
 
 Acceptance:
 
@@ -476,6 +508,7 @@ Acceptance:
 - Mark VM globals
 - Mark active call frame values
 - Mark constants in bytecode chunks if they are `Value*`
+- Status: VM stack, globals, call-frame envs, frame chunks, and explicit chunks are marked.
 
 Acceptance:
 
@@ -504,6 +537,21 @@ Acceptance:
 
 - No double-free behavior
 - GC is responsible for runtime value lifetime
+- Status: not started as default behavior; layer 2 uses opt-in sweep while reference counting remains the default bridge.
+
+---
+
+### Phase 6.5 — Opt-in sweep bridge
+
+- Add `--gc-sweep`
+- Mark known roots
+- Sweep unmarked tracked runtime values at safe audit points
+- Keep disabled by default until temporary roots are implemented
+
+Acceptance:
+
+- Debug/stress users can exercise real AGC reclamation
+- Normal execution remains protected by the reference-counting bridge
 
 ---
 

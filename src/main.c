@@ -143,8 +143,11 @@ static const char *configure_gc_from_args(int argc, char **argv) {
         } else if (strcmp(argv[i], "--gc-stress") == 0) {
             gc_set_policy(gc, GC_POLICY_STRESS);
             gc->stress_enabled = true;
+            gc->sweep_enabled = true;
             gc->log_enabled = true;
             gc->stats_on_shutdown = true;
+        } else if (strcmp(argv[i], "--gc-sweep") == 0) {
+            gc->sweep_enabled = true;
         } else if (strncmp(argv[i], "--gc-policy=", 12) == 0) {
             const char *policy = argv[i] + 12;
             if (strcmp(policy, "throughput") == 0) {
@@ -158,6 +161,7 @@ static const char *configure_gc_from_args(int argc, char **argv) {
             } else if (strcmp(policy, "stress") == 0) {
                 gc_set_policy(gc, GC_POLICY_STRESS);
                 gc->stress_enabled = true;
+                gc->sweep_enabled = true;
                 gc->log_enabled = true;
                 gc->stats_on_shutdown = true;
             } else {
@@ -198,7 +202,7 @@ int main(int argc, char **argv) {
         return code;
     }
 
-    fprintf(stderr, "Usage: prism [--gc-stats] [--gc-log] [--gc-stress] [--gc-policy=balanced|throughput|low-latency|debug|stress] [file.pm]\n");
+    fprintf(stderr, "Usage: prism [--gc-stats] [--gc-log] [--gc-sweep] [--gc-stress] [--gc-policy=balanced|throughput|low-latency|debug|stress] [file.pm]\n");
     gc_shutdown(gc_global());
     return 1;
 }
