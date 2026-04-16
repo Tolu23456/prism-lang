@@ -38,6 +38,19 @@ tests/
   test_types.pm           — type() built-in and VAL_* type tags
   run_tests.sh            — Shell test runner (used by `make test`)
 
+benchmarks/
+  fib_recursive.pm        — Fibonacci(32) via tree recursion (~7.9 M calls)
+  fib_iterative.pm        — Fibonacci via 2,000,000 loop iterations
+  loop_count.pm           — Tight while-loop: 5,000,000 iterations
+  sieve.pm                — Sieve of Eratosthenes up to 500,000
+  bubble_sort.pm          — Bubble sort 800 elements (worst case)
+  dict_ops.pm             — 10,000 dict inserts + 10,000 dict lookups
+  string_ops.pm           — 50,000 × (join/split/upper/startswith)
+  recursive_sum.pm        — rsum(200) × 5,000 = 1 M recursive calls
+  ackermann.pm            — ack(3,5) × 100 = ~1.03 M recursive calls
+  array_ops.pm            — 100,000 array add + read + slice
+  RESULTS.md              — Timing results table (wall-clock, debug build)
+
 Makefile                  — Build system (gcc, pkg-config auto-detects X11)
 RULES.txt                 — Language specification
 CHANGELOG.md              — Project changes and history
