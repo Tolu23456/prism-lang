@@ -1291,7 +1291,8 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         fseek(f, 0, SEEK_END);
         long sz = ftell(f); rewind(f);
         char *src = malloc(sz + 1);
-        fread(src, 1, sz, f); src[sz] = '\0'; fclose(f);
+        { size_t _nr = fread(src, 1, (size_t)sz, f); (void)_nr; }
+        src[sz] = '\0'; fclose(f);
 
         char errbuf[512] = {0};
         ASTNode *prog = parser_parse_source(src, errbuf, sizeof(errbuf));
@@ -1705,15 +1706,33 @@ Interpreter *interpreter_new(void) {
 
 void interpreter_free(Interpreter *interp) {
     if (!interp) return;
+    /* Item 3: protect return_val so the sweep cannot collect it before we
+     * release it below.  If return_val is NULL, gc_push_root is a no-op. */
+    if (interp->return_val) gc_push_root(interp->gc, interp->return_val);
     gc_collect_audit(interp->gc, interp->globals, NULL, NULL);
+    if (interp->return_val) gc_pop_root(interp->gc);
     if (interp->return_val) value_release(interp->return_val);
     env_free(interp->globals);
+    /* Item 5: free the static HTML-GUI body buffer allocated by gui_body_append */
+    if (g_gui.body) {
+        free(g_gui.body);
+        g_gui.body     = NULL;
+        g_gui.body_len = 0;
+        g_gui.body_cap = 0;
+    }
+#ifdef HAVE_X11
+    /* Item 5: destroy the X11 GUI handle if the program exited without xgui_close */
+    if (g_xgui) { xgui_destroy(g_xgui); g_xgui = NULL; }
+#endif
     free(interp);
 }
 
 void interpreter_run(Interpreter *interp, ASTNode *program) {
     Value *result = eval_node(interp, program, interp->globals);
+    /* Item 3: protect result so the sweep cannot collect it before value_release */
+    gc_push_root(interp->gc, result);
     gc_collect_audit(interp->gc, interp->globals, NULL, NULL);
+    gc_pop_root(interp->gc);
     value_release(result);
 }
 

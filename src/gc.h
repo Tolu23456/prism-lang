@@ -94,6 +94,14 @@ typedef struct GCStats {
     size_t intern_bytes_saved; /* bytes saved by sharing              */
 } GCStats;
 
+/* ------------------------------------------------------------------ temporary root stack
+ *
+ * Callers push in-flight Value* pointers here before any GC collection
+ * call so they are treated as additional GC roots and never swept while
+ * they are still live in C stack variables.  Always pair push with pop.
+ * ------------------------------------------------------------------ */
+#define GC_ROOT_STACK_MAX 4096
+
 /* ------------------------------------------------------------------ PrismGC state */
 typedef struct PrismGC {
     /* object list */
@@ -125,6 +133,10 @@ typedef struct PrismGC {
     /* allocation site table (open-address hash, power-of-two cap) */
     AllocSite alloc_sites[GC_ALLOC_SITE_CAP];
     size_t    alloc_sites_used;   /* number of occupied slots */
+
+    /* temporary root stack (Items 2 & 3: protect in-flight Values from sweep) */
+    Value  *root_stack[GC_ROOT_STACK_MAX];
+    int     root_stack_top;
 
     /* flags */
     bool initialized;
@@ -165,6 +177,10 @@ void        gc_collect_audit(PrismGC *gc, Env *env, VM *vm, Chunk *chunk);
 size_t      gc_collect_sweep(PrismGC *gc, Env *env, VM *vm, Chunk *chunk); /* compat: full sweep */
 size_t      gc_collect_minor(PrismGC *gc, Env *env, VM *vm, Chunk *chunk); /* young only         */
 size_t      gc_collect_major(PrismGC *gc, Env *env, VM *vm, Chunk *chunk); /* all generations    */
+
+/* ------------------------------------------------------------------ temporary root stack */
+void        gc_push_root(PrismGC *gc, Value *v); /* push a live Value* as an extra GC root  */
+void        gc_pop_root(PrismGC *gc);            /* pop the most-recently pushed root entry */
 
 /* ------------------------------------------------------------------ string interning */
 Value      *gc_intern_string(PrismGC *gc, const char *s);

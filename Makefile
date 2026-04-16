@@ -59,7 +59,7 @@ src/%.o: src/%.c $(HEADERS)
 	$(CC) $(CFLAGS) -c -o $@ $<
 
 clean:
-	rm -f src/*.o $(TARGET)
+	rm -f src/*.o $(TARGET) prism-san
 
 run: $(TARGET)
 	./prism examples/hello.pm
@@ -67,6 +67,15 @@ run: $(TARGET)
 test: $(TARGET)
 	@chmod +x tests/run_tests.sh
 	@bash tests/run_tests.sh
+
+# Item 5: AddressSanitizer + LeakSanitizer + UndefinedBehaviorSanitizer build.
+# On Linux, ASan automatically includes LSan.
+# Usage:  make sanitize && ASAN_OPTIONS=detect_leaks=1 ./prism-san examples/hello.pm
+SAN_FLAGS = -fsanitize=address,undefined -fno-omit-frame-pointer -g
+sanitize: $(SRCS) $(HEADERS)
+	$(CC) $(CFLAGS) $(SAN_FLAGS) -o prism-san $(SRCS) -lm $(LDFLAGS)
+	@echo "Sanitizer build: prism-san"
+	@echo "Run: ASAN_OPTIONS=detect_leaks=1 ./prism-san examples/hello.pm"
 
 install: $(TARGET)
 	@mkdir -p $(BINDIR)
@@ -77,4 +86,4 @@ uninstall:
 	rm -f $(BINDIR)/$(TARGET)
 	@echo "Removed $(BINDIR)/$(TARGET)"
 
-.PHONY: all clean run test install uninstall
+.PHONY: all clean run test install uninstall sanitize

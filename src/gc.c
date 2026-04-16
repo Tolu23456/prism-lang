@@ -297,6 +297,8 @@ void gc_init(PrismGC *gc) {
     gc->major_interval  = 8;            /* major PrismGC every 8 minors */
     gc->survival_ema    = 0.50;         /* start with neutral assumption */
     gc->workload        = GC_WORKLOAD_SCRIPT;
+    gc->sweep_enabled   = true;         /* Item 1: sweep is ON by default */
+    gc->root_stack_top  = 0;            /* Item 2: root stack starts empty */
     gc->initialized     = true;
     intern_init(gc);
 }
@@ -312,10 +314,11 @@ void gc_configure_from_env(PrismGC *gc) {
     const char *stats  = getenv("PRISM_GC_STATS");
     const char *sweep  = getenv("PRISM_GC_SWEEP");
 
-    gc->log_enabled      = log    && strcmp(log,    "0") != 0;
-    gc->stress_enabled   = stress && strcmp(stress, "0") != 0;
-    gc->sweep_enabled    = sweep  && strcmp(sweep,  "0") != 0;
-    gc->stats_on_shutdown = stats && strcmp(stats,  "0") != 0;
+    gc->log_enabled       = log    && strcmp(log,    "0") != 0;
+    gc->stress_enabled    = stress && strcmp(stress, "0") != 0;
+    gc->stats_on_shutdown = stats  && strcmp(stats,  "0") != 0;
+    /* Sweep is ON by default (set in gc_init); PRISM_GC_SWEEP=0 disables it */
+    if (sweep) gc->sweep_enabled = strcmp(sweep, "0") != 0;
 
     if (gc->policy == GC_POLICY_DEBUG) {
         gc->log_enabled       = true;
@@ -334,8 +337,39 @@ void gc_shutdown(PrismGC *gc) {
     if (gc->stats_on_shutdown || gc->log_enabled) gc_print_stats(gc);
     if (gc->mem_report_enabled) gc_print_mem_report(gc);
 
-    if (gc->objects && gc->log_enabled)
-        fprintf(stderr, "[gc] shutdown with %zu tracked live object(s)\n", gc->stats.live_objects);
+    /* Item 4: Final shutdown sweep — collect any remaining reference cycles.
+     * At this point all Prism execution has finished and all normal cleanup has
+     * run (interpreter_free / vm_free).  The root stack must be empty.  Any
+     * objects still reachable here are part of cycles that ref-counting alone
+     * cannot collect; the GC sweep breaks them. */
+    if (gc->objects) {
+        /* count actual objects in the tracked list (may differ from stats counter) */
+        size_t before_shutdown = 0;
+        for (Value *v = gc->objects; v; v = v->gc_next) before_shutdown++;
+        size_t cycles = gc_collect_major(gc, NULL, NULL, NULL);
+        if (cycles > 0 && (gc->log_enabled || gc->stats_on_shutdown))
+            fprintf(stderr,
+                "[gc] shutdown sweep: collected %zu unreachable object(s) from %zu remaining\n",
+                cycles, before_shutdown);
+
+        /* Any objects still remaining after the final sweep are true leaks —
+         * either a bug in ref-counting or a missing gc_untrack_value call.
+         * gc_reclaim_remaining() below will forcibly free them. */
+        if (gc->objects) {
+            size_t leaked = 0;
+            for (Value *v = gc->objects; v; v = v->gc_next) leaked++;
+            fprintf(stderr,
+                "[gc] WARNING: %zu Value object(s) survived shutdown sweep "
+                "(possible leak — run with PRISM_GC_LOG=1 for details)\n",
+                leaked);
+            if (gc->mem_report_enabled || gc->log_enabled) {
+                for (Value *v = gc->objects; v; v = v->gc_next)
+                    fprintf(stderr, "[gc-leak] type=%-8s ptr=%p size=%zu\n",
+                            gc_type_name(v->type), (void *)v,
+                            gc_estimate_value_size(v));
+            }
+        }
+    }
 
     gc_reclaim_remaining(gc);
     intern_free(gc);
@@ -439,6 +473,10 @@ void gc_mark_value(PrismGC *gc, Value *value) {
             break;
         case VAL_FUNCTION:
             gc_mark_env(gc, value->func.closure);
+            /* Item 3: also mark constants inside the function's bytecode chunk
+             * so nested function string/int literals survive the sweep. */
+            if (value->func.chunk)
+                gc_mark_chunk(gc, value->func.chunk);
             break;
         default:
             break;
@@ -509,6 +547,7 @@ void gc_collect_audit(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
                 unreachable,
                 gc->stats.live_objects);
 
+    /* Item 1: sweep is the default; PRISM_GC_SWEEP=0 or stress tests may override */
     if (gc->sweep_enabled) {
         /* use minor unless it's time for a major */
         if (gc->minors_since_major >= gc->major_interval)
@@ -534,6 +573,9 @@ size_t gc_collect_minor(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
     gc_mark_env(gc, env);
     gc_mark_vm(gc, vm);
     gc_mark_chunk(gc, chunk);
+    /* Item 2: mark temporary root stack — protects in-flight Values */
+    for (int i = 0; i < gc->root_stack_top; i++)
+        gc_mark_value(gc, gc->root_stack[i]);
 
     size_t before_young = gc->young_count;
     size_t swept        = 0;
@@ -614,6 +656,9 @@ size_t gc_collect_major(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
     gc_mark_env(gc, env);
     gc_mark_vm(gc, vm);
     gc_mark_chunk(gc, chunk);
+    /* Item 2: mark temporary root stack — protects in-flight Values */
+    for (int i = 0; i < gc->root_stack_top; i++)
+        gc_mark_value(gc, gc->root_stack[i]);
 
     size_t before = gc->stats.live_objects;
     size_t swept  = 0;
@@ -671,6 +716,36 @@ size_t gc_collect_major(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
 size_t gc_collect_sweep(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
     /* kept for API compatibility: delegates to major collection */
     return gc_collect_major(gc, env, vm, chunk);
+}
+
+/* ================================================================== temporary root stack (Item 2)
+ *
+ * Usage pattern (always balance push with pop):
+ *
+ *   Value *v = value_array_new();   // freshly allocated, not in any env yet
+ *   gc_push_root(gc, v);
+ *   ... do work that might trigger gc_collect_audit ...
+ *   gc_pop_root(gc);
+ *   value_release(v);
+ *
+ * Immortal Values (gc_immortal == 1) never need rooting and are silently
+ * skipped.  NULL is a safe no-op.
+ * ================================================================== */
+
+void gc_push_root(PrismGC *gc, Value *v) {
+    if (!gc || !v || v->gc_immortal) return;
+    if (gc->root_stack_top < GC_ROOT_STACK_MAX) {
+        gc->root_stack[gc->root_stack_top++] = v;
+    } else {
+        /* root stack overflow — should never happen in practice */
+        fprintf(stderr, "[gc] WARNING: root stack overflow (depth %d)\n",
+                GC_ROOT_STACK_MAX);
+    }
+}
+
+void gc_pop_root(PrismGC *gc) {
+    if (gc && gc->root_stack_top > 0)
+        gc->root_stack_top--;
 }
 
 /* ================================================================== policy & workload */

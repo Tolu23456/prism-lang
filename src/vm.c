@@ -624,6 +624,17 @@ VM *vm_new(void) {
 void vm_free(VM *vm) {
     gc_collect_audit(vm->gc, vm->globals, vm, NULL);
     env_free(vm->globals);
+    /* Item 5: free the static HTML-GUI body buffer allocated by vmgui_append */
+    if (g_vmgui.body) {
+        free(g_vmgui.body);
+        g_vmgui.body     = NULL;
+        g_vmgui.body_len = 0;
+        g_vmgui.body_cap = 0;
+    }
+#ifdef HAVE_X11
+    /* Item 5: destroy the X11 GUI handle if the program exited without xgui_close */
+    if (g_vm_xgui) { xgui_destroy(g_vm_xgui); g_vm_xgui = NULL; }
+#endif
     free(vm);
 }
 
@@ -1843,7 +1854,8 @@ int vm_run(VM *vm, Chunk *chunk) {
             fseek(f, 0, SEEK_END);
             long sz = ftell(f); rewind(f);
             char *src = malloc(sz + 1);
-            fread(src, 1, sz, f); src[sz] = '\0'; fclose(f);
+            { size_t _nr = fread(src, 1, (size_t)sz, f); (void)_nr; }
+            src[sz] = '\0'; fclose(f);
 
             /* Parse via the lexer+parser and run with the tree-walking interpreter
              * in the current scope so imported names become available. */

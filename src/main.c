@@ -27,7 +27,7 @@ static char *read_file(const char *path) {
     long sz = ftell(f);
     rewind(f);
     char *buf = malloc(sz + 1);
-    fread(buf, 1, sz, f);
+    { size_t _nr = fread(buf, 1, (size_t)sz, f); (void)_nr; }
     buf[sz] = '\0';
     fclose(f);
     return buf;
@@ -343,7 +343,7 @@ int main(int argc, char **argv) {
         "  --format-write <file>    format source file in place\n"
         "  --gc-stats               print PrismGC statistics at shutdown\n"
         "  --gc-log                 log every PrismGC event\n"
-        "  --gc-sweep               enable mark-and-sweep collection\n"
+        "  --gc-sweep               (sweep is now on by default; this flag is a no-op)\n"
         "  --gc-stress              stress-test the PrismGC (implies sweep+log+stats)\n"
         "  --gc-policy=<name>       balanced|throughput|low-latency|debug|stress|adaptive\n"
         "  --mem-report             print full memory diagnostics at shutdown\n");
