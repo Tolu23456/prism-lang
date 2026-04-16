@@ -266,12 +266,14 @@ static Value *vm_call_function(VM *vm, Value *fn, Value **args, int argc,
 
 VM *vm_new(void) {
     VM *vm = calloc(1, sizeof(VM));
+    vm->gc = gc_global();
     vm->globals = env_new(NULL);
     vm_register_builtins(vm);
     return vm;
 }
 
 void vm_free(VM *vm) {
+    gc_collect_audit(vm->gc, vm->globals, vm, NULL);
     env_free(vm->globals);
     free(vm);
 }
@@ -1163,6 +1165,7 @@ int vm_run(VM *vm, Chunk *chunk) {
                 break;
             }
             Interpreter *imp = calloc(1, sizeof(Interpreter));
+            imp->gc = vm->gc;
             imp->globals = frame->env;
             interpreter_eval(imp, prog, frame->env);
             if (imp->had_error && !vm->had_error)

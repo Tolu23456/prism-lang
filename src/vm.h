@@ -4,6 +4,7 @@
 #include "chunk.h"
 #include "value.h"
 #include "interpreter.h"  /* reuse Env */
+#include "gc.h"
 
 #define VM_STACK_MAX   2048
 #define VM_FRAME_MAX   256
@@ -24,6 +25,7 @@ typedef struct VM {
     int         frame_count;
 
     Env        *globals;
+    GC         *gc;
 
     int         had_error;
     char        error_msg[512];

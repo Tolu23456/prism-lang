@@ -12,6 +12,7 @@
 #include "compiler.h"
 #include "vm.h"
 #include "gui_native.h"
+#include "gc.h"
 
 /* ------------------------------------------------------------------ file reader */
 
@@ -61,6 +62,7 @@ static int run_source_vm(const char *source, const char *filename) {
     gui_register_builtins(vm->globals);
 
     vm_run(vm, &chunk);
+    gc_collect_audit(vm->gc, vm->globals, vm, &chunk);
 
     int exit_code = 0;
     if (vm->had_error) {
@@ -128,27 +130,75 @@ static void run_repl(void) {
     interpreter_free(interp);
 }
 
+static const char *configure_gc_from_args(int argc, char **argv) {
+    GC *gc = gc_global();
+    gc_configure_from_env(gc);
+
+    const char *path = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "--gc-stats") == 0) {
+            gc->stats_on_shutdown = true;
+        } else if (strcmp(argv[i], "--gc-log") == 0) {
+            gc->log_enabled = true;
+        } else if (strcmp(argv[i], "--gc-stress") == 0) {
+            gc_set_policy(gc, GC_POLICY_STRESS);
+            gc->stress_enabled = true;
+            gc->log_enabled = true;
+            gc->stats_on_shutdown = true;
+        } else if (strncmp(argv[i], "--gc-policy=", 12) == 0) {
+            const char *policy = argv[i] + 12;
+            if (strcmp(policy, "throughput") == 0) {
+                gc_set_policy(gc, GC_POLICY_THROUGHPUT);
+            } else if (strcmp(policy, "low-latency") == 0) {
+                gc_set_policy(gc, GC_POLICY_LOW_LATENCY);
+            } else if (strcmp(policy, "debug") == 0) {
+                gc_set_policy(gc, GC_POLICY_DEBUG);
+                gc->log_enabled = true;
+                gc->stats_on_shutdown = true;
+            } else if (strcmp(policy, "stress") == 0) {
+                gc_set_policy(gc, GC_POLICY_STRESS);
+                gc->stress_enabled = true;
+                gc->log_enabled = true;
+                gc->stats_on_shutdown = true;
+            } else {
+                gc_set_policy(gc, GC_POLICY_BALANCED);
+            }
+        } else if (!path) {
+            path = argv[i];
+        }
+    }
+
+    return path;
+}
+
 /* ------------------------------------------------------------------ entry point */
 
 int main(int argc, char **argv) {
+    const char *path = configure_gc_from_args(argc, argv);
+
     if (argc == 1) {
         run_repl();
+        gc_shutdown(gc_global());
         return 0;
     }
 
-    if (argc == 2) {
-        const char *path = argv[1];
+    if (path) {
         const char *dot  = strrchr(path, '.');
         if (!dot || strcmp(dot, ".pm") != 0) {
             fprintf(stderr, "Warning: '%s' does not have .pm extension\n", path);
         }
         char *src = read_file(path);
-        if (!src) return 1;
+        if (!src) {
+            gc_shutdown(gc_global());
+            return 1;
+        }
         int code = run_source_vm(src, path);
         free(src);
+        gc_shutdown(gc_global());
         return code;
     }
 
-    fprintf(stderr, "Usage: prism [file.pm]\n");
+    fprintf(stderr, "Usage: prism [--gc-stats] [--gc-log] [--gc-stress] [--gc-policy=balanced|throughput|low-latency|debug|stress] [file.pm]\n");
+    gc_shutdown(gc_global());
     return 1;
 }

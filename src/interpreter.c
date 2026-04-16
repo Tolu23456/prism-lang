@@ -1383,6 +1383,7 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
 
 Interpreter *interpreter_new(void) {
     Interpreter *i = calloc(1, sizeof(Interpreter));
+    i->gc          = gc_global();
     i->globals     = env_new(NULL);
     register_builtins(i);
     return i;
@@ -1390,6 +1391,7 @@ Interpreter *interpreter_new(void) {
 
 void interpreter_free(Interpreter *interp) {
     if (!interp) return;
+    gc_collect_audit(interp->gc, interp->globals, NULL, NULL);
     if (interp->return_val) value_release(interp->return_val);
     env_free(interp->globals);
     free(interp);
@@ -1397,6 +1399,7 @@ void interpreter_free(Interpreter *interp) {
 
 void interpreter_run(Interpreter *interp, ASTNode *program) {
     Value *result = eval_node(interp, program, interp->globals);
+    gc_collect_audit(interp->gc, interp->globals, NULL, NULL);
     value_release(result);
 }
 

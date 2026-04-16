@@ -3,6 +3,7 @@
 
 #include "ast.h"
 #include "value.h"
+#include "gc.h"
 
 typedef struct Env {
     char   **keys;
@@ -21,6 +22,7 @@ typedef struct {
     bool    returning;
     bool    breaking;
     bool    continuing;
+    GC     *gc;
 } Interpreter;
 
 Env         *env_new(Env *parent);

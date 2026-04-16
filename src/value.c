@@ -5,6 +5,7 @@
 #include <math.h>
 #include <ctype.h>
 #include "value.h"
+#include "gc.h"
 
 /* ------------------------------------------------------------------ ref count */
 
@@ -16,6 +17,8 @@ Value *value_retain(Value *v) {
 void value_release(Value *v) {
     if (!v) return;
     if (--v->ref_count > 0) return;
+
+    gc_untrack_value(v);
 
     switch (v->type) {
         case VAL_STRING:
@@ -58,6 +61,9 @@ static Value *val_new(ValueType t) {
     Value *v = calloc(1, sizeof(Value));
     v->type = t;
     v->ref_count = 1;
+    v->gc_marked = 0;
+    v->gc_next = NULL;
+    gc_track_value(v);
     return v;
 }
 

@@ -7,6 +7,7 @@ SRCS = \
     src/ast.c \
     src/parser.c \
     src/value.c \
+    src/gc.c \
     src/interpreter.c \
     src/chunk.c \
     src/compiler.c \
@@ -20,6 +21,7 @@ HEADERS = \
     src/lexer.h \
     src/ast.h \
     src/value.h \
+    src/gc.h \
     src/parser.h \
     src/interpreter.h \
     src/chunk.h \

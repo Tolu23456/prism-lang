@@ -6,7 +6,7 @@
 #include "opcode.h"
 
 /* A Chunk holds a compiled bytecode sequence + constant pool + line info. */
-typedef struct {
+typedef struct Chunk {
     uint8_t *code;
     int      count;
     int      cap;

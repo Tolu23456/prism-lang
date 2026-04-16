@@ -44,6 +44,8 @@ typedef struct {
 struct Value {
     ValueType type;
     int       ref_count;
+    unsigned char gc_marked;
+    struct Value *gc_next;
 
     union {
         long long  int_val;

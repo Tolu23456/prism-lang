@@ -10,6 +10,7 @@ src/
   ast.h / ast.c           — AST node definitions and memory management
   parser.h / parser.c     — Recursive descent parser: builds AST from tokens
   value.h / value.c       — Runtime value types with reference counting
+  gc.h / gc.c             — AGC scaffold: allocation tracking, root audits, memory stats
   interpreter.h / interpreter.c — Tree-walking interpreter
   main.c                  — Entry point: REPL and file execution
 
@@ -66,3 +67,4 @@ make run      # builds and runs examples/hello.pm
 - **Compiler**: GCC
 - **Architecture**: Tree-walking interpreter (Lexer → Parser → AST → Interpreter)
 - **Memory**: Reference-counted values
+- **AGC Roadmap**: `pipeline.md` describes the planned Adaptive Memory Engine. Current code includes an AGC scaffold that tracks runtime `Value` allocations, audits roots, and reports memory statistics while remaining compatible with existing reference counting.

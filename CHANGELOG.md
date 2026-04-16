@@ -7,6 +7,14 @@
   `gui_input()`, and `gui_run()`. Calling `gui_run()` generates a styled `prism_gui.html`
   file that can be opened in any browser.
 - Added `examples/gui_demo.pm` showing a simple GUI program.
+- Added the first Prism AGC runtime scaffold with tracked `Value` allocations,
+  root-audit hooks for interpreter environments, VM stacks, call frames, and bytecode
+  chunks, per-type memory statistics, policy modes, and GC debug flags.
+- Added shutdown-time AGC reclamation for remaining tracked runtime values after
+  normal reference-count cleanup, giving Prism a safe first bridge toward cycle cleanup.
+- Added GC runtime flags: `--gc-stats`, `--gc-log`, `--gc-stress`, and
+  `--gc-policy=balanced|throughput|low-latency|debug|stress`.
+- Added `pipeline.md` documenting the long-term Adaptive Memory Engine roadmap.
 
 ### Fixed
 - Assigning to an undeclared variable (e.g. `a = 5` without `let a`) now raises a
