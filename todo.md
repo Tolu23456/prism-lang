@@ -69,6 +69,9 @@ Five things must all be in place simultaneously. None alone is sufficient.
 - [ ] **Expose young/old generation counters in `--gc-stats`**: already tracked internally in `gc->young_count` / `gc->old_count`; just needs to be printed clearly.
 - [ ] **Add cycle-focused tests/examples**: arrays, dicts, closures, and objects that form reference cycles — to verify sweep actually reclaims them once it is the default.
 - [ ] **Add AST arena allocator**: replace per-node `calloc` in the parser with a bump-pointer arena. The entire AST is freed at once after compilation, so individual frees are wasteful and cache-unfriendly.
+- [ ] **Wire `gc_push_root`/`gc_pop_root` per value-creating opcode in `vm_run`**: each opcode that allocates a new `Value*` (e.g. `OP_ADD`, `OP_BUILD_ARRAY`) has a window between creation and the value landing on the VM stack where a mid-loop GC trigger would not see it. Wrap each such creation site with `gc_push_root` / `gc_pop_root` so enabling threshold-based mid-loop collection is safe.
+- [ ] **True stress-mode collection on every allocation**: when `gc->stress_enabled` is set, call `gc_collect_audit` inside `gc_track_value` on every single allocation. This immediately surfaces any missing `gc_push_root` call or unmarked root path — the most powerful correctness test available short of a formal proof.
+- [ ] **LeakSanitizer alternative for ptrace-restricted environments**: LSan requires ptrace which is blocked in container environments. Add a `PRISM_LSAN_CHECK=1` path that calls `__lsan_do_leak_check()` programmatically at the end of `gc_shutdown` (works without ptrace in some toolchain configurations), or document running under `valgrind --tool=memcheck --leak-check=full` as the equivalent audit path.
 
 ## Next Steps — GC / Memory Management (Rust-level performance)
 These changes are prerequisites for reaching near-native speed. They go beyond correctness and into fundamental allocator and lifetime design.
