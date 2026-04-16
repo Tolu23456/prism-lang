@@ -36,4 +36,6 @@ int      chunk_add_const_str(Chunk *c, const char *s);
 /* Patch a uint16_t at offset `off` (for backpatching jumps). */
 void     chunk_patch16(Chunk *c, int off, uint16_t val);
 
+int      chunk_write_bytecode(Chunk *c, const char *path);
+
 #endif /* CHUNK_H */

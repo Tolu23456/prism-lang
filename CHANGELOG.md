@@ -9,6 +9,8 @@
 - Added `--emit-bytecode` to serialize compiled chunks to `.pmc` bytecode cache
   files.
 - Added `--bench` to compare tree-walker and VM execution time for a source file.
+- Added guarded x86-64 inline assembly fast paths for VM integer `+`, `-`, `*`,
+  `&`, `|`, and `^` dispatch, with portable C fallbacks for other architectures.
 - GUI support via built-in functions: `gui_window()`, `gui_label()`, `gui_button()`,
   `gui_input()`, and `gui_run()`. Calling `gui_run()` generates a styled `prism_gui.html`
   file that can be opened in any browser.

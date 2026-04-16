@@ -14,6 +14,7 @@
 - [x] AST-to-bytecode compiler for core statements and expressions
 - [x] Stack-based VM for top-level execution and user-defined function call frames
 - [x] VM benchmark mode via `--bench`
+- [x] x86-64 assembly fast paths for VM integer arithmetic dispatch
 - [x] Bytecode cache serializer via `--emit-bytecode` writing `.pmc` files
 
 ## Next Steps — AGC
@@ -34,7 +35,7 @@
 - [x] Add call frames for function calls in the VM
 - [x] Profile and benchmark: compare tree-walker vs VM speed
 - [ ] Add inline caching for faster property/method lookup
-- [ ] Explore assembly (x86-64) for hot paths in the VM (e.g., arithmetic dispatch)
+- [x] Explore assembly (x86-64) for hot paths in the VM (e.g., arithmetic dispatch)
 - [x] Add a serializer: save compiled bytecode to `.pmc` files (prism bytecode cache)
 
 ## GUI Roadmap

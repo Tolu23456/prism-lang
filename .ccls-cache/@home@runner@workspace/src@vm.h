@@ -15,6 +15,8 @@ typedef struct {
     int     ip;          /* instruction pointer (index into chunk->code) */
     int     stack_base;  /* stack index where this frame's locals start */
     Env    *env;         /* variable environment for this frame */
+    Env    *root_env;
+    int     owns_env;
 } CallFrame;
 
 typedef struct VM {
