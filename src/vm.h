@@ -5,6 +5,7 @@
 #include "value.h"
 #include "interpreter.h"  /* reuse Env */
 #include "gc.h"
+#include "jit.h"
 
 #define VM_STACK_MAX   2048
 #define VM_FRAME_MAX   256
@@ -27,10 +28,13 @@ typedef struct VM {
     int         frame_count;
 
     Env        *globals;
-    PrismGC         *gc;
+    PrismGC    *gc;
 
     int         had_error;
     char        error_msg[512];
+
+    JIT        *jit;         /* NULL if JIT is disabled */
+    bool        jit_verbose; /* print IR + stats when set */
 } VM;
 
 VM  *vm_new(void);

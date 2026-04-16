@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.4.0 — JIT Compiler + C Transpiler
+
+### Added
+- **JIT compiler (`src/jit.h`, `src/jit.c`)**: full trace-based JIT for hot integer loops, enabled with `--jit` or `--jit-verbose`.
+  - **Hot-loop detection**: `OP_JUMP` backward jumps are counted per bytecode offset; once a loop back-edge fires ≥ 200 times it becomes a JIT candidate.
+  - **Linear IR**: flat `JIRInstr` array with opcodes `JIR_LOAD_INT`, `JIR_STORE_INT`, `JIR_ADD_INT`, `JIR_SUB_INT`, `JIR_MUL_INT`, `JIR_DIV_INT`, `JIR_MOD_INT`, `JIR_CMP_*`, `JIR_GUARD_INT`, `JIR_LOOP_BACK`, `JIR_LOOP_EXIT`. 32-register file (slots 0–15 named vars, 16–31 temporaries).
+  - **Trace recorder**: on hot entry the recorder walks `chunk->code` from loop header to back-edge, translating every bytecode instruction to IR and emitting `JIR_GUARD_INT` type checks for `OP_ADD`, `OP_SUB`, `OP_MUL`, `OP_DIV`, `OP_MOD`.
+  - **x86-64 native code generator**: emits raw machine code into `mmap(PROT_EXEC)` buffers. Handles integer load/store, all five arithmetic ops, six comparison ops, loop exit, and function prologue/epilogue. `JitFn = int (*)(long long *regs)` returns `JIT_EXIT_LOOP_DONE` (0) or `JIT_EXIT_GUARD_FAIL` (1).
+  - **ARM64 / AArch64 code generator**: parallel backend for Apple Silicon and ARM Linux; same IR, separate emit pass using 32-bit fixed-width ARM64 instructions.
+  - **JIT code cache**: `JIT.cache[JIT_CACHE_CAP=64]` hash table keyed on bytecode loop-header offset; compiled traces are reused on subsequent hot iterations without re-recording or re-compiling.
+  - **`--jit-verbose`**: prints the IR of every compiled trace and a summary of traces compiled, executed, and guard exits at shutdown.
+- **LLVM IR text emitter (`jit_emit_llvm_ir`)**: translates a `JitTrace`'s IR to valid LLVM IR (`.ll` format) without requiring the LLVM library at runtime. Exposed via `--emit-llvm <file.pm>` — runs the program once to compile hot traces, then dumps their LLVM IR to stdout.
+- **C transpiler (`src/transpiler.h`, `src/transpiler.c`)**: translates a Prism AST to a self-contained, compilable C source file. Supports `int`/`float`/`bool`/`string` via a tagged `PV` union, all arithmetic and comparison operators, `if`/`elif`/`else`, `while`, `for`-range, function definitions, `print`, `len`, `str`, `int`, `float`, `abs`, `min`, `max`, `type`. Arrays, dicts, sets, and f-strings emit `/* TODO */` stubs. Exposed via `--emit-c <file.pm>` which writes the C to stdout.
+- **VM integration (`src/vm.c`)**: `OP_JUMP` backward-jump handler calls `jit_on_backward_jump`; if a compiled trace is returned, calls `jit_execute`; on `JIT_EXIT_LOOP_DONE` advances `frame->ip` past the loop; on `JIT_EXIT_GUARD_FAIL` falls back transparently to normal interpretation.
+- **`--jit` / `--jit-verbose` / `--emit-c` / `--emit-llvm` CLI flags** (`src/main.c`): parsed in `configure_gc_from_args`; `run_source_vm` enables JIT on the VM when `--jit` is set; `--emit-c` and `--emit-llvm` short-circuit normal execution.
+- **Makefile**: `src/jit.c` and `src/transpiler.c` added to `SRCS`; `src/jit.h` and `src/transpiler.h` added to `HEADERS` so all objects rebuild correctly when headers change.
+
+### Changed
+- `vm_new` initialises `vm->jit = NULL` and `vm->jit_verbose = false`; JIT is opt-in via `--jit`.
+- `vm_free` calls `jit_print_stats` (if verbose) then `jit_free` before tearing down the GC and environment.
+
 ## v0.3.0 — O(1) Core Operations
 
 ### Added

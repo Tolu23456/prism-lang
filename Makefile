@@ -27,6 +27,8 @@ SRCS = \
 	src/chunk.c \
 	src/compiler.c \
 	src/vm.c \
+	src/jit.c \
+	src/transpiler.c \
 	src/gui_native.c \
 	src/formatter.c \
 	$(X11_SRCS)
@@ -44,6 +46,8 @@ HEADERS = \
 	src/chunk.h \
 	src/compiler.h \
 	src/vm.h \
+	src/jit.h \
+	src/transpiler.h \
 	src/opcode.h \
 	src/gui_native.h \
 	src/formatter.h \

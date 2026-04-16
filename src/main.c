@@ -15,6 +15,8 @@
 #include "vm.h"
 #include "gui_native.h"
 #include "gc.h"
+#include "jit.h"
+#include "transpiler.h"
 
 #define PRISM_VERSION "0.2.0"
 
@@ -35,12 +37,80 @@ static char *read_file(const char *path) {
 
 static bool opt_emit_bytecode = false;
 static bool opt_bench         = false;
+static bool opt_jit           = false;
+static bool opt_jit_verbose   = false;
+static bool opt_emit_c        = false;
+static bool opt_emit_llvm     = false;
 
 static void bytecode_path_for_source(const char *filename, char *out, size_t out_len) {
     snprintf(out, out_len, "%s", filename ? filename : "out.pm");
     char *dot = strrchr(out, '.');
     if (dot) snprintf(dot, out_len - (size_t)(dot - out), ".pmc");
     else     strncat(out, ".pmc", out_len - strlen(out) - 1);
+}
+
+/* ------------------------------------------------------------------ helpers for emit-c / emit-llvm */
+
+static int emit_c_from_source(const char *source, const char *filename) {
+    Parser  *parser  = parser_new(source);
+    ASTNode *program = parser_parse(parser);
+    if (parser->had_error) {
+        fprintf(stderr, "[%s] Parse error: %s\n", filename, parser->error_msg);
+        parser_free(parser);
+        if (program) ast_node_free(program);
+        return 1;
+    }
+    transpile_to_c(program, filename, stdout);
+    ast_node_free(program);
+    parser_free(parser);
+    return 0;
+}
+
+static int emit_llvm_from_source(const char *source, const char *filename) {
+    /* Parse + compile to get a hot JIT trace, then emit LLVM IR for it. */
+    Parser  *parser  = parser_new(source);
+    ASTNode *program = parser_parse(parser);
+    if (parser->had_error) {
+        fprintf(stderr, "[%s] Parse error: %s\n", filename, parser->error_msg);
+        parser_free(parser);
+        if (program) ast_node_free(program);
+        return 1;
+    }
+
+    Chunk chunk;
+    char  errbuf[512] = {0};
+    if (compile(program, &chunk, errbuf, sizeof(errbuf))) {
+        fprintf(stderr, "[%s] Compile error: %s\n", filename, errbuf);
+        ast_node_free(program); parser_free(parser);
+        return 1;
+    }
+
+    /* Create a JIT, run the program once to find hot loops, then emit IR. */
+    VM *vm = vm_new();
+    vm->jit = jit_new();
+    chunk.source_file = filename;
+    gui_register_builtins(vm->globals);
+    vm_run(vm, &chunk);
+    gc_collect_audit(vm->gc, vm->globals, vm, &chunk);
+
+    /* Emit LLVM IR for each compiled trace. */
+    int found = 0;
+    for (int i = 0; i < JIT_CACHE_CAP; i++) {
+        for (JitTrace *t = vm->jit->cache[i]; t; t = t->next) {
+            jit_emit_llvm_ir(t, filename, stdout);
+            found++;
+        }
+    }
+    if (!found) {
+        fprintf(stderr, "; No JIT traces compiled for '%s'.\n", filename);
+        fprintf(stderr, "; Run a program with hot integer loops to see LLVM IR.\n");
+    }
+
+    vm_free(vm);
+    chunk_free(&chunk);
+    ast_node_free(program);
+    parser_free(parser);
+    return 0;
 }
 
 /* ------------------------------------------------------------------ VM script runner */
@@ -85,6 +155,11 @@ static int run_source_vm(const char *source, const char *filename) {
     VM *vm = vm_new();
     chunk.source_file = filename;
     gui_register_builtins(vm->globals);
+
+    if (opt_jit) {
+        vm->jit         = jit_new();
+        vm->jit_verbose = opt_jit_verbose;
+    }
 
     vm_run(vm, &chunk);
     gc_collect_audit(vm->gc, vm->globals, vm, &chunk);
@@ -252,6 +327,15 @@ static const char *configure_gc_from_args(int argc, char **argv) {
             opt_emit_bytecode = true;
         } else if (strcmp(argv[i], "--bench") == 0) {
             opt_bench = true;
+        } else if (strcmp(argv[i], "--jit") == 0) {
+            opt_jit = true;
+        } else if (strcmp(argv[i], "--jit-verbose") == 0) {
+            opt_jit         = true;
+            opt_jit_verbose = true;
+        } else if (strcmp(argv[i], "--emit-c") == 0) {
+            opt_emit_c = true;
+        } else if (strcmp(argv[i], "--emit-llvm") == 0) {
+            opt_emit_llvm = true;
         } else if (!path) {
             path = argv[i];
         }
@@ -317,16 +401,24 @@ int main(int argc, char **argv) {
         if (!dot || strcmp(dot, ".pm") != 0)
             fprintf(stderr, "Warning: '%s' does not have .pm extension\n", path);
 
-        /* script workload: use adaptive policy */
-        gc_set_workload(gc_global(), GC_WORKLOAD_SCRIPT);
-
         char *src = read_file(path);
         if (!src) {
             value_immortals_free();
             gc_shutdown(gc_global());
             return 1;
         }
-        int code = opt_bench ? run_benchmark(src, path) : run_source_vm(src, path);
+
+        int code = 0;
+        if (opt_emit_c) {
+            code = emit_c_from_source(src, path);
+        } else if (opt_emit_llvm) {
+            code = emit_llvm_from_source(src, path);
+        } else {
+            /* script workload: use adaptive policy */
+            gc_set_workload(gc_global(), GC_WORKLOAD_SCRIPT);
+            code = opt_bench ? run_benchmark(src, path) : run_source_vm(src, path);
+        }
+
         free(src);
         value_immortals_free();
         gc_shutdown(gc_global());
@@ -339,6 +431,10 @@ int main(int argc, char **argv) {
         "  --version, -v            print version, build date, and feature flags\n"
         "  --emit-bytecode          write compiled .pmc bytecode file\n"
         "  --bench                  compare tree-walker vs VM speed\n"
+        "  --jit                    enable JIT compiler for hot integer loops\n"
+        "  --jit-verbose            enable JIT + print IR and stats\n"
+        "  --emit-c                 transpile to C source (stdout)\n"
+        "  --emit-llvm              emit LLVM IR for hot loops (stdout)\n"
         "  --format <file>          print formatted source\n"
         "  --format-write <file>    format source file in place\n"
         "  --gc-stats               print PrismGC statistics at shutdown\n"

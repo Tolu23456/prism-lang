@@ -9,6 +9,7 @@
 #include "chunk.h"
 #include "value.h"
 #include "interpreter.h"
+#include "jit.h"
 #ifdef HAVE_X11
 #include "xgui.h"
 #endif
@@ -614,7 +615,9 @@ static void method_table_init(void);
 
 VM *vm_new(void) {
     VM *vm = calloc(1, sizeof(VM));
-    vm->gc = gc_global();
+    vm->gc  = gc_global();
+    vm->jit = NULL;            /* JIT disabled by default; enable with vm->jit = jit_new() */
+    vm->jit_verbose = false;
     vm->globals = env_new(NULL);
     method_table_init();  /* build O(1) method dispatch table */
     vm_register_builtins(vm);
@@ -622,6 +625,11 @@ VM *vm_new(void) {
 }
 
 void vm_free(VM *vm) {
+    if (vm->jit) {
+        if (vm->jit_verbose) jit_print_stats(vm->jit);
+        jit_free(vm->jit);
+        vm->jit = NULL;
+    }
     gc_collect_audit(vm->gc, vm->globals, vm, NULL);
     env_free(vm->globals);
     /* Item 5: free the static HTML-GUI body buffer allocated by vmgui_append */
@@ -1476,7 +1484,31 @@ int vm_run(VM *vm, Chunk *chunk) {
         /* ---- jumps ---- */
         case OP_JUMP: {
             int16_t off = (int16_t)READ_U16();
-            frame->ip += off;
+            /* frame->ip is now 3 bytes past the OP_JUMP byte. */
+            if (off < 0 && vm->jit) {
+                /* Backward jump = potential loop back-edge. */
+                int jump_ip   = frame->ip - 3; /* byte offset of the OP_JUMP opcode */
+                int header_ip = frame->ip + (int)off; /* = loop header */
+                JitTrace *trace = jit_on_backward_jump(
+                    vm->jit, vm, frame->env, jump_ip, header_ip, frame->chunk);
+                if (trace) {
+                    if (vm->jit_verbose) jit_dump_ir(trace);
+                    int result = jit_execute(trace, vm, frame->env);
+                    vm->jit->traces_executed++;
+                    if (result == JIT_EXIT_LOOP_DONE) {
+                        /* Loop finished; jump to the exit point recorded during trace. */
+                        if (trace->exit_ip > 0) {
+                            frame->ip = trace->exit_ip;
+                        } else {
+                            frame->ip += (int)off; /* fallback: take backward jump */
+                        }
+                        break;
+                    }
+                    /* GUARD_FAIL: fall through to normal backward jump. */
+                    vm->jit->guard_exits++;
+                }
+            }
+            frame->ip += (int)off;
             break;
         }
         case OP_JUMP_IF_FALSE: {

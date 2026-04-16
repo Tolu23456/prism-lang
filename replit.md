@@ -15,6 +15,8 @@ src/
   vm.h / vm.c             — Stack-based bytecode VM
   chunk.h / chunk.c       — Bytecode chunk format
   compiler.h / compiler.c — AST → bytecode compiler
+  jit.h / jit.c           — Trace-based JIT compiler (x86-64 + ARM64 codegen, LLVM IR emitter)
+  transpiler.h / transpiler.c — AST → standalone C transpiler (--emit-c)
   pss.h / pss.c           — PSS stylesheet parser (CSS-like)
   xgui.h / xgui.c         — Native X11 GUI engine (Xlib + Xft)
   gui_native.h / gui_native.c — PGUI GTK-style toolkit (legacy)
@@ -76,6 +78,10 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 
 ```bash
 ./prism file.pm              # run a .pm source file
+./prism --jit file.pm        # run with JIT enabled (hot integer loops compiled to native code)
+./prism --jit-verbose file.pm # JIT + print IR and stats
+./prism --emit-c file.pm     # transpile to standalone C source (stdout)
+./prism --emit-llvm file.pm  # emit LLVM IR for hot loops (stdout)
 ./prism --format file.pm     # print formatted Prism source
 ./prism --format-write file.pm # format a Prism source file in place
 ./prism                      # start the interactive REPL
@@ -86,6 +92,7 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 - The VM dispatch loop in `src/vm.c` compiles on x86-64 to an indirect jump-table dispatch under optimized GCC builds.
 - Integer `+`, `-`, `*`, `&`, `|`, and `^` bytecode paths use guarded x86-64 inline assembly helpers with portable C fallbacks.
 - Bytecode chunks now carry per-instruction inline caches. `OP_GET_ATTR`/`OP_SET_ATTR` cache dictionary slot indexes with dictionary version invalidation, while `OP_CALL_METHOD` caches receiver type and resolved built-in method ID to avoid repeated string-based method lookup on hot call sites.
+- **JIT compiler** (`--jit`): backward jumps on `OP_JUMP` are profiled; loops crossing a hot threshold (200 back-edges) are trace-recorded into a flat `JIRInstr` IR and compiled to native machine code via `mmap(PROT_EXEC)`. x86-64 and ARM64 backends share the same IR. Compiled traces are cached and reused on subsequent iterations. Guard failures transparently fall back to the interpreter.
 
 ## Instructions for the next agent
 
