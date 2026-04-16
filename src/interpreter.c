@@ -402,6 +402,37 @@ static Value *builtin_assert_eq(Value **args, int argc) {
     return value_null();
 }
 
+static bool is_memory_module(Value *obj) {
+    if (!obj || obj->type != VAL_DICT) return false;
+    Value *key = value_string("__module");
+    Value *found = value_dict_get(obj, key);
+    value_release(key);
+    return found && found->type == VAL_STRING && strcmp(found->str_val, "memory") == 0;
+}
+
+static Value *memory_method(Interpreter *interp, Env *env, Value *obj, const char *method,
+                            Value **args, int argc, int line) {
+    (void)obj;
+    PrismGC *gc = interp->gc ? interp->gc : gc_global();
+    if (strcmp(method, "stats") == 0) return gc_stats_dict(gc);
+    if (strcmp(method, "collect") == 0) {
+        size_t freed = gc_collect_major(gc, env, NULL, NULL);
+        return value_int((long long)freed);
+    }
+    if (strcmp(method, "limit") == 0) {
+        if (argc < 1 || args[0]->type != VAL_STRING) {
+            runtime_error(interp, "memory.limit() requires a string like \"512mb\"", line);
+            return value_null();
+        }
+        return gc_set_soft_limit(gc, args[0]->str_val);
+    }
+    if (strcmp(method, "profile") == 0) return gc_stats_dict(gc);
+    char emsg[128];
+    snprintf(emsg, sizeof(emsg), "memory has no method '%s'", method);
+    runtime_error(interp, emsg, line);
+    return value_null();
+}
+
 /* ------------------------------------------------------------------ GUI builtins */
 
 static Value *builtin_gui_window(Value **args, int argc) {
@@ -621,6 +652,14 @@ static void register_builtins(Interpreter *interp) {
         env_set(interp->globals, builtins[i].name, v, false);
         value_release(v);
     }
+    Value *memory = value_dict_new();
+    Value *key = value_string("__module");
+    Value *name = value_string("memory");
+    value_dict_set(memory, key, name);
+    value_release(key);
+    value_release(name);
+    env_set(interp->globals, "memory", memory, true);
+    value_release(memory);
 }
 
 /* ------------------------------------------------------------------ f-string processing */
@@ -1464,16 +1503,20 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         }
 
         Value *result;
-        switch (obj->type) {
-            case VAL_STRING: result = string_method(interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
-            case VAL_ARRAY:  result = array_method (interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
-            case VAL_DICT:   result = dict_method  (interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
-            case VAL_SET:    result = set_method   (interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
-            case VAL_TUPLE:  result = tuple_method (interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
-            default: {
-                char emsg[64]; snprintf(emsg, sizeof(emsg), "type '%s' has no methods", value_type_name(obj->type));
-                runtime_error(interp, emsg, node->line);
-                result = value_null();
+        if (is_memory_module(obj)) {
+            result = memory_method(interp, env, obj, node->method_call.method, args, node->method_call.arg_count, node->line);
+        } else {
+            switch (obj->type) {
+                case VAL_STRING: result = string_method(interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
+                case VAL_ARRAY:  result = array_method (interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
+                case VAL_DICT:   result = dict_method  (interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
+                case VAL_SET:    result = set_method   (interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
+                case VAL_TUPLE:  result = tuple_method (interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
+                default: {
+                    char emsg[64]; snprintf(emsg, sizeof(emsg), "type '%s' has no methods", value_type_name(obj->type));
+                    runtime_error(interp, emsg, node->line);
+                    result = value_null();
+                }
             }
         }
 

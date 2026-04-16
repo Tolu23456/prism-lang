@@ -62,4 +62,12 @@ assert_eq(t[1:3],   (20, 30), "tuple slice")
 assert_eq(20 in t,  true,  "tuple membership")
 assert_eq(99 in t,  false, "tuple non-membership")
 
+# --- Memory module ---
+let mem_stats = memory.stats()
+assert_eq(type(mem_stats), "dict", "memory.stats returns dict")
+assert_eq(type(mem_stats["policy"]), "string", "memory.stats includes policy")
+assert(memory.limit("2mb") >= 2097152, "memory.limit parses mb")
+assert(memory.collect() >= 0, "memory.collect returns freed count")
+assert_eq(type(memory.profile()), "dict", "memory.profile returns stats")
+
 output("[PASS] test_collections")

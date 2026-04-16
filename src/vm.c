@@ -331,6 +331,36 @@ static Value *vm_builtin_assert_eq(Value **args, int argc) {
     return value_null();
 }
 
+static bool vm_is_memory_module(Value *obj) {
+    if (!obj || obj->type != VAL_DICT) return false;
+    Value *key = value_string("__module");
+    Value *found = value_dict_get(obj, key);
+    value_release(key);
+    return found && found->type == VAL_STRING && strcmp(found->str_val, "memory") == 0;
+}
+
+static Value *vm_memory_method(VM *vm, Value *obj, const char *method, Value **args, int argc, int line) {
+    (void)obj;
+    PrismGC *gc = vm->gc ? vm->gc : gc_global();
+    if (strcmp(method, "stats") == 0) return gc_stats_dict(gc);
+    if (strcmp(method, "collect") == 0) {
+        size_t freed = gc_collect_major(gc, NULL, vm, NULL);
+        return value_int((long long)freed);
+    }
+    if (strcmp(method, "limit") == 0) {
+        if (argc < 1 || args[0]->type != VAL_STRING) {
+            vm_error(vm, "memory.limit() requires a string like \"512mb\"", line);
+            return value_null();
+        }
+        return gc_set_soft_limit(gc, args[0]->str_val);
+    }
+    if (strcmp(method, "profile") == 0) return gc_stats_dict(gc);
+    char msg[128];
+    snprintf(msg, sizeof(msg), "memory has no method '%s'", method);
+    vm_error(vm, msg, line);
+    return value_null();
+}
+
 /* ---- GUI built-ins (same as in interpreter.c) ---- */
 
 typedef struct {
@@ -560,6 +590,14 @@ void vm_register_builtins(VM *vm) {
         env_set(vm->globals, bi[i].name, v, false);
         value_release(v);
     }
+    Value *memory = value_dict_new();
+    Value *key = value_string("__module");
+    Value *name = value_string("memory");
+    value_dict_set(memory, key, name);
+    value_release(key);
+    value_release(name);
+    env_set(vm->globals, "memory", memory, true);
+    value_release(memory);
 }
 
 /* ================================================================== f-string processing */
@@ -956,6 +994,8 @@ static Value *vm_dispatch_method_slow(VM *vm, Value *obj, const char *method,
 static Value *vm_dispatch_method_cached(VM *vm, Value *obj, const char *method,
                                          VmMethodId method_id, Value **args,
                                          int argc, int line) {
+    if (vm_is_memory_module(obj))
+        return vm_memory_method(vm, obj, method, args, argc, line);
     if (method_id == VM_METHOD_UNKNOWN)
         return vm_dispatch_method_slow(vm, obj, method, args, argc, line);
 

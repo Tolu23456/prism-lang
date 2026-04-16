@@ -25,6 +25,7 @@
 - [x] Workload-aware GC hints: REPL, script, GUI, and bench modes tune initial thresholds and major-GC interval
 - [x] Memory diagnostics via `--mem-report`: per-type breakdown, generational summary, intern stats, adaptive metrics, health indicators
 - [x] Allocation site tracking: `--mem-report` prints top-10 allocation hotspots with source file, line number, count, and dominant type — works for both the VM and tree-walking interpreter paths
+- [x] Language-level memory module: `memory.stats()`, `memory.collect()`, `memory.limit("512mb")`, and `memory.profile()` expose runtime memory controls from Prism code
 - [x] Inline caching for method/property lookup in the VM (`CALL_METHOD` site caches `VmMethodId`)
 - [x] Richer error diagnostics: source-line context and VM runtime stack traces
 - [x] Built-in source formatter (`--format`, `--format-write`)

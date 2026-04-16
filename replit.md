@@ -115,6 +115,7 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 - **I/O**: `output(...)`, `input(prompt)`
 - **Typecasting**: `int(x)`, `float(x)`, `bool(x)`, `str(x)`, `complex(real, imag)`, `array(x)`, `tuple(x)`, `set(x)` — convert between all types. `int()` recognises `"0xFF"`, `"0b1010"`, `"0o17"` string literals.
 - **Assertions**: `assert(cond, msg)` — aborts with `[FAIL] msg` if `cond` is falsy. `assert_eq(a, b, msg)` — aborts with `[FAIL]` if `a != b`. Both work in interpreter and VM. Used by the `tests/` suite via `make test`.
+- **Memory tools**: `memory.stats()` returns runtime GC counters as a dict, `memory.collect()` forces a rooted major collection, `memory.limit("512mb")` sets the adaptive collection threshold, and `memory.profile()` returns a stats snapshot.
 - **PGUI**: legacy web-rendered GUI helpers `gui_window`, `gui_label`, `gui_button`, `gui_input`, `gui_run` (generates HTML)
 - **XGUI**: native X11 desktop GUI — `xgui_init(w,h,title)`, `xgui_style(path)`, `xgui_running()`, `xgui_begin()`, `xgui_end()`, `xgui_label(text)`, `xgui_button(text)→bool`, `xgui_input(id,placeholder)→str`, `xgui_spacer(h)`, `xgui_row_begin()`, `xgui_row_end()`, `xgui_close()`. Requires X11 display (desktop Linux/macOS with XQuartz). Style loaded from `.pss` files.
 - **Operators**: arithmetic `+ - * / % **`, comparison, logical `&& || !`, bitwise `& | ^ ~`

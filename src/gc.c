@@ -1056,3 +1056,50 @@ void gc_print_mem_report(PrismGC *gc) {
 
     fprintf(stderr, "=== End Memory Report ===\n\n");
 }
+
+static void dict_set_cstr(Value *dict, const char *key, Value *val) {
+    Value *k = value_string(key);
+    value_dict_set(dict, k, val);
+    value_release(k);
+    value_release(val);
+}
+
+Value *gc_stats_dict(PrismGC *gc) {
+    if (!gc) return value_dict_new();
+    Value *d = value_dict_new();
+    dict_set_cstr(d, "policy", value_string(gc_policy_name(gc->policy)));
+    dict_set_cstr(d, "workload", value_string(gc_workload_name(gc->workload)));
+    dict_set_cstr(d, "live_objects", value_int((long long)gc->stats.live_objects));
+    dict_set_cstr(d, "total_allocations", value_int((long long)gc->stats.total_allocations));
+    dict_set_cstr(d, "total_frees", value_int((long long)gc->stats.total_frees));
+    dict_set_cstr(d, "bytes_allocated", value_int((long long)gc->stats.bytes_allocated));
+    dict_set_cstr(d, "bytes_freed", value_int((long long)gc->stats.bytes_freed));
+    dict_set_cstr(d, "collections", value_int((long long)gc->stats.collections_run));
+    dict_set_cstr(d, "minor_collections", value_int((long long)gc->stats.minor_collections));
+    dict_set_cstr(d, "major_collections", value_int((long long)gc->stats.major_collections));
+    dict_set_cstr(d, "young", value_int((long long)gc->young_count));
+    dict_set_cstr(d, "old", value_int((long long)gc->old_count));
+    dict_set_cstr(d, "promoted", value_int((long long)gc->stats.objects_promoted));
+    dict_set_cstr(d, "interned_strings", value_int((long long)gc->stats.intern_count));
+    dict_set_cstr(d, "intern_bytes_saved", value_int((long long)gc->stats.intern_bytes_saved));
+    dict_set_cstr(d, "immortals", value_int((long long)gc->stats.immortal_count));
+    dict_set_cstr(d, "next_threshold", value_int((long long)gc->next_collection));
+    dict_set_cstr(d, "survival_ema_percent", value_int((long long)(gc->survival_ema * 100.0)));
+    return d;
+}
+
+Value *gc_set_soft_limit(PrismGC *gc, const char *text) {
+    if (!gc || !text) return value_int(0);
+    char *end = NULL;
+    double n = strtod(text, &end);
+    if (n <= 0.0) return value_int(0);
+    while (end && (*end == ' ' || *end == '\t')) end++;
+    size_t mult = 1;
+    if (end && (*end == 'k' || *end == 'K')) mult = 1024;
+    else if (end && (*end == 'm' || *end == 'M')) mult = 1024 * 1024;
+    else if (end && (*end == 'g' || *end == 'G')) mult = 1024 * 1024 * 1024ULL;
+    size_t bytes = (size_t)(n * (double)mult);
+    if (bytes < 4096) bytes = 4096;
+    gc->next_collection = bytes;
+    return value_int((long long)bytes);
+}

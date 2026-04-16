@@ -126,6 +126,13 @@
   (strings shared, bytes saved), adaptive metrics (survival EMA, current
   threshold), immortal singleton count, and qualitative health indicators
   (live/alloc ratio, array growth warnings).
+- **Language-level `memory` module**: Prism programs can now call
+  `memory.stats()`, `memory.collect()`, `memory.limit("512mb")`, and
+  `memory.profile()` from both the VM and tree-walking interpreter paths.
+  `memory.stats()` and `memory.profile()` return a dictionary of live runtime
+  counters, `memory.collect()` forces a rooted major collection, and
+  `memory.limit()` updates the adaptive collection threshold from human-readable
+  byte strings.
 - Added `--gc-policy=adaptive` to the CLI argument parser.
 - `formatter.c` added to the Makefile so `--format` and `--format-write` now
   link correctly.

@@ -193,5 +193,7 @@ const char *gc_policy_name(GCPolicy policy);
 const char *gc_workload_name(GCWorkload workload);
 void        gc_print_stats(PrismGC *gc);
 void        gc_print_mem_report(PrismGC *gc);
+Value      *gc_stats_dict(PrismGC *gc);
+Value      *gc_set_soft_limit(PrismGC *gc, const char *text);
 
 #endif
