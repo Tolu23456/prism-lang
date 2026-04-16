@@ -10,6 +10,11 @@
 - [x] GUI support via `gui_window`, `gui_label`, `gui_button`, `gui_input`, `gui_run`
 - [x] AGC layer 1: allocation tracking, root audits, GC stats, policy flags
 - [x] AGC layer 2 started: opt-in mark/sweep reclamation path via `--gc-sweep`
+- [x] Prism bytecode instruction set and constant pool
+- [x] AST-to-bytecode compiler for core statements and expressions
+- [x] Stack-based VM for top-level execution and user-defined function call frames
+- [x] VM benchmark mode via `--bench`
+- [x] Bytecode cache serializer via `--emit-bytecode` writing `.pmc` files
 
 ## Next Steps — AGC
 - [ ] Add temporary root stack for expression/interpreter values
@@ -22,15 +27,15 @@
 
 ## Next Steps — VM
 
-- [ ] Design the Prism bytecode instruction set (opcodes)
-- [ ] Write a bytecode compiler: walk the AST and emit instructions
-- [ ] Build the Prism VM: a stack-based virtual machine that executes bytecode
-- [ ] Add a constant pool for strings and numbers
-- [ ] Add call frames for function calls in the VM
-- [ ] Profile and benchmark: compare tree-walker vs VM speed
+- [x] Design the Prism bytecode instruction set (opcodes)
+- [x] Write a bytecode compiler: walk the AST and emit instructions
+- [x] Build the Prism VM: a stack-based virtual machine that executes bytecode
+- [x] Add a constant pool for strings and numbers
+- [x] Add call frames for function calls in the VM
+- [x] Profile and benchmark: compare tree-walker vs VM speed
 - [ ] Add inline caching for faster property/method lookup
 - [ ] Explore assembly (x86-64) for hot paths in the VM (e.g., arithmetic dispatch)
-- [ ] Add a serializer: save compiled bytecode to `.pmc` files (prism bytecode cache)
+- [x] Add a serializer: save compiled bytecode to `.pmc` files (prism bytecode cache)
 
 ## GUI Roadmap
 - [ ] Add `gui_image(path)` for displaying images

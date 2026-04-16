@@ -7,9 +7,9 @@ It uses the `.pm` extension and currently runs as an interpreted language.
 
 - C implementation
 - `.pm` source files
-- Tree-walking interpreter
+- Tree-walking interpreter and stack-based VM
+- Bytecode cache output with `.pmc` files
 - Sublime Text syntax support
-- Fast VM planned next
 
 ## Project Files
 
@@ -30,4 +30,6 @@ make
 
 ```bash
 ./prism examples/hello.pm
+./prism --emit-bytecode examples/hello.pm
+./prism --bench examples/hello.pm
 ```

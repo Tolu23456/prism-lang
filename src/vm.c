@@ -17,6 +17,23 @@ static void vm_error(VM *vm, const char *msg, int line) {
     snprintf(vm->error_msg, sizeof(vm->error_msg), "line %d: %s", line, msg);
 }
 
+static void vm_close_frame_env(CallFrame *frame) {
+    while (frame->env && frame->env != frame->root_env) {
+        Env *old = frame->env;
+        frame->env = old->parent;
+        old->parent = NULL;
+        env_free(old);
+    }
+    if (frame->owns_env && frame->root_env) {
+        Env *old = frame->root_env;
+        old->parent = NULL;
+        env_free(old);
+    }
+    frame->env = NULL;
+    frame->root_env = NULL;
+    frame->owns_env = 0;
+}
+
 /* Push / pop helpers (no bounds check in release, add in debug). */
 static inline void vm_push(VM *vm, Value *v) {
     if (vm->stack_top >= VM_STACK_MAX) {
@@ -259,8 +276,6 @@ static char *vm_process_fstring(VM *vm, const char *tmpl, Env *env);
 /* Forward declarations for method dispatch */
 static Value *vm_dispatch_method(VM *vm, Value *obj, const char *method,
                                   Value **args, int argc, int line);
-static Value *vm_call_function(VM *vm, Value *fn, Value **args, int argc,
-                                Env *calling_env, int line);
 
 /* ================================================================== VM new/free */
 
@@ -488,46 +503,6 @@ static Value *vm_dispatch_method(VM *vm, Value *obj, const char *method,
 
 /* ================================================================== call function */
 
-static Value *vm_call_function(VM *vm, Value *fn, Value **args, int argc,
-                                Env *calling_env, int line) {
-    if (fn->type == VAL_BUILTIN) {
-        return fn->builtin.fn(args, argc);
-    }
-    if (fn->type == VAL_FUNCTION) {
-        /* Execute the function body using the tree-walking interpreter
-         * (so closures and recursion all work unchanged). */
-        Interpreter *interp = calloc(1, sizeof(Interpreter));
-        interp->globals = vm->globals;
-
-        /* Build function env from closure. */
-        Env *fn_env = env_new(fn->func.closure ? fn->func.closure : vm->globals);
-
-        /* Bind parameters. */
-        int param_count = fn->func.param_count;
-        for (int i = 0; i < param_count && i < argc; i++)
-            env_set(fn_env, fn->func.params[i].name, args[i], false);
-
-        /* Run the body. */
-        extern Value *interpreter_eval(Interpreter*, ASTNode*, Env*);
-        Value *result = interpreter_eval(interp, fn->func.body, fn_env);
-        if (interp->returning && interp->return_val) {
-            value_release(result);
-            result = interp->return_val;
-            interp->return_val = NULL;
-        }
-        if (interp->had_error) {
-            vm_error(vm, interp->error_msg, line);
-            value_release(result);
-            result = value_null();
-        }
-        env_free(fn_env);
-        free(interp);
-        return result ? result : value_null();
-    }
-    vm_error(vm, "value is not callable", line);
-    return value_null();
-}
-
 /* ================================================================== f-string */
 
 static char *vm_process_fstring(VM *vm, const char *tmpl, Env *env) {
@@ -648,6 +623,8 @@ int vm_run(VM *vm, Chunk *chunk) {
     frame->ip         = 0;
     frame->stack_base = 0;
     frame->env        = vm->globals;
+    frame->root_env   = vm->globals;
+    frame->owns_env   = 0;
 
 #define READ_BYTE()    (frame->chunk->code[frame->ip++])
 #define READ_U16()     (frame->ip += 2, \
@@ -707,8 +684,6 @@ int vm_run(VM *vm, Chunk *chunk) {
         case OP_STORE_NAME: {
             uint16_t idx = READ_U16();
             const char *name = CONST(idx)->str_val;
-            Value *v = PEEK(0); /* don't pop — assign keeps value on stack? No, statements handle this. */
-            /* Actually STORE_NAME is used in assignment statements which don't leave a value. */
             Value *top = POP();
             if (!env_assign(frame->env, name, top)) {
                 char msg[256];
@@ -1043,6 +1018,8 @@ int vm_run(VM *vm, Chunk *chunk) {
                 proto->func.body,
                 frame->env
             );
+            fn->func.chunk = proto->func.chunk;
+            fn->func.owns_chunk = false;
             PUSH(fn);
             break;
         }
@@ -1052,11 +1029,46 @@ int vm_run(VM *vm, Chunk *chunk) {
             Value **args = malloc(argc * sizeof(Value*));
             for (int i = argc-1; i >= 0; i--) args[i] = POP();
             Value *callee = POP();
-            Value *result = vm_call_function(vm, callee, args, argc, frame->env, line);
-            for (int i = 0; i < argc; i++) value_release(args[i]);
-            free(args);
-            value_release(callee);
-            PUSH(result ? result : value_null());
+            if (callee->type == VAL_BUILTIN) {
+                Value *result = callee->builtin.fn(args, argc);
+                for (int i = 0; i < argc; i++) value_release(args[i]);
+                free(args);
+                value_release(callee);
+                PUSH(result ? result : value_null());
+            } else if (callee->type == VAL_FUNCTION && callee->func.chunk) {
+                if (vm->frame_count >= VM_FRAME_MAX) {
+                    vm_error(vm, "call frame overflow", line);
+                    for (int i = 0; i < argc; i++) value_release(args[i]);
+                    free(args);
+                    value_release(callee);
+                    PUSH(value_null());
+                    break;
+                }
+                Env *fn_env = env_new(callee->func.closure ? callee->func.closure : vm->globals);
+                for (int i = 0; i < callee->func.param_count; i++) {
+                    Value *arg = (i < argc) ? args[i] : value_null();
+                    env_set(fn_env, callee->func.params[i].name, arg, false);
+                    if (i >= argc) value_release(arg);
+                }
+                for (int i = 0; i < argc; i++) value_release(args[i]);
+                free(args);
+
+                CallFrame *new_frame = &vm->frames[vm->frame_count++];
+                new_frame->chunk = callee->func.chunk;
+                new_frame->ip = 0;
+                new_frame->stack_base = vm->stack_top;
+                new_frame->env = fn_env;
+                new_frame->root_env = fn_env;
+                new_frame->owns_env = 1;
+                value_release(callee);
+                frame = new_frame;
+            } else {
+                vm_error(vm, "value is not callable", line);
+                for (int i = 0; i < argc; i++) value_release(args[i]);
+                free(args);
+                value_release(callee);
+                PUSH(value_null());
+            }
             break;
         }
 
@@ -1077,23 +1089,25 @@ int vm_run(VM *vm, Chunk *chunk) {
 
         case OP_RETURN: {
             Value *ret = POP();
+            vm_close_frame_env(frame);
             vm->frame_count--;
-            /* For top-level returns, just halt. */
             if (vm->frame_count == 0) {
                 value_release(ret);
                 goto done;
             }
-            PUSH(ret);
             frame = &vm->frames[vm->frame_count - 1];
+            PUSH(ret);
             break;
         }
 
-        case OP_RETURN_NULL:
+        case OP_RETURN_NULL: {
+            vm_close_frame_env(frame);
             vm->frame_count--;
             if (vm->frame_count == 0) goto done;
-            PUSH(value_null());
             frame = &vm->frames[vm->frame_count - 1];
+            PUSH(value_null());
             break;
+        }
 
         /* ---- iteration ---- */
         case OP_GET_ITER: {
@@ -1186,7 +1200,11 @@ int vm_run(VM *vm, Chunk *chunk) {
     }
 
 done:
-    vm->frame_count--;
+    while (vm->frame_count > 0) {
+        CallFrame *open = &vm->frames[vm->frame_count - 1];
+        vm_close_frame_env(open);
+        vm->frame_count--;
+    }
     return vm->had_error ? 1 : 0;
 
 #undef READ_BYTE

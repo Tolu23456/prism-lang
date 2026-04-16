@@ -81,6 +81,34 @@ static uint16_t name_const(Compiler *c, const char *name) {
 /* ================================================================== Forward decl */
 static void compile_node(Compiler *c, ASTNode *node);
 static void compile_expr(Compiler *c, ASTNode *node);
+static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body);
+
+static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body) {
+    Chunk *chunk = malloc(sizeof(Chunk));
+    Compiler c;
+    c.chunk = chunk;
+    c.had_error = 0;
+    c.error_msg[0] = '\0';
+    c.loop = NULL;
+
+    chunk_init(chunk);
+    if (body && (body->type == NODE_BLOCK || body->type == NODE_PROGRAM)) {
+        for (int i = 0; i < body->block.count; i++)
+            compile_node(&c, body->block.stmts[i]);
+    } else if (body) {
+        compile_node(&c, body);
+    }
+    emit1(&c, OP_RETURN_NULL, body ? body->line : 0);
+
+    if (c.had_error) {
+        compiler_error(parent, c.error_msg, body ? body->line : 0);
+        chunk_free(chunk);
+        free(chunk);
+        return NULL;
+    }
+
+    return chunk;
+}
 
 /* ================================================================== Statements */
 
@@ -308,11 +336,8 @@ static void compile_node(Compiler *c, ASTNode *node) {
 
     /* ---- function declaration ---- */
     case NODE_FUNC_DECL: {
-        /* Store the function as a closure value in the constant pool */
-        /* We compile the body lazily (the VM will handle it via the tree-walker's
-         * function body stored in the Value). The function body stays as AST;
-         * inner functions are called via the existing interpreter. This gives us
-         * the VM for top-level code while preserving full closure semantics. */
+        Chunk *fn_chunk = compile_function_chunk(c, node->func_decl.body);
+        if (!fn_chunk) break;
         Value *fn = value_function(
             node->func_decl.name,
             node->func_decl.params,
@@ -320,6 +345,8 @@ static void compile_node(Compiler *c, ASTNode *node) {
             node->func_decl.body,
             NULL  /* closure env set at runtime */
         );
+        fn->func.chunk = fn_chunk;
+        fn->func.owns_chunk = true;
         int idx = chunk_add_const(c->chunk, fn);
         value_release(fn);
         emit3(c, OP_MAKE_FUNCTION, (uint16_t)idx, ln);

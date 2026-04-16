@@ -3,6 +3,12 @@
 ## Unreleased
 
 ### Added
+- Completed the core Prism VM path: user-defined functions now carry compiled
+  bytecode chunks and execute through VM call frames instead of falling back to
+  the tree-walking interpreter.
+- Added `--emit-bytecode` to serialize compiled chunks to `.pmc` bytecode cache
+  files.
+- Added `--bench` to compare tree-walker and VM execution time for a source file.
 - GUI support via built-in functions: `gui_window()`, `gui_label()`, `gui_button()`,
   `gui_input()`, and `gui_run()`. Calling `gui_run()` generates a styled `prism_gui.html`
   file that can be opened in any browser.
@@ -26,6 +32,8 @@
   Previously this silently created the variable.
 
 ### Changed
+- Updated README usage notes for VM bytecode output and benchmark mode.
+- Updated `todo.md` to mark the completed core VM roadmap items.
 - Updated `todo.md` with detailed VM roadmap, GUI roadmap, and standard library plan.
 - Updated `README.md` to list GUI support.
 

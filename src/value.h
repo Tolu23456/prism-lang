@@ -21,6 +21,7 @@ typedef enum {
 
 typedef struct Value Value;
 typedef struct Env   Env;
+typedef struct Chunk Chunk;
 
 typedef Value *(*BuiltinFn)(Value **args, int argc);
 
@@ -64,6 +65,8 @@ struct Value {
             int      param_count;
             ASTNode *body;
             Env     *closure;
+            Chunk   *chunk;
+            bool     owns_chunk;
         } func;
 
         struct {
