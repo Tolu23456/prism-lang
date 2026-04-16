@@ -109,6 +109,7 @@ Value *value_dict_new(void) {
     v->dict.entries = malloc(8 * sizeof(DictEntry));
     v->dict.len = 0;
     v->dict.cap = 8;
+    v->dict.version = 1;
     return v;
 }
 
@@ -225,11 +226,32 @@ void value_array_extend(Value *arr, Value *other) {
 
 static bool keys_equal(Value *a, Value *b) { return value_equals(a, b); }
 
-Value *value_dict_get(Value *dict, Value *key) {
+int value_dict_find_index(Value *dict, Value *key) {
     for (int i = 0; i < dict->dict.len; i++)
         if (keys_equal(dict->dict.entries[i].key, key))
-            return dict->dict.entries[i].val;
+            return i;
+    return -1;
+}
+
+Value *value_dict_get_at(Value *dict, int index) {
+    if (index < 0 || index >= dict->dict.len) return NULL;
+    return dict->dict.entries[index].val;
+}
+
+Value *value_dict_get(Value *dict, Value *key) {
+    int index = value_dict_find_index(dict, key);
+    if (index >= 0) return dict->dict.entries[index].val;
     return NULL;
+}
+
+Value *value_dict_get_cached(Value *dict, Value *key, int *index, unsigned int *version) {
+    if (*index >= 0 && *version == dict->dict.version) {
+        Value *cached = value_dict_get_at(dict, *index);
+        if (cached && keys_equal(dict->dict.entries[*index].key, key)) return cached;
+    }
+    *index = value_dict_find_index(dict, key);
+    *version = dict->dict.version;
+    return *index >= 0 ? dict->dict.entries[*index].val : NULL;
 }
 
 void value_dict_set(Value *dict, Value *key, Value *val) {
@@ -237,6 +259,7 @@ void value_dict_set(Value *dict, Value *key, Value *val) {
         if (keys_equal(dict->dict.entries[i].key, key)) {
             value_release(dict->dict.entries[i].val);
             dict->dict.entries[i].val = value_retain(val);
+            dict->dict.version++;
             return;
         }
     }
@@ -247,6 +270,7 @@ void value_dict_set(Value *dict, Value *key, Value *val) {
     dict->dict.entries[dict->dict.len].key = value_retain(key);
     dict->dict.entries[dict->dict.len].val = value_retain(val);
     dict->dict.len++;
+    dict->dict.version++;
 }
 
 bool value_dict_remove(Value *dict, Value *key) {
@@ -257,10 +281,20 @@ bool value_dict_remove(Value *dict, Value *key) {
             memmove(&dict->dict.entries[i], &dict->dict.entries[i+1],
                     (dict->dict.len - i - 1) * sizeof(DictEntry));
             dict->dict.len--;
+            dict->dict.version++;
             return true;
         }
     }
     return false;
+}
+
+void value_dict_clear(Value *dict) {
+    for (int i = 0; i < dict->dict.len; i++) {
+        value_release(dict->dict.entries[i].key);
+        value_release(dict->dict.entries[i].val);
+    }
+    dict->dict.len = 0;
+    dict->dict.version++;
 }
 
 /* ------------------------------------------------------------------ set ops */

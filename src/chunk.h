@@ -5,6 +5,15 @@
 #include "value.h"
 #include "opcode.h"
 
+typedef struct {
+    uint8_t      opcode;
+    uint16_t     name_idx;
+    ValueType    receiver_type;
+    int          method_id;
+    int          dict_index;
+    unsigned int dict_version;
+} InlineCache;
+
 /* A Chunk holds a compiled bytecode sequence + constant pool + line info. */
 typedef struct Chunk {
     uint8_t *code;
@@ -16,6 +25,9 @@ typedef struct Chunk {
     int      const_cap;
 
     int     *lines;   /* parallel to code: source line for each byte */
+
+    InlineCache *inline_caches;
+    int          inline_cache_count;
 } Chunk;
 
 void     chunk_init(Chunk *c);
@@ -35,6 +47,7 @@ int      chunk_add_const_str(Chunk *c, const char *s);
 
 /* Patch a uint16_t at offset `off` (for backpatching jumps). */
 void     chunk_patch16(Chunk *c, int off, uint16_t val);
+InlineCache *chunk_inline_cache(Chunk *c, int bytecode_offset);
 
 int      chunk_write_bytecode(Chunk *c, const char *path);
 

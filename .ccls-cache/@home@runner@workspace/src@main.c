@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
+#include <time.h>
 
 #include "lexer.h"
 #include "ast.h"
@@ -27,6 +29,16 @@ static char *read_file(const char *path) {
     buf[sz] = '\0';
     fclose(f);
     return buf;
+}
+
+static bool opt_emit_bytecode = false;
+static bool opt_bench = false;
+
+static void bytecode_path_for_source(const char *filename, char *out, size_t out_len) {
+    snprintf(out, out_len, "%s", filename ? filename : "out.pm");
+    char *dot = strrchr(out, '.');
+    if (dot) snprintf(dot, out_len - (size_t)(dot - out), ".pmc");
+    else strncat(out, ".pmc", out_len - strlen(out) - 1);
 }
 
 /* ------------------------------------------------------------------ VM script runner */
@@ -57,6 +69,19 @@ static int run_source_vm(const char *source, const char *filename) {
         return 1;
     }
 
+    if (opt_emit_bytecode) {
+        char out_path[512];
+        bytecode_path_for_source(filename, out_path, sizeof(out_path));
+        if (chunk_write_bytecode(&chunk, out_path)) {
+            fprintf(stderr, "[%s] Bytecode error: could not write '%s'\n", filename, out_path);
+            chunk_free(&chunk);
+            ast_node_free(program);
+            parser_free(parser);
+            return 1;
+        }
+        printf("[prism] bytecode written to %s\n", out_path);
+    }
+
     /* Execute — AST must stay alive while VM runs (function bodies are AST ptrs) */
     VM *vm = vm_new();
     gui_register_builtins(vm->globals);
@@ -78,6 +103,50 @@ static int run_source_vm(const char *source, const char *filename) {
     parser_free(parser);
 
     return exit_code;
+}
+
+static int run_source_tree(const char *source, const char *filename) {
+    Parser  *parser  = parser_new(source);
+    ASTNode *program = parser_parse(parser);
+
+    if (parser->had_error) {
+        fprintf(stderr, "[%s] Parse error: %s\n", filename, parser->error_msg);
+        parser_free(parser);
+        if (program) ast_node_free(program);
+        return 1;
+    }
+
+    Interpreter *interp = interpreter_new();
+    gui_register_builtins(interp->globals);
+    Value *result = interpreter_eval(interp, program, interp->globals);
+    if (result) value_release(result);
+
+    int exit_code = 0;
+    if (interp->had_error) {
+        fprintf(stderr, "[%s] Runtime error: %s\n", filename, interp->error_msg);
+        exit_code = 1;
+    }
+
+    interpreter_free(interp);
+    ast_node_free(program);
+    parser_free(parser);
+    return exit_code;
+}
+
+static int run_benchmark(const char *source, const char *filename) {
+    clock_t t0 = clock();
+    int tree_code = run_source_tree(source, filename);
+    clock_t t1 = clock();
+    int vm_code = run_source_vm(source, filename);
+    clock_t t2 = clock();
+
+    double tree_ms = 1000.0 * (double)(t1 - t0) / (double)CLOCKS_PER_SEC;
+    double vm_ms = 1000.0 * (double)(t2 - t1) / (double)CLOCKS_PER_SEC;
+    printf("[prism] benchmark tree-walker: %.3f ms\n", tree_ms);
+    printf("[prism] benchmark VM: %.3f ms\n", vm_ms);
+    if (vm_ms > 0.0)
+        printf("[prism] benchmark tree/vm ratio: %.2fx\n", tree_ms / vm_ms);
+    return tree_code || vm_code;
 }
 
 /* ------------------------------------------------------------------ REPL */
@@ -167,6 +236,10 @@ static const char *configure_gc_from_args(int argc, char **argv) {
             } else {
                 gc_set_policy(gc, GC_POLICY_BALANCED);
             }
+        } else if (strcmp(argv[i], "--emit-bytecode") == 0) {
+            opt_emit_bytecode = true;
+        } else if (strcmp(argv[i], "--bench") == 0) {
+            opt_bench = true;
         } else if (!path) {
             path = argv[i];
         }
@@ -196,13 +269,13 @@ int main(int argc, char **argv) {
             gc_shutdown(gc_global());
             return 1;
         }
-        int code = run_source_vm(src, path);
+        int code = opt_bench ? run_benchmark(src, path) : run_source_vm(src, path);
         free(src);
         gc_shutdown(gc_global());
         return code;
     }
 
-    fprintf(stderr, "Usage: prism [--gc-stats] [--gc-log] [--gc-sweep] [--gc-stress] [--gc-policy=balanced|throughput|low-latency|debug|stress] [file.pm]\n");
+    fprintf(stderr, "Usage: prism [--emit-bytecode] [--bench] [--gc-stats] [--gc-log] [--gc-sweep] [--gc-stress] [--gc-policy=balanced|throughput|low-latency|debug|stress] [file.pm]\n");
     gc_shutdown(gc_global());
     return 1;
 }

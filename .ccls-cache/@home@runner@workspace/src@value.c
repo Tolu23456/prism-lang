@@ -5,6 +5,7 @@
 #include <math.h>
 #include <ctype.h>
 #include "value.h"
+#include "chunk.h"
 #include "gc.h"
 
 /* ------------------------------------------------------------------ ref count */
@@ -44,6 +45,10 @@ void value_release(Value *v) {
             free(v->tuple.items);
             break;
         case VAL_FUNCTION:
+            if (v->func.owns_chunk && v->func.chunk) {
+                chunk_free(v->func.chunk);
+                free(v->func.chunk);
+            }
             free(v->func.name);
             break;
         case VAL_BUILTIN:
@@ -132,6 +137,8 @@ Value *value_function(const char *name, Param *params, int param_count,
     v->func.param_count = param_count;
     v->func.body        = body;
     v->func.closure     = closure;
+    v->func.chunk       = NULL;
+    v->func.owns_chunk  = false;
     return v;
 }
 

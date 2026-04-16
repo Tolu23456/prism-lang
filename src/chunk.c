@@ -9,6 +9,7 @@ void chunk_init(Chunk *c) {
     c->code        = NULL; c->count = 0; c->cap = 0;
     c->constants   = NULL; c->const_count = 0; c->const_cap = 0;
     c->lines       = NULL;
+    c->inline_caches = NULL; c->inline_cache_count = 0;
 }
 
 void chunk_free(Chunk *c) {
@@ -16,6 +17,7 @@ void chunk_free(Chunk *c) {
     free(c->code);
     free(c->constants);
     free(c->lines);
+    free(c->inline_caches);
     chunk_init(c);
 }
 
@@ -54,6 +56,21 @@ int chunk_add_const_str(Chunk *c, const char *s) {
 void chunk_patch16(Chunk *c, int off, uint16_t val) {
     c->code[off]     = (uint8_t)(val & 0xFF);
     c->code[off + 1] = (uint8_t)((val >> 8) & 0xFF);
+}
+
+InlineCache *chunk_inline_cache(Chunk *c, int bytecode_offset) {
+    if (bytecode_offset < 0 || bytecode_offset >= c->count) return NULL;
+    if (!c->inline_caches || c->inline_cache_count < c->count) {
+        InlineCache *old = c->inline_caches;
+        int old_count = c->inline_cache_count;
+        c->inline_caches = calloc((size_t)c->count, sizeof(InlineCache));
+        if (old) {
+            memcpy(c->inline_caches, old, (size_t)old_count * sizeof(InlineCache));
+            free(old);
+        }
+        c->inline_cache_count = c->count;
+    }
+    return &c->inline_caches[bytecode_offset];
 }
 
 static int write_u8(FILE *f, uint8_t v) {

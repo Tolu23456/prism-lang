@@ -44,6 +44,12 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 ./prism            # start the interactive REPL
 ```
 
+## VM Performance Notes
+
+- The VM dispatch loop in `src/vm.c` compiles on x86-64 to an indirect jump-table dispatch under optimized GCC builds.
+- Integer `+`, `-`, `*`, `&`, `|`, and `^` bytecode paths use guarded x86-64 inline assembly helpers with portable C fallbacks.
+- Bytecode chunks now carry per-instruction inline caches. `OP_GET_ATTR`/`OP_SET_ATTR` cache dictionary slot indexes with dictionary version invalidation, while `OP_CALL_METHOD` caches receiver type and resolved built-in method ID to avoid repeated string-based method lookup on hot call sites.
+
 ## Instructions for the next agent
 
 - Read `todo.md` first.

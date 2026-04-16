@@ -57,6 +57,60 @@ static inline Value *vm_peek(VM *vm, int offset) {
     return vm->stack[vm->stack_top - 1 - offset];
 }
 
+static inline long long vm_fast_iadd(long long a, long long b) {
+#if defined(__x86_64__) || defined(__amd64__)
+    __asm__("addq %1, %0" : "+r"(a) : "r"(b));
+    return a;
+#else
+    return a + b;
+#endif
+}
+
+static inline long long vm_fast_isub(long long a, long long b) {
+#if defined(__x86_64__) || defined(__amd64__)
+    __asm__("subq %1, %0" : "+r"(a) : "r"(b));
+    return a;
+#else
+    return a - b;
+#endif
+}
+
+static inline long long vm_fast_imul(long long a, long long b) {
+#if defined(__x86_64__) || defined(__amd64__)
+    __asm__("imulq %1, %0" : "+r"(a) : "r"(b));
+    return a;
+#else
+    return a * b;
+#endif
+}
+
+static inline long long vm_fast_iand(long long a, long long b) {
+#if defined(__x86_64__) || defined(__amd64__)
+    __asm__("andq %1, %0" : "+r"(a) : "r"(b));
+    return a;
+#else
+    return a & b;
+#endif
+}
+
+static inline long long vm_fast_ior(long long a, long long b) {
+#if defined(__x86_64__) || defined(__amd64__)
+    __asm__("orq %1, %0" : "+r"(a) : "r"(b));
+    return a;
+#else
+    return a | b;
+#endif
+}
+
+static inline long long vm_fast_ixor(long long a, long long b) {
+#if defined(__x86_64__) || defined(__amd64__)
+    __asm__("xorq %1, %0" : "+r"(a) : "r"(b));
+    return a;
+#else
+    return a ^ b;
+#endif
+}
+
 /* Read a uint16_t from bytecode (little-endian) and advance ip by 2. */
 static inline uint16_t read16(CallFrame *f) {
     uint8_t lo = f->chunk->code[f->ip++];
@@ -713,13 +767,13 @@ int vm_run(VM *vm, Chunk *chunk) {
         }
 
         /* ---- arithmetic ---- */
-        case OP_ADD: { Value *b=POP(), *a=POP(); Value *r=value_add(a,b);
+        case OP_ADD: { Value *b=POP(), *a=POP(); Value *r=(a->type==VAL_INT&&b->type==VAL_INT)?value_int(vm_fast_iadd(a->int_val,b->int_val)):value_add(a,b);
             if(!r){vm_error(vm,"invalid operands for +",line);r=value_null();}
             value_release(a);value_release(b);PUSH(r);break; }
-        case OP_SUB: { Value *b=POP(), *a=POP(); Value *r=value_sub(a,b);
+        case OP_SUB: { Value *b=POP(), *a=POP(); Value *r=(a->type==VAL_INT&&b->type==VAL_INT)?value_int(vm_fast_isub(a->int_val,b->int_val)):value_sub(a,b);
             if(!r){vm_error(vm,"invalid operands for -",line);r=value_null();}
             value_release(a);value_release(b);PUSH(r);break; }
-        case OP_MUL: { Value *b=POP(), *a=POP(); Value *r=value_mul(a,b);
+        case OP_MUL: { Value *b=POP(), *a=POP(); Value *r=(a->type==VAL_INT&&b->type==VAL_INT)?value_int(vm_fast_imul(a->int_val,b->int_val)):value_mul(a,b);
             if(!r){vm_error(vm,"invalid operands for *",line);r=value_null();}
             value_release(a);value_release(b);PUSH(r);break; }
         case OP_DIV: { Value *b=POP(), *a=POP(); Value *r=value_div(a,b);
@@ -738,7 +792,7 @@ int vm_run(VM *vm, Chunk *chunk) {
 
         /* ---- bitwise ---- */
         case OP_BIT_AND: { Value *b=POP(),*a=POP();
-            if(a->type==VAL_INT&&b->type==VAL_INT) { PUSH(value_int(a->int_val&b->int_val)); }
+            if(a->type==VAL_INT&&b->type==VAL_INT) { PUSH(value_int(vm_fast_iand(a->int_val,b->int_val))); }
             else if(a->type==VAL_SET&&b->type==VAL_SET) {
                 Value *r=value_set_new();
                 for(int i=0;i<a->set.len;i++) if(value_set_has(b,a->set.items[i])) value_set_add(r,a->set.items[i]);
@@ -746,7 +800,7 @@ int vm_run(VM *vm, Chunk *chunk) {
             } else { vm_error(vm,"invalid operands for &",line); PUSH(value_null()); }
             value_release(a);value_release(b);break; }
         case OP_BIT_OR: { Value *b=POP(),*a=POP();
-            if(a->type==VAL_INT&&b->type==VAL_INT) { PUSH(value_int(a->int_val|b->int_val)); }
+            if(a->type==VAL_INT&&b->type==VAL_INT) { PUSH(value_int(vm_fast_ior(a->int_val,b->int_val))); }
             else if(a->type==VAL_SET&&b->type==VAL_SET) {
                 Value *r=value_set_new();
                 for(int i=0;i<a->set.len;i++) value_set_add(r,a->set.items[i]);
@@ -755,7 +809,7 @@ int vm_run(VM *vm, Chunk *chunk) {
             } else { vm_error(vm,"invalid operands for |",line); PUSH(value_null()); }
             value_release(a);value_release(b);break; }
         case OP_BIT_XOR: { Value *b=POP(),*a=POP();
-            if(a->type==VAL_INT&&b->type==VAL_INT) { PUSH(value_int(a->int_val^b->int_val)); }
+            if(a->type==VAL_INT&&b->type==VAL_INT) { PUSH(value_int(vm_fast_ixor(a->int_val,b->int_val))); }
             else if(a->type==VAL_SET&&b->type==VAL_SET) {
                 Value *r=value_set_new();
                 for(int i=0;i<a->set.len;i++) if(!value_set_has(b,a->set.items[i])) value_set_add(r,a->set.items[i]);

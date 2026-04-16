@@ -328,8 +328,48 @@ void vm_register_builtins(VM *vm) {
 static char *vm_process_fstring(VM *vm, const char *tmpl, Env *env);
 
 /* Forward declarations for method dispatch */
-static Value *vm_dispatch_method(VM *vm, Value *obj, const char *method,
-                                  Value **args, int argc, int line);
+typedef enum {
+    VM_METHOD_UNKNOWN = 0,
+    VM_METHOD_STRING_UPPER,
+    VM_METHOD_STRING_LOWER,
+    VM_METHOD_STRING_STRIP,
+    VM_METHOD_STRING_LSTRIP,
+    VM_METHOD_STRING_RSTRIP,
+    VM_METHOD_STRING_LEN,
+    VM_METHOD_STRING_CAPITALIZE,
+    VM_METHOD_STRING_FIND,
+    VM_METHOD_STRING_REPLACE,
+    VM_METHOD_STRING_STARTSWITH,
+    VM_METHOD_STRING_ENDSWITH,
+    VM_METHOD_STRING_SPLIT,
+    VM_METHOD_STRING_JOIN,
+    VM_METHOD_STRING_ISDIGIT,
+    VM_METHOD_STRING_ISALPHA,
+    VM_METHOD_ARRAY_ADD,
+    VM_METHOD_ARRAY_POP,
+    VM_METHOD_ARRAY_SORT,
+    VM_METHOD_ARRAY_INSERT,
+    VM_METHOD_ARRAY_REMOVE,
+    VM_METHOD_ARRAY_EXTEND,
+    VM_METHOD_ARRAY_LEN,
+    VM_METHOD_DICT_KEYS,
+    VM_METHOD_DICT_VALUES,
+    VM_METHOD_DICT_ITEMS,
+    VM_METHOD_DICT_ERASE,
+    VM_METHOD_DICT_GET,
+    VM_METHOD_SET_ADD,
+    VM_METHOD_SET_REMOVE,
+    VM_METHOD_SET_DISCARD,
+    VM_METHOD_SET_UPDATE,
+    VM_METHOD_TUPLE_COUNT,
+    VM_METHOD_TUPLE_INDEX,
+} VmMethodId;
+
+static Value *vm_dispatch_method_slow(VM *vm, Value *obj, const char *method,
+                                       Value **args, int argc, int line);
+static Value *vm_dispatch_method_cached(VM *vm, Value *obj, const char *method,
+                                         VmMethodId method_id, Value **args,
+                                         int argc, int line);
 
 /* ================================================================== VM new/free */
 
@@ -349,8 +389,66 @@ void vm_free(VM *vm) {
 
 /* ================================================================== method dispatch */
 
-static Value *vm_dispatch_method(VM *vm, Value *obj, const char *method,
-                                  Value **args, int argc, int line) {
+static VmMethodId vm_resolve_method_id(ValueType type, const char *method) {
+    switch (type) {
+        case VAL_STRING:
+            if (strcmp(method, "upper") == 0) return VM_METHOD_STRING_UPPER;
+            if (strcmp(method, "lower") == 0) return VM_METHOD_STRING_LOWER;
+            if (strcmp(method, "strip") == 0) return VM_METHOD_STRING_STRIP;
+            if (strcmp(method, "lstrip") == 0) return VM_METHOD_STRING_LSTRIP;
+            if (strcmp(method, "rstrip") == 0) return VM_METHOD_STRING_RSTRIP;
+            if (strcmp(method, "len") == 0) return VM_METHOD_STRING_LEN;
+            if (strcmp(method, "capitalize") == 0) return VM_METHOD_STRING_CAPITALIZE;
+            if (strcmp(method, "find") == 0) return VM_METHOD_STRING_FIND;
+            if (strcmp(method, "replace") == 0) return VM_METHOD_STRING_REPLACE;
+            if (strcmp(method, "startswith") == 0) return VM_METHOD_STRING_STARTSWITH;
+            if (strcmp(method, "endswith") == 0) return VM_METHOD_STRING_ENDSWITH;
+            if (strcmp(method, "split") == 0) return VM_METHOD_STRING_SPLIT;
+            if (strcmp(method, "join") == 0) return VM_METHOD_STRING_JOIN;
+            if (strcmp(method, "isdigit") == 0) return VM_METHOD_STRING_ISDIGIT;
+            if (strcmp(method, "isalpha") == 0) return VM_METHOD_STRING_ISALPHA;
+            break;
+        case VAL_ARRAY:
+            if (strcmp(method, "add") == 0) return VM_METHOD_ARRAY_ADD;
+            if (strcmp(method, "pop") == 0) return VM_METHOD_ARRAY_POP;
+            if (strcmp(method, "sort") == 0) return VM_METHOD_ARRAY_SORT;
+            if (strcmp(method, "insert") == 0) return VM_METHOD_ARRAY_INSERT;
+            if (strcmp(method, "remove") == 0) return VM_METHOD_ARRAY_REMOVE;
+            if (strcmp(method, "extend") == 0) return VM_METHOD_ARRAY_EXTEND;
+            if (strcmp(method, "len") == 0) return VM_METHOD_ARRAY_LEN;
+            break;
+        case VAL_DICT:
+            if (strcmp(method, "keys") == 0) return VM_METHOD_DICT_KEYS;
+            if (strcmp(method, "values") == 0) return VM_METHOD_DICT_VALUES;
+            if (strcmp(method, "items") == 0) return VM_METHOD_DICT_ITEMS;
+            if (strcmp(method, "erase") == 0) return VM_METHOD_DICT_ERASE;
+            if (strcmp(method, "get") == 0) return VM_METHOD_DICT_GET;
+            break;
+        case VAL_SET:
+            if (strcmp(method, "add") == 0) return VM_METHOD_SET_ADD;
+            if (strcmp(method, "remove") == 0) return VM_METHOD_SET_REMOVE;
+            if (strcmp(method, "discard") == 0) return VM_METHOD_SET_DISCARD;
+            if (strcmp(method, "update") == 0) return VM_METHOD_SET_UPDATE;
+            break;
+        case VAL_TUPLE:
+            if (strcmp(method, "count") == 0) return VM_METHOD_TUPLE_COUNT;
+            if (strcmp(method, "index") == 0) return VM_METHOD_TUPLE_INDEX;
+            break;
+        default:
+            break;
+    }
+    return VM_METHOD_UNKNOWN;
+}
+
+static void vm_no_method_error(VM *vm, Value *obj, const char *method, int line) {
+    char msg[256];
+    snprintf(msg, sizeof(msg), "type '%s' has no method '%s'",
+             value_type_name(obj->type), method);
+    vm_error(vm, msg, line);
+}
+
+static Value *vm_dispatch_method_slow(VM *vm, Value *obj, const char *method,
+                                       Value **args, int argc, int line) {
     /* Re-use the interpreter's method dispatch by creating a temporary interpreter. */
     /* Actually we implement the methods directly here to avoid coupling. */
 
@@ -509,11 +607,7 @@ static Value *vm_dispatch_method(VM *vm, Value *obj, const char *method,
             return arr2;
         }
         if (strcmp(method, "erase") == 0) {
-            for (int i=0;i<obj->dict.len;i++) {
-                value_release(obj->dict.entries[i].key);
-                value_release(obj->dict.entries[i].val);
-            }
-            obj->dict.len = 0;
+            value_dict_clear(obj);
             return value_null();
         }
         if (strcmp(method, "get") == 0 && argc >= 1) {
@@ -552,6 +646,213 @@ static Value *vm_dispatch_method(VM *vm, Value *obj, const char *method,
     snprintf(msg, sizeof(msg), "type '%s' has no method '%s'",
              value_type_name(obj->type), method);
     vm_error(vm, msg, line);
+    return value_null();
+}
+
+static Value *vm_dispatch_method_cached(VM *vm, Value *obj, const char *method,
+                                         VmMethodId method_id, Value **args,
+                                         int argc, int line) {
+    if (method_id == VM_METHOD_UNKNOWN)
+        return vm_dispatch_method_slow(vm, obj, method, args, argc, line);
+
+    const char *s = obj->type == VAL_STRING ? obj->str_val : NULL;
+    switch (method_id) {
+        case VM_METHOD_STRING_UPPER: {
+            char *r = strdup(s);
+            for (int i = 0; r[i]; i++) if (r[i]>='a'&&r[i]<='z') r[i]-=32;
+            return value_string_take(r);
+        }
+        case VM_METHOD_STRING_LOWER: {
+            char *r = strdup(s);
+            for (int i = 0; r[i]; i++) if (r[i]>='A'&&r[i]<='Z') r[i]+=32;
+            return value_string_take(r);
+        }
+        case VM_METHOD_STRING_STRIP: {
+            const char *start = s;
+            while (*start == ' ' || *start == '\t' || *start == '\n') start++;
+            const char *end = s + strlen(s);
+            while (end > start && (*(end-1)==' '||*(end-1)=='\t'||*(end-1)=='\n')) end--;
+            size_t len = (size_t)(end - start);
+            char *r = malloc(len + 1); memcpy(r, start, len); r[len] = '\0';
+            return value_string_take(r);
+        }
+        case VM_METHOD_STRING_LSTRIP: {
+            const char *p = s;
+            while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+            return value_string(p);
+        }
+        case VM_METHOD_STRING_RSTRIP: {
+            char *r = strdup(s);
+            int len = (int)strlen(r);
+            while (len > 0 && (r[len-1]==' '||r[len-1]=='\t'||r[len-1]=='\n')) r[--len]='\0';
+            return value_string_take(r);
+        }
+        case VM_METHOD_STRING_LEN:
+            return value_int((long long)strlen(s));
+        case VM_METHOD_STRING_CAPITALIZE: {
+            char *r = strdup(s);
+            if (r[0]>='a'&&r[0]<='z') r[0]-=32;
+            for (int i=1;r[i];i++) if(r[i]>='A'&&r[i]<='Z') r[i]+=32;
+            return value_string_take(r);
+        }
+        case VM_METHOD_STRING_FIND:
+            if (argc >= 1 && args[0]->type == VAL_STRING) {
+                const char *p = strstr(s, args[0]->str_val);
+                return value_int(p ? (long long)(p - s) : -1);
+            }
+            break;
+        case VM_METHOD_STRING_REPLACE:
+            if (argc >= 2 && args[0]->type==VAL_STRING && args[1]->type==VAL_STRING) {
+                const char *from = args[0]->str_val, *to = args[1]->str_val;
+                size_t flen = strlen(from), tlen = strlen(to);
+                size_t rlen = 0, slen = strlen(s);
+                const char *p = s;
+                while ((p = strstr(p, from)) != NULL) { rlen += tlen - flen; p += flen; }
+                char *r = malloc(slen + rlen + 1);
+                char *out = r; p = s;
+                const char *q;
+                while ((q = strstr(p, from)) != NULL) {
+                    size_t pre = (size_t)(q - p);
+                    memcpy(out, p, pre); out += pre;
+                    memcpy(out, to, tlen); out += tlen;
+                    p = q + flen;
+                }
+                strcpy(out, p);
+                return value_string_take(r);
+            }
+            break;
+        case VM_METHOD_STRING_STARTSWITH:
+            if (argc >= 1 && args[0]->type==VAL_STRING)
+                return value_bool(strncmp(s, args[0]->str_val, strlen(args[0]->str_val))==0 ? 1 : 0);
+            break;
+        case VM_METHOD_STRING_ENDSWITH:
+            if (argc >= 1 && args[0]->type==VAL_STRING) {
+                size_t sl=strlen(s), pl=strlen(args[0]->str_val);
+                return value_bool(sl>=pl && strcmp(s+sl-pl, args[0]->str_val)==0 ? 1 : 0);
+            }
+            break;
+        case VM_METHOD_STRING_SPLIT: {
+            const char *delim = (argc>=1&&args[0]->type==VAL_STRING) ? args[0]->str_val : " ";
+            Value *arr = value_array_new();
+            char *copy = strdup(s);
+            size_t dl = strlen(delim);
+            if (dl == 0) { free(copy); return arr; }
+            char *p2 = copy;
+            while (1) {
+                char *tok = strstr(p2, delim);
+                if (!tok) { value_array_push(arr, value_string(p2)); break; }
+                *tok = '\0'; value_array_push(arr, value_string(p2)); p2 = tok + dl;
+            }
+            free(copy);
+            return arr;
+        }
+        case VM_METHOD_STRING_JOIN:
+            if (argc >= 1 && (args[0]->type==VAL_ARRAY||args[0]->type==VAL_TUPLE)) {
+                ValueArray *arr2 = args[0]->type==VAL_ARRAY ? &args[0]->array : &args[0]->tuple;
+                size_t dlen = strlen(s), total = 0;
+                for (int i=0;i<arr2->len;i++) {
+                    char *tmp = value_to_string(arr2->items[i]);
+                    total += strlen(tmp); free(tmp);
+                    if (i < arr2->len-1) total += dlen;
+                }
+                char *r = malloc(total+1); r[0]='\0';
+                for (int i=0;i<arr2->len;i++) {
+                    char *tmp = value_to_string(arr2->items[i]);
+                    strcat(r, tmp); free(tmp);
+                    if (i < arr2->len-1) strcat(r, s);
+                }
+                return value_string_take(r);
+            }
+            break;
+        case VM_METHOD_STRING_ISDIGIT: {
+            bool ok = *s!='\0';
+            for (const char *p=s;*p;p++) if(*p<'0'||*p>'9'){ok=false;break;}
+            return value_bool(ok?1:0);
+        }
+        case VM_METHOD_STRING_ISALPHA: {
+            bool ok = *s!='\0';
+            for (const char *p=s;*p;p++) if(!((*p>='a'&&*p<='z')||(*p>='A'&&*p<='Z'))){ok=false;break;}
+            return value_bool(ok?1:0);
+        }
+        case VM_METHOD_ARRAY_ADD:
+            if (argc >= 1) { value_array_push(obj, args[0]); return value_null(); }
+            break;
+        case VM_METHOD_ARRAY_POP: {
+            long long idx = (argc>=1&&args[0]->type==VAL_INT) ? args[0]->int_val : -1;
+            return value_array_pop(obj, idx);
+        }
+        case VM_METHOD_ARRAY_SORT:
+            value_array_sort(obj); return value_null();
+        case VM_METHOD_ARRAY_INSERT:
+            if (argc >= 2 && args[0]->type==VAL_INT) { value_array_insert(obj, args[0]->int_val, args[1]); return value_null(); }
+            break;
+        case VM_METHOD_ARRAY_REMOVE:
+            if (argc >= 1) { value_array_remove(obj, args[0]); return value_null(); }
+            break;
+        case VM_METHOD_ARRAY_EXTEND:
+            if (argc >= 1) { value_array_extend(obj, args[0]); return value_null(); }
+            break;
+        case VM_METHOD_ARRAY_LEN:
+            return value_int(obj->array.len);
+        case VM_METHOD_DICT_KEYS: {
+            Value *arr2 = value_array_new();
+            for (int i=0;i<obj->dict.len;i++) value_array_push(arr2, value_retain(obj->dict.entries[i].key));
+            return arr2;
+        }
+        case VM_METHOD_DICT_VALUES: {
+            Value *arr2 = value_array_new();
+            for (int i=0;i<obj->dict.len;i++) value_array_push(arr2, value_retain(obj->dict.entries[i].val));
+            return arr2;
+        }
+        case VM_METHOD_DICT_ITEMS: {
+            Value *arr2 = value_array_new();
+            for (int i=0;i<obj->dict.len;i++) {
+                Value *items[2] = {obj->dict.entries[i].key, obj->dict.entries[i].val};
+                value_array_push(arr2, value_tuple_new(items, 2));
+            }
+            return arr2;
+        }
+        case VM_METHOD_DICT_ERASE:
+            value_dict_clear(obj); return value_null();
+        case VM_METHOD_DICT_GET:
+            if (argc >= 1) {
+                Value *v = value_dict_get(obj, args[0]);
+                return v ? value_retain(v) : (argc>=2 ? value_retain(args[1]) : value_null());
+            }
+            break;
+        case VM_METHOD_SET_ADD:
+            if (argc>=1) { value_set_add(obj,args[0]); return value_null(); }
+            break;
+        case VM_METHOD_SET_REMOVE:
+        case VM_METHOD_SET_DISCARD:
+            if (argc>=1) { value_set_remove(obj,args[0]); return value_null(); }
+            break;
+        case VM_METHOD_SET_UPDATE:
+            if (argc>=1&&(args[0]->type==VAL_SET||args[0]->type==VAL_ARRAY)) {
+                ValueArray *src = args[0]->type==VAL_SET ? &args[0]->set : &args[0]->array;
+                for (int i=0;i<src->len;i++) value_set_add(obj,src->items[i]);
+                return value_null();
+            }
+            break;
+        case VM_METHOD_TUPLE_COUNT:
+            if (argc>=1) {
+                int cnt=0;
+                for (int i=0;i<obj->tuple.len;i++) if(value_equals(obj->tuple.items[i],args[0])) cnt++;
+                return value_int(cnt);
+            }
+            break;
+        case VM_METHOD_TUPLE_INDEX:
+            if (argc>=1) {
+                for (int i=0;i<obj->tuple.len;i++)
+                    if(value_equals(obj->tuple.items[i],args[0])) return value_int(i);
+                return value_int(-1);
+            }
+            break;
+        default:
+            break;
+    }
+
+    vm_no_method_error(vm, obj, method, line);
     return value_null();
 }
 
@@ -1012,14 +1313,23 @@ int vm_run(VM *vm, Chunk *chunk) {
         }
 
         case OP_GET_ATTR: {
+            int instruction_ip = frame->ip - 1;
             uint16_t name_idx = READ_U16();
             const char *name = CONST(name_idx)->str_val;
             Value *obj = POP();
-            /* Dict member access: obj["key"] */
             if (obj->type == VAL_DICT) {
-                Value *k = value_string(name);
-                Value *v = value_dict_get(obj, k);
-                value_release(k);
+                InlineCache *cache = chunk_inline_cache(frame->chunk, instruction_ip);
+                if (cache && (cache->opcode != OP_GET_ATTR || cache->name_idx != name_idx)) {
+                    cache->opcode = OP_GET_ATTR;
+                    cache->name_idx = name_idx;
+                    cache->receiver_type = VAL_DICT;
+                    cache->dict_index = -1;
+                    cache->dict_version = 0;
+                    cache->method_id = VM_METHOD_UNKNOWN;
+                }
+                Value *v = cache
+                    ? value_dict_get_cached(obj, CONST(name_idx), &cache->dict_index, &cache->dict_version)
+                    : value_dict_get(obj, CONST(name_idx));
                 PUSH(v ? value_retain(v) : value_null());
             } else {
                 char msg[256];
@@ -1033,13 +1343,20 @@ int vm_run(VM *vm, Chunk *chunk) {
         }
 
         case OP_SET_ATTR: {
+            int instruction_ip = frame->ip - 1;
             uint16_t name_idx = READ_U16();
-            const char *name = CONST(name_idx)->str_val;
             Value *val = POP(), *obj = POP();
             if (obj->type == VAL_DICT) {
-                Value *k = value_string(name);
-                value_dict_set(obj, k, val);
-                value_release(k);
+                InlineCache *cache = chunk_inline_cache(frame->chunk, instruction_ip);
+                value_dict_set(obj, CONST(name_idx), val);
+                if (cache) {
+                    cache->opcode = OP_SET_ATTR;
+                    cache->name_idx = name_idx;
+                    cache->receiver_type = VAL_DICT;
+                    cache->dict_index = value_dict_find_index(obj, CONST(name_idx));
+                    cache->dict_version = obj->dict.version;
+                    cache->method_id = VM_METHOD_UNKNOWN;
+                }
             } else {
                 vm_error(vm, "cannot set attribute on non-dict", line);
             }
@@ -1127,13 +1444,31 @@ int vm_run(VM *vm, Chunk *chunk) {
         }
 
         case OP_CALL_METHOD: {
+            int instruction_ip = frame->ip - 1;
             uint16_t name_idx = READ_U16();
             uint16_t argc     = READ_U16();
             const char *method_name = CONST(name_idx)->str_val;
             Value **args = malloc(argc * sizeof(Value*));
             for (int i = argc-1; i >= 0; i--) args[i] = POP();
             Value *obj = POP();
-            Value *result = vm_dispatch_method(vm, obj, method_name, args, argc, line);
+            InlineCache *cache = chunk_inline_cache(frame->chunk, instruction_ip);
+            VmMethodId method_id = VM_METHOD_UNKNOWN;
+            if (cache && cache->opcode == OP_CALL_METHOD
+                && cache->name_idx == name_idx
+                && cache->receiver_type == obj->type) {
+                method_id = (VmMethodId)cache->method_id;
+            } else {
+                method_id = vm_resolve_method_id(obj->type, method_name);
+                if (cache) {
+                    cache->opcode = OP_CALL_METHOD;
+                    cache->name_idx = name_idx;
+                    cache->receiver_type = obj->type;
+                    cache->method_id = method_id;
+                    cache->dict_index = -1;
+                    cache->dict_version = 0;
+                }
+            }
+            Value *result = vm_dispatch_method_cached(vm, obj, method_name, method_id, args, argc, line);
             for (int i = 0; i < argc; i++) value_release(args[i]);
             free(args);
             value_release(obj);

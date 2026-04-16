@@ -34,7 +34,7 @@
 - [x] Add a constant pool for strings and numbers
 - [x] Add call frames for function calls in the VM
 - [x] Profile and benchmark: compare tree-walker vs VM speed
-- [ ] Add inline caching for faster property/method lookup
+- [x] Add inline caching for faster property/method lookup
 - [x] Explore assembly (x86-64) for hot paths in the VM (e.g., arithmetic dispatch)
 - [x] Add a serializer: save compiled bytecode to `.pmc` files (prism bytecode cache)
 

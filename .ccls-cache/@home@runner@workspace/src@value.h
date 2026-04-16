@@ -40,6 +40,7 @@ typedef struct {
     DictEntry *entries;
     int        len;
     int        cap;
+    unsigned int version;
 } ValueDict;
 
 struct Value {
@@ -109,6 +110,10 @@ void   value_array_extend(Value *arr, Value *other);
 Value *value_dict_get(Value *dict, Value *key);
 void   value_dict_set(Value *dict, Value *key, Value *val);
 bool   value_dict_remove(Value *dict, Value *key);
+int    value_dict_find_index(Value *dict, Value *key);
+Value *value_dict_get_at(Value *dict, int index);
+Value *value_dict_get_cached(Value *dict, Value *key, int *index, unsigned int *version);
+void   value_dict_clear(Value *dict);
 
 /* Set operations */
 bool   value_set_has(Value *set, Value *item);
