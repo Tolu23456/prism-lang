@@ -33,6 +33,31 @@
 - [x] `make install` / `make uninstall` targets with `PREFIX`/`DESTDIR` support
 - [x] Cross-platform X11 build hardening: `#ifdef HAVE_X11` guards, `PrismGC` rename to avoid X11 `GC` clash, graceful no-X11 stubs for all `xgui_*` builtins
 
+## Goal: O(1) Core Operations
+The single architectural decision that brings most of Prism's hot paths to O(1) is **intern everything + hash maps everywhere**. Once all identifier strings are interned at lex/parse time, two names are equal if and only if their pointers match — no character comparison needed at runtime. Every operation that currently does a `strcmp` chain or a linear scan can then be replaced with a pointer hash lookup.
+
+These items must be done together as a coordinated change:
+
+- [ ] **Intern all identifiers at lex time**: every identifier token produced by the lexer (`TOKEN_IDENT`) should be passed through `gc_intern_string` before the token value is stored. After this point, the string `"x"` always has exactly one address — no matter how many times it appears in source.
+- [ ] **Intern all string literals used as dict keys**: string literals used as dictionary keys (the most common case) should also be interned so dict lookups can use pointer equality.
+- [ ] **Hash map per `Env` with pointer keys**: replace `Env`'s flat parallel arrays with a small open-address hash map keyed on interned `const char *` pointers. Lookup, insert, and assign all become O(1). Combined with interning, `env_get("x")` becomes a single pointer hash — no strcmp, no scope chain linear scan.
+- [ ] **Pointer-equality method dispatch**: intern all built-in method name strings at startup (e.g. `"upper"`, `"add"`, `"keys"`). Replace the `strcmp` chains in `vm_resolve_method_id` and `vm_dispatch_method_slow` with a hash table keyed on interned pointers — O(1) dispatch for every method call.
+- [ ] **Doubly-linked GC object list → O(1) untrack**: add `gc_prev` to `Value` so splice-out on free is O(1) instead of an O(n) list walk. (Also listed under GC correctness below.)
+- [ ] **Pointer equality for string comparison operator**: once strings are interned, `a == b` for two string values is a pointer compare — O(1) regardless of string length for any interned string.
+
+**Impact**: variable lookup, method dispatch, dict key lookup, and string equality all drop from O(n) to O(1). This is the highest-leverage single architectural improvement available to Prism.
+
+## Goal: Zero Memory Leaks
+Five things must all be in place simultaneously. None alone is sufficient.
+
+- [ ] **1 — Make sweep the default** *(prerequisite: all other four)*: enable `gc_collect_sweep` unconditionally in `gc_collect_audit`. Cycles between arrays, dicts, and closures are currently never reclaimed. This is the biggest source of leaks in Prism programs today. (Also listed under GC near-term.)
+- [ ] **2 — Temporary root stack for in-flight values**: values born mid-expression (result of `a + b` before assignment) are invisible to the GC mark phase. A small `push_root` / `pop_root` API called at every expression evaluation boundary ensures no live temporary is ever missed. Without this, enabling sweep by default risks freeing values that are still in use.
+- [ ] **3 — Precise rooting audit**: walk every path through which a live Prism value can be reached — VM stack, all call frame `Env` chains, constant pools, open upvalues, interned string table — and confirm each is covered by a `gc_mark_*` call. Any gap means a live object becomes invisible to the sweep and is incorrectly freed (use-after-free) or silently leaked.
+- [ ] **4 — Shutdown sweep + leak report**: at the end of `gc_shutdown`, after all Prism code has finished, run one final full collection. Any object still live at that point is a confirmed leak — log its type, size, and allocation site. This gives a deterministic, built-in leak report on every program run (gated behind `--mem-report` or a `PRISM_GC_LEAK_CHECK=1` env var).
+- [ ] **5 — AddressSanitizer / LeakSanitizer pass on the runtime itself**: the four items above cover leaks inside Prism *programs*. The Prism *runtime* (lexer, parser, AST nodes, compiler, chunk buffers) also allocates in C and must be verified separately. Build once with `-fsanitize=address,leak` and run the example suite; fix every report. This is a one-time audit, not ongoing maintenance.
+
+**When all five are done**: every allocation made by a Prism program is either collected by the GC or proven reachable; every C-level allocation in the runtime is freed at shutdown; and the leak report confirms zero residual objects on exit.
+
 ## Next Steps — GC / Memory Management (near-term correctness + speed)
 - [ ] **Make sweep the default collection mode**: remove the `--gc-sweep` opt-in requirement; `gc_collect_audit` should always sweep after marking. Most impactful correctness fix — in the current default mode cycles are never collected.
 - [ ] **Doubly-linked object list → O(1) untrack**: add a `gc_prev` pointer to `Value` so `gc_untrack_value` can splice out a node without walking the entire list. Currently every `value_release` that hits zero refcount is an O(n) scan.
