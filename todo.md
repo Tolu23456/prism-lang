@@ -50,6 +50,10 @@
 - [ ] Improve error messages with source location context
 - [ ] Add stack traces for runtime errors
 - [ ] REPL improvements: history, multiline input
+- [ ] Built-in formatter
+- [ ] Real dictionaries/hash maps
+- [ ] Better error handling
+- [ ] Excellent error handling
 
 ## Instruction for the next agent
 - Read this `todo.md` first, then `CHANGELOG.md`.
