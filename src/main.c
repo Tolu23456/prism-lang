@@ -133,7 +133,7 @@ static int run_source_tree(const char *source, const char *filename) {
 }
 
 static int run_benchmark(const char *source, const char *filename) {
-    /* benchmark mode — hint workload so GC uses throughput settings */
+    /* benchmark mode — hint workload so PrismGC uses throughput settings */
     gc_set_workload(gc_global(), GC_WORKLOAD_BENCH);
 
     clock_t t0 = clock();
@@ -207,7 +207,7 @@ static void run_repl(void) {
 /* ------------------------------------------------------------------ argument parsing */
 
 static const char *configure_gc_from_args(int argc, char **argv) {
-    GC *gc = gc_global();
+    PrismGC *gc = gc_global();
     gc_configure_from_env(gc);
 
     const char *path = NULL;
@@ -285,7 +285,7 @@ int main(int argc, char **argv) {
         }
     }
 
-    /* Check for formatter flags before GC setup (no GC needed for format-only) */
+    /* Check for formatter flags before PrismGC setup (no PrismGC needed for format-only) */
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--format") == 0 || strcmp(argv[i], "--format-write") == 0) {
             bool write_back = strcmp(argv[i], "--format-write") == 0;
@@ -341,10 +341,10 @@ int main(int argc, char **argv) {
         "  --bench                  compare tree-walker vs VM speed\n"
         "  --format <file>          print formatted source\n"
         "  --format-write <file>    format source file in place\n"
-        "  --gc-stats               print GC statistics at shutdown\n"
-        "  --gc-log                 log every GC event\n"
+        "  --gc-stats               print PrismGC statistics at shutdown\n"
+        "  --gc-log                 log every PrismGC event\n"
         "  --gc-sweep               enable mark-and-sweep collection\n"
-        "  --gc-stress              stress-test the GC (implies sweep+log+stats)\n"
+        "  --gc-stress              stress-test the PrismGC (implies sweep+log+stats)\n"
         "  --gc-policy=<name>       balanced|throughput|low-latency|debug|stress|adaptive\n"
         "  --mem-report             print full memory diagnostics at shutdown\n");
     value_immortals_free();

@@ -27,7 +27,7 @@ typedef struct VM {
     int         frame_count;
 
     Env        *globals;
-    GC         *gc;
+    PrismGC         *gc;
 
     int         had_error;
     char        error_msg[512];

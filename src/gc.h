@@ -94,8 +94,8 @@ typedef struct GCStats {
     size_t intern_bytes_saved; /* bytes saved by sharing              */
 } GCStats;
 
-/* ------------------------------------------------------------------ GC state */
-typedef struct GC {
+/* ------------------------------------------------------------------ PrismGC state */
+typedef struct PrismGC {
     /* object list */
     Value   *objects;          /* head of tracked-value linked list   */
 
@@ -104,7 +104,7 @@ typedef struct GC {
 
     /* policy and thresholds */
     GCPolicy policy;
-    size_t   next_collection;  /* alloc-count trigger for next GC     */
+    size_t   next_collection;  /* alloc-count trigger for next PrismGC     */
 
     /* generational state */
     size_t   young_count;      /* live young-generation objects       */
@@ -133,7 +133,7 @@ typedef struct GC {
     bool sweep_enabled;
     bool stats_on_shutdown;
     bool mem_report_enabled;
-} GC;
+} PrismGC;
 
 /* forward declarations */
 typedef struct Env Env;
@@ -141,10 +141,10 @@ typedef struct VM  VM;
 typedef struct Chunk Chunk;
 
 /* ------------------------------------------------------------------ lifecycle */
-GC         *gc_global(void);
-void        gc_init(GC *gc);
-void        gc_configure_from_env(GC *gc);
-void        gc_shutdown(GC *gc);
+PrismGC         *gc_global(void);
+void        gc_init(PrismGC *gc);
+void        gc_configure_from_env(PrismGC *gc);
+void        gc_shutdown(PrismGC *gc);
 
 /* ------------------------------------------------------------------ tracking */
 void        gc_track_value(Value *value);
@@ -154,27 +154,27 @@ void        gc_untrack_value(Value *value);
 void        gc_set_alloc_site(const char *file, int line);
 
 /* ------------------------------------------------------------------ marking */
-void        gc_mark_value(GC *gc, Value *value);
-void        gc_mark_env(GC *gc, Env *env);
-void        gc_mark_vm(GC *gc, VM *vm);
-void        gc_mark_chunk(GC *gc, Chunk *chunk);
-void        gc_reset_marks(GC *gc);
+void        gc_mark_value(PrismGC *gc, Value *value);
+void        gc_mark_env(PrismGC *gc, Env *env);
+void        gc_mark_vm(PrismGC *gc, VM *vm);
+void        gc_mark_chunk(PrismGC *gc, Chunk *chunk);
+void        gc_reset_marks(PrismGC *gc);
 
 /* ------------------------------------------------------------------ collection */
-void        gc_collect_audit(GC *gc, Env *env, VM *vm, Chunk *chunk);
-size_t      gc_collect_sweep(GC *gc, Env *env, VM *vm, Chunk *chunk); /* compat: full sweep */
-size_t      gc_collect_minor(GC *gc, Env *env, VM *vm, Chunk *chunk); /* young only         */
-size_t      gc_collect_major(GC *gc, Env *env, VM *vm, Chunk *chunk); /* all generations    */
+void        gc_collect_audit(PrismGC *gc, Env *env, VM *vm, Chunk *chunk);
+size_t      gc_collect_sweep(PrismGC *gc, Env *env, VM *vm, Chunk *chunk); /* compat: full sweep */
+size_t      gc_collect_minor(PrismGC *gc, Env *env, VM *vm, Chunk *chunk); /* young only         */
+size_t      gc_collect_major(PrismGC *gc, Env *env, VM *vm, Chunk *chunk); /* all generations    */
 
 /* ------------------------------------------------------------------ string interning */
-Value      *gc_intern_string(GC *gc, const char *s);
+Value      *gc_intern_string(PrismGC *gc, const char *s);
 
 /* ------------------------------------------------------------------ policy / reporting */
-void        gc_set_policy(GC *gc, GCPolicy policy);
-void        gc_set_workload(GC *gc, GCWorkload workload);
+void        gc_set_policy(PrismGC *gc, GCPolicy policy);
+void        gc_set_workload(PrismGC *gc, GCWorkload workload);
 const char *gc_policy_name(GCPolicy policy);
 const char *gc_workload_name(GCWorkload workload);
-void        gc_print_stats(GC *gc);
-void        gc_print_mem_report(GC *gc);
+void        gc_print_stats(PrismGC *gc);
+void        gc_print_mem_report(PrismGC *gc);
 
 #endif

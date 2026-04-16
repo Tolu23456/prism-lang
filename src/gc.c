@@ -9,9 +9,9 @@
 #include "vm.h"
 #include "chunk.h"
 
-/* ================================================================== global GC instance */
+/* ================================================================== global PrismGC instance */
 
-static GC g_gc;
+static PrismGC g_gc;
 
 /* ================================================================== allocation site globals
  *
@@ -30,7 +30,7 @@ void gc_set_alloc_site(const char *file, int line) {
 
 /* Find or create the AllocSite entry for (file, line).
  * Uses open-address linear probing keyed on line number. */
-static AllocSite *alloc_site_find(GC *gc, const char *file, int line) {
+static AllocSite *alloc_site_find(PrismGC *gc, const char *file, int line) {
     if (line <= 0) return NULL;
     uint32_t hash = (uint32_t)line * 2654435761u;
     size_t   slot = hash & (GC_ALLOC_SITE_CAP - 1);
@@ -50,7 +50,7 @@ static AllocSite *alloc_site_find(GC *gc, const char *file, int line) {
     return NULL; /* table full — silently drop (very unlikely) */
 }
 
-static void alloc_site_bump(GC *gc, ValueType type) {
+static void alloc_site_bump(PrismGC *gc, ValueType type) {
     AllocSite *s = alloc_site_find(gc, s_alloc_file, s_alloc_line);
     if (!s) return;
     s->count++;
@@ -74,14 +74,14 @@ static uint32_t fnv1a(const char *s) {
     return h;
 }
 
-static void intern_init(GC *gc) {
+static void intern_init(PrismGC *gc) {
     gc->intern_cap     = INTERN_INIT_CAP;
     gc->intern_count   = 0;
     gc->intern_bytes_saved = 0;
     gc->intern_buckets = calloc(gc->intern_cap, sizeof(InternBucket *));
 }
 
-static void intern_free(GC *gc) {
+static void intern_free(PrismGC *gc) {
     if (!gc->intern_buckets) return;
     for (size_t i = 0; i < gc->intern_cap; i++) {
         InternBucket *b = gc->intern_buckets[i];
@@ -99,7 +99,7 @@ static void intern_free(GC *gc) {
     gc->intern_buckets = NULL;
 }
 
-Value *gc_intern_string(GC *gc, const char *s) {
+Value *gc_intern_string(PrismGC *gc, const char *s) {
     if (!gc || !s) return NULL;
 
     /* don't intern very long strings */
@@ -134,7 +134,7 @@ Value *gc_intern_string(GC *gc, const char *s) {
     Value *v = calloc(1, sizeof(Value));
     v->type        = VAL_STRING;
     v->ref_count   = 1;
-    v->gc_immortal = 1;    /* immortal: never freed by GC or value_release */
+    v->gc_immortal = 1;    /* immortal: never freed by PrismGC or value_release */
     v->gc_generation = GC_GEN_OLD; /* treat as old — won't be swept */
     v->str_val     = strdup(s);
     /* NOT gc_track_value — immortals bypass the object list */
@@ -218,7 +218,7 @@ static void gc_free_tracked_value(Value *value) {
 }
 
 /* Reclaim all remaining tracked values (called at shutdown). */
-static void gc_reclaim_remaining(GC *gc) {
+static void gc_reclaim_remaining(PrismGC *gc) {
     if (!gc) return;
     size_t reclaimed = 0;
     Value *value = gc->objects;
@@ -249,7 +249,7 @@ static void gc_reclaim_remaining(GC *gc) {
  * down when they die quickly (many temporaries).
  * ================================================================== */
 
-static void gc_adaptive_tune(GC *gc, size_t before, size_t freed) {
+static void gc_adaptive_tune(PrismGC *gc, size_t before, size_t freed) {
     if (gc->policy != GC_POLICY_ADAPTIVE && gc->policy != GC_POLICY_BALANCED) return;
     if (before == 0) return;
 
@@ -275,7 +275,7 @@ static void gc_adaptive_tune(GC *gc, size_t before, size_t freed) {
 
 /* ================================================================== lifecycle */
 
-GC *gc_global(void) {
+PrismGC *gc_global(void) {
     if (!g_gc.initialized) {
         gc_init(&g_gc);
         gc_configure_from_env(&g_gc);
@@ -283,19 +283,19 @@ GC *gc_global(void) {
     return &g_gc;
 }
 
-void gc_init(GC *gc) {
+void gc_init(PrismGC *gc) {
     if (!gc) return;
     memset(gc, 0, sizeof(*gc));
     gc->policy          = GC_POLICY_ADAPTIVE;
     gc->next_collection = 1024 * 1024;  /* 1 MB */
-    gc->major_interval  = 8;            /* major GC every 8 minors */
+    gc->major_interval  = 8;            /* major PrismGC every 8 minors */
     gc->survival_ema    = 0.50;         /* start with neutral assumption */
     gc->workload        = GC_WORKLOAD_SCRIPT;
     gc->initialized     = true;
     intern_init(gc);
 }
 
-void gc_configure_from_env(GC *gc) {
+void gc_configure_from_env(PrismGC *gc) {
     if (!gc) return;
 
     const char *policy = getenv("PRISM_GC_POLICY");
@@ -323,7 +323,7 @@ void gc_configure_from_env(GC *gc) {
     }
 }
 
-void gc_shutdown(GC *gc) {
+void gc_shutdown(PrismGC *gc) {
     if (!gc || !gc->initialized) return;
     if (gc->stats_on_shutdown || gc->log_enabled) gc_print_stats(gc);
     if (gc->mem_report_enabled) gc_print_mem_report(gc);
@@ -340,7 +340,7 @@ void gc_shutdown(GC *gc) {
 void gc_track_value(Value *value) {
     if (!value || value->gc_immortal) return;
 
-    GC *gc = gc_global();
+    PrismGC *gc = gc_global();
     value->gc_marked     = 0;
     value->gc_generation = GC_GEN_YOUNG;
     value->gc_next       = gc->objects;
@@ -370,7 +370,7 @@ void gc_track_value(Value *value) {
 void gc_untrack_value(Value *value) {
     if (!value || value->gc_immortal) return;
 
-    GC *gc = gc_global();
+    PrismGC *gc = gc_global();
     Value *prev = NULL;
     Value *cur  = gc->objects;
 
@@ -410,7 +410,7 @@ void gc_untrack_value(Value *value) {
 
 /* ================================================================== marking */
 
-void gc_mark_value(GC *gc, Value *value) {
+void gc_mark_value(PrismGC *gc, Value *value) {
     if (!gc || !value || value->gc_marked || value->gc_immortal) return;
 
     value->gc_marked = 1;
@@ -443,7 +443,7 @@ void gc_mark_value(GC *gc, Value *value) {
     }
 }
 
-void gc_mark_env(GC *gc, Env *env) {
+void gc_mark_env(PrismGC *gc, Env *env) {
     if (!gc || !env) return;
     for (Env *e = env; e; e = e->parent) {
         for (int i = 0; i < e->size; i++) {
@@ -453,7 +453,7 @@ void gc_mark_env(GC *gc, Env *env) {
     }
 }
 
-void gc_mark_vm(GC *gc, VM *vm) {
+void gc_mark_vm(PrismGC *gc, VM *vm) {
     if (!gc || !vm) return;
     for (int i = 0; i < vm->stack_top; i++) {
         gc->stats.roots_marked++;
@@ -466,7 +466,7 @@ void gc_mark_vm(GC *gc, VM *vm) {
     }
 }
 
-void gc_mark_chunk(GC *gc, Chunk *chunk) {
+void gc_mark_chunk(PrismGC *gc, Chunk *chunk) {
     if (!gc || !chunk) return;
     for (int i = 0; i < chunk->const_count; i++) {
         gc->stats.roots_marked++;
@@ -474,7 +474,7 @@ void gc_mark_chunk(GC *gc, Chunk *chunk) {
     }
 }
 
-void gc_reset_marks(GC *gc) {
+void gc_reset_marks(PrismGC *gc) {
     if (!gc) return;
     for (Value *v = gc->objects; v; v = v->gc_next) v->gc_marked = 0;
     gc->stats.roots_marked  = 0;
@@ -483,7 +483,7 @@ void gc_reset_marks(GC *gc) {
 
 /* ================================================================== collection — audit (non-destructive) */
 
-void gc_collect_audit(GC *gc, Env *env, VM *vm, Chunk *chunk) {
+void gc_collect_audit(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
     if (!gc) return;
 
     gc_reset_marks(gc);
@@ -523,7 +523,7 @@ void gc_collect_audit(GC *gc, Env *env, VM *vm, Chunk *chunk) {
  * Old objects are left untouched.
  * ================================================================== */
 
-size_t gc_collect_minor(GC *gc, Env *env, VM *vm, Chunk *chunk) {
+size_t gc_collect_minor(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
     if (!gc) return 0;
 
     gc_reset_marks(gc);
@@ -597,7 +597,7 @@ size_t gc_collect_minor(GC *gc, Env *env, VM *vm, Chunk *chunk) {
  * Full mark-and-sweep across young and old objects.
  * ================================================================== */
 
-size_t gc_collect_major(GC *gc, Env *env, VM *vm, Chunk *chunk) {
+size_t gc_collect_major(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
     if (!gc) return 0;
 
     gc_reset_marks(gc);
@@ -654,14 +654,14 @@ size_t gc_collect_major(GC *gc, Env *env, VM *vm, Chunk *chunk) {
 
 /* ================================================================== collection — compat wrapper */
 
-size_t gc_collect_sweep(GC *gc, Env *env, VM *vm, Chunk *chunk) {
+size_t gc_collect_sweep(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
     /* kept for API compatibility: delegates to major collection */
     return gc_collect_major(gc, env, vm, chunk);
 }
 
 /* ================================================================== policy & workload */
 
-void gc_set_policy(GC *gc, GCPolicy policy) {
+void gc_set_policy(PrismGC *gc, GCPolicy policy) {
     if (!gc) return;
     gc->policy = policy;
 
@@ -691,7 +691,7 @@ void gc_set_policy(GC *gc, GCPolicy policy) {
     }
 }
 
-void gc_set_workload(GC *gc, GCWorkload workload) {
+void gc_set_workload(PrismGC *gc, GCWorkload workload) {
     if (!gc) return;
     gc->workload = workload;
 
@@ -749,7 +749,7 @@ const char *gc_workload_name(GCWorkload workload) {
 
 /* ================================================================== reporting */
 
-void gc_print_stats(GC *gc) {
+void gc_print_stats(PrismGC *gc) {
     if (!gc) return;
 
     fprintf(stderr,
@@ -797,7 +797,7 @@ void gc_print_stats(GC *gc) {
  *   - Qualitative health indicators
  * ================================================================== */
 
-void gc_print_mem_report(GC *gc) {
+void gc_print_mem_report(PrismGC *gc) {
     if (!gc) return;
 
     fprintf(stderr, "\n");
@@ -840,7 +840,7 @@ void gc_print_mem_report(GC *gc) {
     /* ---- generational breakdown ---- */
     fprintf(stderr, "Generational breakdown:\n");
     fprintf(stderr, "  Young  : %zu live  (recently allocated, not yet promoted)\n", gc->young_count);
-    fprintf(stderr, "  Old    : %zu live  (survived at least one minor GC)\n",       gc->old_count);
+    fprintf(stderr, "  Old    : %zu live  (survived at least one minor PrismGC)\n",       gc->old_count);
     fprintf(stderr, "\n");
 
     /* ---- per-type breakdown ---- */
@@ -880,7 +880,7 @@ void gc_print_mem_report(GC *gc) {
     fprintf(stderr, "  Count     : %zu  (null, true, false, unknown, ints %d–%d)\n",
             gc->stats.immortal_count,
             GC_SMALL_INT_MIN, GC_SMALL_INT_MAX);
-    fprintf(stderr, "  Note      : immortals bypass GC and ref-counting entirely\n");
+    fprintf(stderr, "  Note      : immortals bypass PrismGC and ref-counting entirely\n");
     fprintf(stderr, "\n");
 
     /* ---- string interning ---- */
@@ -911,7 +911,7 @@ void gc_print_mem_report(GC *gc) {
         fprintf(stderr, "  [ok] array lifecycle looks healthy\n");
 
     if (gc->stats.major_collections == 0 && gc->stats.minor_collections > 10)
-        fprintf(stderr, "  [i] no major GC ran — try --gc-sweep to enable collection\n");
+        fprintf(stderr, "  [i] no major PrismGC ran — try --gc-sweep to enable collection\n");
 
     fprintf(stderr, "\n");
 

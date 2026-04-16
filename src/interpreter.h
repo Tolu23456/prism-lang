@@ -22,7 +22,7 @@ typedef struct {
     bool        returning;
     bool        breaking;
     bool        continuing;
-    GC         *gc;
+    PrismGC         *gc;
     const char *filename;   /* source file path, used for alloc-site tracking */
 } Interpreter;
 
