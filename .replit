@@ -1,4 +1,4 @@
-modules = ["nodejs-20"]
+modules = ["c-clang20"]
 [agent]
 expertMode = true
 

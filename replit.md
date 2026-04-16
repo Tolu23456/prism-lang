@@ -31,6 +31,10 @@ make clean    # removes build artifacts
 make run      # builds and runs examples/hello.pm
 ```
 
+## Replit Environment
+
+The project is configured for Replit as a native C project using the C toolchain module. The `Start application` workflow builds the interpreter with `make` and runs `examples/hello.pm` as a smoke test in the console.
+
 ## Running
 
 ```bash
