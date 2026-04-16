@@ -1,0 +1,82 @@
+/* Prism Standard Library — event module
+   EventEmitter pattern inspired by Node.js EventEmitter.
+*/
+
+class EventEmitter {
+    func init() {
+        self._listeners = {}
+        self._once_set  = {}
+    }
+
+    func on(event, handler) {
+        if not has(self._listeners, event) {
+            self._listeners[event] = []
+        }
+        push(self._listeners[event], handler)
+        return self
+    }
+
+    func once(event, handler) {
+        self.on(event, handler)
+        if not has(self._once_set, event) {
+            self._once_set[event] = []
+        }
+        push(self._once_set[event], handler)
+        return self
+    }
+
+    func off(event, handler) {
+        if not has(self._listeners, event) { return self }
+        let updated = []
+        for h in self._listeners[event] {
+            if str(h) != str(handler) {
+                push(updated, h)
+            }
+        }
+        self._listeners[event] = updated
+        return self
+    }
+
+    func emit(event, ...args) {
+        if not has(self._listeners, event) { return self }
+        let to_remove = self._once_set[event] ?? []
+        let kept = []
+        for handler in self._listeners[event] {
+            handler(...args)
+            let is_once = false
+            for r in to_remove {
+                if str(r) == str(handler) { is_once = true }
+            }
+            if not is_once { push(kept, handler) }
+        }
+        self._listeners[event] = kept
+        if has(self._once_set, event) { self._once_set[event] = [] }
+        return self
+    }
+
+    func listeners(event) {
+        return self._listeners[event] ?? []
+    }
+
+    func listenerCount(event) {
+        return len(self._listeners[event] ?? [])
+    }
+
+    func removeAll(event) {
+        if event != void {
+            self._listeners[event] = []
+        } else {
+            self._listeners = {}
+            self._once_set  = {}
+        }
+        return self
+    }
+
+    func eventNames() {
+        return keys(self._listeners)
+    }
+}
+
+func makeEmitter() {
+    return new EventEmitter()
+}

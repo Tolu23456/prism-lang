@@ -1,0 +1,116 @@
+/* Prism Standard Library — async module
+   Async/concurrent utilities using Prism @thread decorator.
+   Inspired by JavaScript Promises and Python asyncio.
+*/
+
+class Promise {
+    func init(value, error_val, pending) {
+        self.value = value
+        self.error = error_val
+        self.pending = pending ?? false
+        self._then_fns = []
+        self._catch_fns = []
+    }
+
+    func then(callback) {
+        push(self._then_fns, callback)
+        if not self.pending and self.error == void {
+            self.value = callback(self.value)
+        }
+        return self
+    }
+
+    func catch(callback) {
+        push(self._catch_fns, callback)
+        if not self.pending and self.error != void {
+            callback(self.error)
+        }
+        return self
+    }
+
+    func resolve() {
+        return self.value
+    }
+}
+
+func resolved(value) {
+    return new Promise(value, void, false)
+}
+
+func rejected(err) {
+    return new Promise(void, err, false)
+}
+
+func all(promises) {
+    let results = []
+    for p in promises {
+        push(results, p.value)
+    }
+    return resolved(results)
+}
+
+func race(promises) {
+    if len(promises) == 0 { return rejected("No promises") }
+    return resolved(promises[0].value)
+}
+
+func sleep_async(ms) {
+    import time
+    time.sleep(ms / 1000)
+    return resolved(void)
+}
+
+class Deferred {
+    func init() {
+        self._value = void
+        self._resolved = false
+    }
+
+    func resolve(val) {
+        self._value = val
+        self._resolved = true
+    }
+
+    func value() {
+        return self._value
+    }
+
+    func isResolved() {
+        return self._resolved
+    }
+}
+
+func deferred() {
+    return new Deferred()
+}
+
+func timeout(ms, action) {
+    import time
+    let start = time.perf()
+    let result = action()
+    let elapsed = (time.perf() - start) * 1000
+    if elapsed > ms {
+        error(f"Timeout: operation took {str(int(elapsed))}ms (limit {str(ms)}ms)")
+    }
+    return result
+}
+
+func retry(action, max_attempts, delay_ms) {
+    import time
+    max_attempts = max_attempts ?? 3
+    delay_ms = delay_ms ?? 100
+    let attempt = 0
+    let last_err = void
+    while attempt < max_attempts {
+        try {
+            return action()
+        } catch (e) {
+            last_err = e
+            attempt += 1
+            if attempt < max_attempts {
+                time.sleep(delay_ms / 1000)
+            }
+        }
+    }
+    error(f"All {str(max_attempts)} attempts failed. Last error: {str(last_err)}")
+}

@@ -1,0 +1,584 @@
+/* Prism Standard Library — iter module
+   Comprehensive iteration utilities.
+   Inspired by Python itertools, Rust iterators, and Haskell Data.List.
+*/
+
+/* ── Constructors ────────────────────────────────────────── */
+
+func range(start, stop, step) {
+    step = step ?? 1
+    if step == 0 { error("iter.range: step cannot be zero") }
+    let result = []
+    let i = start
+    while (step > 0 and i < stop) or (step < 0 and i > stop) {
+        push(result, i)
+        i += step
+    }
+    return result
+}
+
+func repeat(val, n) {
+    let result = []
+    let i = 0
+    while i < n {
+        push(result, val)
+        i += 1
+    }
+    return result
+}
+
+func count(start, step, n) {
+    start = start ?? 0
+    step  = step  ?? 1
+    n     = n     ?? 10
+    let result = []
+    let i = 0
+    let cur = start
+    while i < n {
+        push(result, cur)
+        cur += step
+        i   += 1
+    }
+    return result
+}
+
+func unfold(f, seed, n) {
+    let result = []
+    let current = seed
+    let i = 0
+    while i < n {
+        push(result, current)
+        current = f(current)
+        i += 1
+    }
+    return result
+}
+
+func cycle(arr, n) {
+    if len(arr) == 0 { error("iter.cycle: cannot cycle empty array") }
+    let result = []
+    let i = 0
+    while i < n {
+        push(result, arr[i % len(arr)])
+        i += 1
+    }
+    return result
+}
+
+/* ── Slicing / Windowing ─────────────────────────────────── */
+
+func iterTake(arr, n) {
+    if n <= 0    { return [] }
+    if n >= len(arr) { return slice(arr, 0) }
+    return slice(arr, 0, n)
+}
+
+func iterDrop(arr, n) {
+    if n >= len(arr) { return [] }
+    if n <= 0        { return slice(arr, 0) }
+    return slice(arr, n)
+}
+
+func takeWhile(arr, pred) {
+    let result = []
+    for x in arr {
+        if not pred(x) { return result }
+        push(result, x)
+    }
+    return result
+}
+
+func dropWhile(arr, pred) {
+    let i = 0
+    while i < len(arr) and pred(arr[i]) { i += 1 }
+    return slice(arr, i)
+}
+
+func stepBy(arr, step) {
+    if step <= 0 { error("iter.stepBy: step must be > 0") }
+    let result = []
+    let i = 0
+    while i < len(arr) {
+        push(result, arr[i])
+        i += step
+    }
+    return result
+}
+
+func window(arr, size) {
+    if size <= 0 { error("iter.window: size must be > 0") }
+    let result = []
+    let i = 0
+    while i <= len(arr) - size {
+        push(result, slice(arr, i, i + size))
+        i += 1
+    }
+    return result
+}
+
+func sliding(arr, size, step) {
+    step = step ?? 1
+    if size <= 0 { error("iter.sliding: size must be > 0") }
+    if step <= 0 { error("iter.sliding: step must be > 0") }
+    let result = []
+    let i = 0
+    while i + size <= len(arr) {
+        push(result, slice(arr, i, i + size))
+        i += step
+    }
+    return result
+}
+
+func pairwise(arr) {
+    return window(arr, 2)
+}
+
+func chunked(arr, size) {
+    if size <= 0 { error("iter.chunked: size must be > 0") }
+    let result = []
+    let i = 0
+    while i < len(arr) {
+        push(result, slice(arr, i, i + size))
+        i += size
+    }
+    return result
+}
+
+/* ── Combining ───────────────────────────────────────────── */
+
+func chain(...arrs) {
+    let result = []
+    for arr in arrs {
+        for x in arr { push(result, x) }
+    }
+    return result
+}
+
+func zip(a, b) {
+    let result = []
+    let limit  = min(len(a), len(b))
+    let i = 0
+    while i < limit {
+        push(result, [a[i], b[i]])
+        i += 1
+    }
+    return result
+}
+
+func zip3(a, b, c) {
+    let result = []
+    let limit  = min(min(len(a), len(b)), len(c))
+    let i = 0
+    while i < limit {
+        push(result, [a[i], b[i], c[i]])
+        i += 1
+    }
+    return result
+}
+
+func zipLongest(a, b, fillVal) {
+    fillVal = fillVal ?? void
+    let result = []
+    let n = max(len(a), len(b))
+    let i = 0
+    while i < n {
+        let va = void
+        let vb = void
+        if i < len(a) { va = a[i] } else { va = fillVal }
+        if i < len(b) { vb = b[i] } else { vb = fillVal }
+        push(result, [va, vb])
+        i += 1
+    }
+    return result
+}
+
+func unzip(pairs) {
+    let a = []
+    let b = []
+    for pair in pairs {
+        push(a, pair[0])
+        push(b, pair[1])
+    }
+    return [a, b]
+}
+
+func interpose(arr, sep) {
+    if len(arr) == 0 { return [] }
+    let result = [arr[0]]
+    let i = 1
+    while i < len(arr) {
+        push(result, sep)
+        push(result, arr[i])
+        i += 1
+    }
+    return result
+}
+
+func roundRobin(...arrs) {
+    let result  = []
+    let indices = []
+    for _ in arrs { push(indices, 0) }
+    let active = len(arrs)
+    while active > 0 {
+        let i = 0
+        while i < len(arrs) {
+            if indices[i] < len(arrs[i]) {
+                push(result, arrs[i][indices[i]])
+                indices[i] += 1
+            }
+            i += 1
+        }
+        active = 0
+        for j in range(0, len(arrs), 1) {
+            if indices[j] < len(arrs[j]) { active += 1 }
+        }
+    }
+    return result
+}
+
+func product_iter(...arrs) {
+    let result = [[]]
+    for arr in arrs {
+        let next = []
+        for existing in result {
+            for x in arr {
+                push(next, existing + [x])
+            }
+        }
+        result = next
+    }
+    return result
+}
+
+/* ── Transforming ────────────────────────────────────────── */
+
+func enumerate(arr, start) {
+    start = start ?? 0
+    let result = []
+    let i = 0
+    while i < len(arr) {
+        push(result, [start + i, arr[i]])
+        i += 1
+    }
+    return result
+}
+
+func indexed(arr) {
+    return enumerate(arr, 0)
+}
+
+func compress(arr, selectors) {
+    let result = []
+    let limit  = min(len(arr), len(selectors))
+    let i = 0
+    while i < limit {
+        if selectors[i] { push(result, arr[i]) }
+        i += 1
+    }
+    return result
+}
+
+func filterMap(arr, f) {
+    let result = []
+    for x in arr {
+        let v = f(x)
+        if v != void { push(result, v) }
+    }
+    return result
+}
+
+func starMap(pairs, f) {
+    let result = []
+    for pair in pairs {
+        push(result, f(...pair))
+    }
+    return result
+}
+
+func forEach(arr, f) {
+    for x in arr { f(x) }
+}
+
+func forEachIndexed(arr, f) {
+    let i = 0
+    while i < len(arr) {
+        f(i, arr[i])
+        i += 1
+    }
+}
+
+func accumulate(arr, f, init) {
+    let acc = init ?? arr[0]
+    let result = [acc]
+    let start = 0
+    if init == void { start = 1 }
+    let i = start
+    while i < len(arr) {
+        acc = f(acc, arr[i])
+        push(result, acc)
+        i += 1
+    }
+    return result
+}
+
+func runningSum(arr) {
+    return accumulate(arr, fn(a, b) => a + b, 0)
+}
+
+func runningMax(arr) {
+    if len(arr) == 0 { error("iter.runningMax: empty array") }
+    return accumulate(arr, fn(a, b) { if a > b { return a } return b }, arr[0])
+}
+
+func runningMin(arr) {
+    if len(arr) == 0 { error("iter.runningMin: empty array") }
+    return accumulate(arr, fn(a, b) { if a < b { return a } return b }, arr[0])
+}
+
+/* ── Searching & Testing ─────────────────────────────────── */
+
+func findIndex(arr, pred) {
+    let i = 0
+    while i < len(arr) {
+        if pred(arr[i]) { return i }
+        i += 1
+    }
+    return -1
+}
+
+func findLast(arr, pred) {
+    let i = len(arr) - 1
+    while i >= 0 {
+        if pred(arr[i]) { return arr[i] }
+        i -= 1
+    }
+    return void
+}
+
+func findLastIndex(arr, pred) {
+    let i = len(arr) - 1
+    while i >= 0 {
+        if pred(arr[i]) { return i }
+        i -= 1
+    }
+    return -1
+}
+
+func any(arr, pred) {
+    for x in arr { if pred(x) { return true } }
+    return false
+}
+
+func all(arr, pred) {
+    for x in arr { if not pred(x) { return false } }
+    return true
+}
+
+func none(arr, pred) {
+    for x in arr { if pred(x) { return false } }
+    return true
+}
+
+func countIf(arr, pred) {
+    let n = 0
+    for x in arr { if pred(x) { n += 1 } }
+    return n
+}
+
+func sumIf(arr, pred) {
+    let total = 0
+    for x in arr { if pred(x) { total += x } }
+    return total
+}
+
+/* ── Reductions ──────────────────────────────────────────── */
+
+func reduce(arr, f, init) {
+    if len(arr) == 0 and init == void { error("iter.reduce: empty array with no init") }
+    let acc = void
+    let start = 0
+    if init != void { acc = init } else { acc = arr[0]; start = 1 }
+    let i = start
+    while i < len(arr) {
+        acc = f(acc, arr[i])
+        i += 1
+    }
+    return acc
+}
+
+func reduceRight(arr, f, init) {
+    if len(arr) == 0 and init == void { error("iter.reduceRight: empty array with no init") }
+    let acc = void
+    let endIdx = 0
+    if init != void {
+        acc = init
+        endIdx = len(arr) - 1
+    } else {
+        acc = arr[len(arr) - 1]
+        endIdx = len(arr) - 2
+    }
+    let i = endIdx
+    while i >= 0 {
+        acc = f(acc, arr[i])
+        i -= 1
+    }
+    return acc
+}
+
+func minOf(arr, key_fn) {
+    if len(arr) == 0 { error("iter.minOf: empty array") }
+    key_fn = key_fn ?? fn(x) => x
+    let best = arr[0]
+    let best_k = key_fn(arr[0])
+    let i = 1
+    while i < len(arr) {
+        let k = key_fn(arr[i])
+        if k < best_k { best = arr[i]; best_k = k }
+        i += 1
+    }
+    return best
+}
+
+func maxOf(arr, key_fn) {
+    if len(arr) == 0 { error("iter.maxOf: empty array") }
+    key_fn = key_fn ?? fn(x) => x
+    let best = arr[0]
+    let best_k = key_fn(arr[0])
+    let i = 1
+    while i < len(arr) {
+        let k = key_fn(arr[i])
+        if k > best_k { best = arr[i]; best_k = k }
+        i += 1
+    }
+    return best
+}
+
+func minMaxOf(arr) {
+    if len(arr) == 0 { error("iter.minMaxOf: empty array") }
+    let lo = arr[0]
+    let hi = arr[0]
+    for x in arr {
+        if x < lo { lo = x }
+        if x > hi { hi = x }
+    }
+    return [lo, hi]
+}
+
+func sum(arr) {
+    let total = 0
+    for x in arr { total += x }
+    return total
+}
+
+func product(arr) {
+    let p = 1
+    for x in arr { p *= x }
+    return p
+}
+
+func mean(arr) {
+    if len(arr) == 0 { error("iter.mean: empty array") }
+    return sum(arr) / len(arr)
+}
+
+func flatten(arr, depth) {
+    depth = depth ?? 1
+    let result = []
+    for item in arr {
+        if type(item) == "array" and depth > 0 {
+            let inner = flatten(item, depth - 1)
+            for x in inner { push(result, x) }
+        } else {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+func deepFlatten(arr) {
+    let result = []
+    for item in arr {
+        if type(item) == "array" {
+            let inner = deepFlatten(item)
+            for x in inner { push(result, x) }
+        } else {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+/* ── Sorting & Ordering ──────────────────────────────────── */
+
+func sortedBy(arr, key_fn) {
+    let n      = len(arr)
+    let sorted = slice(arr, 0)
+    let i = 1
+    while i < n {
+        let key = sorted[i]
+        let kv  = key_fn(key)
+        let j   = i - 1
+        while j >= 0 and key_fn(sorted[j]) > kv {
+            sorted[j + 1] = sorted[j]
+            j -= 1
+        }
+        sorted[j + 1] = key
+        i += 1
+    }
+    return sorted
+}
+
+func reversed(arr) {
+    let result = []
+    let i = len(arr) - 1
+    while i >= 0 {
+        push(result, arr[i])
+        i -= 1
+    }
+    return result
+}
+
+func unique(arr) {
+    let seen   = {}
+    let result = []
+    for x in arr {
+        let k = str(x)
+        if not has(seen, k) {
+            seen[k] = true
+            push(result, x)
+        }
+    }
+    return result
+}
+
+func uniqueBy(arr, key_fn) {
+    let seen   = {}
+    let result = []
+    for x in arr {
+        let k = str(key_fn(x))
+        if not has(seen, k) {
+            seen[k] = true
+            push(result, x)
+        }
+    }
+    return result
+}
+
+func groupBy(arr, key_fn) {
+    let groups = {}
+    for item in arr {
+        let k = str(key_fn(item))
+        if not has(groups, k) { groups[k] = [] }
+        push(groups[k], item)
+    }
+    return groups
+}
+
+func partition(arr, pred) {
+    let yes = []
+    let no  = []
+    for x in arr {
+        if pred(x) { push(yes, x) } else { push(no, x) }
+    }
+    return [yes, no]
+}

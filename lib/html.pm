@@ -1,0 +1,265 @@
+/* Prism Standard Library — html module
+   Pure Prism implementation — no Python imports.
+   HTML escaping, tag builders, form generation,
+   template utilities, and parsing helpers.
+*/
+
+/* ── Escaping ────────────────────────────────────────────── */
+
+func escape(s) {
+    let out = ""
+    for ch in chars(str(s)) {
+        if      ch == "&"  { out = out + "&amp;" }
+        elif ch == "<"  { out = out + "&lt;" }
+        elif ch == ">"  { out = out + "&gt;" }
+        elif ch == "\"" { out = out + "&quot;" }
+        elif ch == "'"  { out = out + "&#39;" }
+        else             { out = out + ch }
+    }
+    return out
+}
+
+func unescape(s) {
+    s = join("&", split(s, "&amp;"))
+    s = join("<", split(s, "&lt;"))
+    s = join(">", split(s, "&gt;"))
+    s = join("\"", split(s, "&quot;"))
+    s = join("'", split(s, "&#39;"))
+    s = join("'", split(s, "&apos;"))
+    return s
+}
+
+func escapeAttr(s) {
+    return "\"" + escape(str(s)) + "\""
+}
+
+/* ── Attribute builder ───────────────────────────────────── */
+
+func attrs(obj) {
+    let out = ""
+    for k in keys(obj) {
+        let v = obj[k]
+        if v == true { out = out + " " + k }
+        elif v != false and v != void {
+            out = out + " " + k + "=" + escapeAttr(v)
+        }
+    }
+    return out
+}
+
+/* ── Tag builders ────────────────────────────────────────── */
+
+func tag(name, content, attributes) {
+    let a = attributes != void ? attrs(attributes) : ""
+    if content == void { return "<" + name + a + " />" }
+    return "<" + name + a + ">" + str(content) + "</" + name + ">"
+}
+
+func selfClosing(name, attributes) {
+    let a = attributes != void ? attrs(attributes) : ""
+    return "<" + name + a + " />"
+}
+
+func div(content, attributes)  { return tag("div", content, attributes) }
+func span(content, attributes) { return tag("span", content, attributes) }
+func p(content, attributes)    { return tag("p", content, attributes) }
+func h1(content, attributes)   { return tag("h1", content, attributes) }
+func h2(content, attributes)   { return tag("h2", content, attributes) }
+func h3(content, attributes)   { return tag("h3", content, attributes) }
+func h4(content, attributes)   { return tag("h4", content, attributes) }
+func h5(content, attributes)   { return tag("h5", content, attributes) }
+func h6(content, attributes)   { return tag("h6", content, attributes) }
+func ul(content, attributes)   { return tag("ul", content, attributes) }
+func ol(content, attributes)   { return tag("ol", content, attributes) }
+func li(content, attributes)   { return tag("li", content, attributes) }
+func table(content, attributes){ return tag("table", content, attributes) }
+func thead(content, attributes){ return tag("thead", content, attributes) }
+func tbody(content, attributes){ return tag("tbody", content, attributes) }
+func tr(content, attributes)   { return tag("tr", content, attributes) }
+func th(content, attributes)   { return tag("th", content, attributes) }
+func td(content, attributes)   { return tag("td", content, attributes) }
+func strong(content)           { return tag("strong", content, void) }
+func em(content)               { return tag("em", content, void) }
+func code(content)             { return tag("code", content, void) }
+func pre(content)              { return tag("pre", content, void) }
+func blockquote(content)       { return tag("blockquote", content, void) }
+
+func a(href, content, attributes) {
+    let a_attrs = {"href": href}
+    if attributes != void {
+        for k in keys(attributes) { a_attrs[k] = attributes[k] }
+    }
+    return tag("a", content, a_attrs)
+}
+
+func img(src, alt, attributes) {
+    let a = {"src": src, "alt": alt ?? ""}
+    if attributes != void {
+        for k in keys(attributes) { a[k] = attributes[k] }
+    }
+    return selfClosing("img", a)
+}
+
+func br() { return "<br />" }
+func hr() { return "<hr />" }
+
+/* ── Lists ───────────────────────────────────────────────── */
+
+func unorderedList(items, attributes) {
+    let inner = ""
+    for item in items { inner = inner + li(str(item), void) }
+    return ul(inner, attributes)
+}
+
+func orderedList(items, attributes) {
+    let inner = ""
+    for item in items { inner = inner + li(str(item), void) }
+    return ol(inner, attributes)
+}
+
+/* ── Tables ──────────────────────────────────────────────── */
+
+func buildTable(rows, headers, attributes) {
+    let head_row = ""
+    if headers == void and len(rows) > 0 and type(rows[0]) == "dict" {
+        headers = keys(rows[0])
+    }
+
+    if headers != void {
+        let head_cells = ""
+        for h in headers { head_cells = head_cells + th(escape(str(h)), void) }
+        head_row = thead(tr(head_cells, void), void)
+    }
+
+    let body_rows = ""
+    for row in rows {
+        let cells = ""
+        if type(row) == "dict" and headers != void {
+            for h in headers {
+                let val = has(row, h) ? row[h] : ""
+                cells = cells + td(escape(str(val)), void)
+            }
+        } elif type(row) == "array" {
+            for val in row { cells = cells + td(escape(str(val)), void) }
+        }
+        body_rows = body_rows + tr(cells, void)
+    }
+
+    return table(head_row + tbody(body_rows, void), attributes)
+}
+
+/* ── Forms ───────────────────────────────────────────────── */
+
+func input_tag(input_type, name, value, attributes) {
+    let a = {"type": input_type, "name": name}
+    if value != void { a["value"] = str(value) }
+    if attributes != void {
+        for k in keys(attributes) { a[k] = attributes[k] }
+    }
+    return selfClosing("input", a)
+}
+
+func textInput(name, value, attributes) {
+    return input_tag("text", name, value, attributes)
+}
+
+func passwordInput(name, attributes) {
+    return input_tag("password", name, void, attributes)
+}
+
+func checkbox(name, value, checked, attributes) {
+    let a = attributes ?? {}
+    if checked { a["checked"] = true }
+    return input_tag("checkbox", name, value, a)
+}
+
+func radio(name, value, checked, attributes) {
+    let a = attributes ?? {}
+    if checked { a["checked"] = true }
+    return input_tag("radio", name, value, a)
+}
+
+func select_tag(name, options, selected, attributes) {
+    let a = {"name": name}
+    if attributes != void {
+        for k in keys(attributes) { a[k] = attributes[k] }
+    }
+    let inner = ""
+    for opt in options {
+        let label = type(opt) == "dict" ? opt["label"] : str(opt)
+        let val   = type(opt) == "dict" ? opt["value"] : str(opt)
+        let opt_a = {"value": val}
+        if str(val) == str(selected) { opt_a["selected"] = true }
+        inner = inner + tag("option", escape(label), opt_a)
+    }
+    return tag("select", inner, a)
+}
+
+func textarea(name, content, attributes) {
+    let a = {"name": name}
+    if attributes != void {
+        for k in keys(attributes) { a[k] = attributes[k] }
+    }
+    return tag("textarea", escape(str(content ?? "")), a)
+}
+
+func button(content, btn_type, attributes) {
+    let a = {"type": btn_type ?? "button"}
+    if attributes != void {
+        for k in keys(attributes) { a[k] = attributes[k] }
+    }
+    return tag("button", content, a)
+}
+
+func form(action, method, content, attributes) {
+    let a = {"action": action ?? "", "method": method ?? "get"}
+    if attributes != void {
+        for k in keys(attributes) { a[k] = attributes[k] }
+    }
+    return tag("form", content, a)
+}
+
+func label_tag(for_id, content) {
+    return tag("label", content, {"for": for_id})
+}
+
+/* ── Document ─────────────────────────────────────────────── */
+
+func doctype() { return "<!DOCTYPE html>" }
+
+func document(title, body_content, head_extra) {
+    head_extra = head_extra ?? ""
+    let head = tag("head",
+        tag("meta", void, {"charset": "UTF-8"}) +
+        tag("meta", void, {"name": "viewport", "content": "width=device-width, initial-scale=1"}) +
+        tag("title", escape(title), void) +
+        head_extra, void)
+    let body = tag("body", body_content, void)
+    return doctype() + "\n" + tag("html", head + body, {"lang": "en"})
+}
+
+func stylesheet(href) {
+    return selfClosing("link", {"rel": "stylesheet", "href": href})
+}
+
+func script(src, content) {
+    if src != void { return tag("script", "", {"src": src}) }
+    return tag("script", content ?? "", void)
+}
+
+/* ── Strip ───────────────────────────────────────────────── */
+
+func stripTags(s) {
+    let out = ""
+    let in_tag = false
+    for ch in chars(s) {
+        if ch == "<" { in_tag = true }
+        elif ch == ">" { in_tag = false }
+        elif not in_tag { out = out + ch }
+    }
+    return out
+}
+
+func textContent(html) {
+    return unescape(stripTags(html))
+}

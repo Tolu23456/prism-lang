@@ -1,0 +1,185 @@
+/* Prism Standard Library — functional module
+   Higher-order functional programming utilities.
+   Inspired by Haskell, Scala, and Elixir.
+*/
+
+func compose(...fns) {
+    return fn(x) {
+        let result = x
+        let i = len(fns) - 1
+        while i >= 0 {
+            result = fns[i](result)
+            i -= 1
+        }
+        return result
+    }
+}
+
+func pipe(...fns) {
+    return fn(x) {
+        let result = x
+        for f in fns {
+            result = f(result)
+        }
+        return result
+    }
+}
+
+func curry(f) {
+    return fn(a) => fn(b) => f(a, b)
+}
+
+func curry3(f) {
+    return fn(a) => fn(b) => fn(c) => f(a, b, c)
+}
+
+func partial(f, ...bound) {
+    return fn(...rest) {
+        let args = []
+        for b in bound { push(args, b) }
+        for r in rest  { push(args, r) }
+        return f(...args)
+    }
+}
+
+func memoize(f) {
+    let cache = {}
+    return fn(...args) {
+        let key = str(args)
+        if has(cache, key) { return cache[key] }
+        let result = f(...args)
+        cache[key] = result
+        return result
+    }
+}
+
+func once(f) {
+    let called = false
+    let result = void
+    return fn(...args) {
+        if not called {
+            called = true
+            result = f(...args)
+        }
+        return result
+    }
+}
+
+func identity(x) { return x }
+
+func constant(x) { return fn(..._) => x }
+
+func negate(pred) {
+    return fn(...args) => not pred(...args)
+}
+
+func flip(f) {
+    return fn(a, b) => f(b, a)
+}
+
+func apply(f, args) {
+    return f(...args)
+}
+
+func tap(f) {
+    return fn(x) {
+        f(x)
+        return x
+    }
+}
+
+func juxt(...fns) {
+    return fn(x) {
+        let results = []
+        for f in fns { push(results, f(x)) }
+        return results
+    }
+}
+
+func zipWith(f, a, b) {
+    let result = []
+    let limit = min(len(a), len(b))
+    let i = 0
+    while i < limit {
+        push(result, f(a[i], b[i]))
+        i += 1
+    }
+    return result
+}
+
+func scanLeft(f, init, arr) {
+    let acc = init
+    let result = [acc]
+    for x in arr {
+        acc = f(acc, x)
+        push(result, acc)
+    }
+    return result
+}
+
+func groupByKey(arr, key_fn) {
+    let groups = {}
+    for item in arr {
+        let k = str(key_fn(item))
+        if not has(groups, k) { groups[k] = [] }
+        push(groups[k], item)
+    }
+    return groups
+}
+
+func countWhere(arr, pred) {
+    let n = 0
+    for x in arr {
+        if pred(x) { n += 1 }
+    }
+    return n
+}
+
+func takeWhile(arr, pred) {
+    let result = []
+    for x in arr {
+        if not pred(x) { return result }
+        push(result, x)
+    }
+    return result
+}
+
+func dropWhile(arr, pred) {
+    let i = 0
+    while i < len(arr) and pred(arr[i]) { i += 1 }
+    return slice(arr, i)
+}
+
+func partition(arr, pred) {
+    let yes = []
+    let no  = []
+    for x in arr {
+        if pred(x) { push(yes, x) } else { push(no, x) }
+    }
+    return [yes, no]
+}
+
+func flatMap(arr, f) {
+    let result = []
+    for x in arr {
+        let mapped = f(x)
+        if type(mapped) == "array" {
+            for item in mapped { push(result, item) }
+        } else {
+            push(result, mapped)
+        }
+    }
+    return result
+}
+
+func iterate(f, seed, n) {
+    let result = [seed]
+    let current = seed
+    let i = 0
+    while i < n - 1 {
+        current = f(current)
+        push(result, current)
+        i += 1
+    }
+    return result
+}

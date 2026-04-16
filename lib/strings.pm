@@ -1,0 +1,418 @@
+/* Prism Standard Library — strings module
+   Pure Prism implementation — no Python imports.
+   Comprehensive string manipulation, parsing, and formatting.
+*/
+
+/* ── Case & Formatting ──────────────────────────────────── */
+
+func capitalize(s) {
+    if len(s) == 0 { return s }
+    return upper(slice(s, 0, 1)) + slice(s, 1)
+}
+
+func titleCase(s) {
+    let words = split(s, " ")
+    let result = []
+    for w in words { push(result, capitalize(w)) }
+    return join(" ", result)
+}
+
+func camelCase(s) {
+    let parts = split(s, " ")
+    if len(parts) == 0 { return s }
+    let out = lower(parts[0])
+    let i = 1
+    while i < len(parts) {
+        out = out + capitalize(parts[i])
+        i += 1
+    }
+    return out
+}
+
+func snakeCase(s) {
+    let out = ""
+    let chs = chars(s)
+    for ch in chs {
+        if ch >= "A" and ch <= "Z" {
+            if len(out) > 0 { out = out + "_" }
+            out = out + lower(ch)
+        } else {
+            out = out + ch
+        }
+    }
+    return out
+}
+
+func kebabCase(s) {
+    return replace(snakeCase(s), "_", "-")
+}
+
+func swapCase(s) {
+    let out = ""
+    for ch in chars(s) {
+        if ch >= "A" and ch <= "Z" { out = out + lower(ch) }
+        elif ch >= "a" and ch <= "z" { out = out + upper(ch) }
+        else { out = out + ch }
+    }
+    return out
+}
+
+/* ── Padding & Alignment ────────────────────────────────── */
+
+func padLeft(s, width, ch) {
+    ch = ch ?? " "
+    let out = str(s)
+    while len(out) < width { out = ch + out }
+    return out
+}
+
+func padRight(s, width, ch) {
+    ch = ch ?? " "
+    let out = str(s)
+    while len(out) < width { out = out + ch }
+    return out
+}
+
+func padCenter(s, width, ch) {
+    ch = ch ?? " "
+    let out = str(s)
+    let total_pad = width - len(out)
+    if total_pad <= 0 { return out }
+    let left_pad  = total_pad // 2
+    let right_pad = total_pad - left_pad
+    return repeat(ch, left_pad) + out + repeat(ch, right_pad)
+}
+
+func repeat(s, n) {
+    let result = ""
+    let i = 0
+    while i < n {
+        result = result + s
+        i += 1
+    }
+    return result
+}
+
+/* ── Search & Test ──────────────────────────────────────── */
+
+func isBlank(s)       { return len(trim(s)) == 0 }
+func isEmpty(s)       { return len(s) == 0 }
+
+func countOccurrences(haystack, needle) {
+    if len(needle) == 0 { return 0 }
+    let parts = split(haystack, needle)
+    return len(parts) - 1
+}
+
+func indexOfChar(s, ch) {
+    let i = 0
+    while i < len(s) {
+        if slice(s, i, i + 1) == ch { return i }
+        i += 1
+    }
+    return -1
+}
+
+func lastIndexOf(s, needle) {
+    let last = -1
+    let i = 0
+    while i <= len(s) - len(needle) {
+        if slice(s, i, i + len(needle)) == needle { last = i }
+        i += 1
+    }
+    return last
+}
+
+func isNumeric(s) {
+    let trimmed = trim(s)
+    if len(trimmed) == 0 { return false }
+    let dot_count = 0
+    let start = 0
+    if slice(trimmed, 0, 1) == "-" { start = 1 }
+    let i = start
+    while i < len(trimmed) {
+        let ch = slice(trimmed, i, i + 1)
+        if ch == "." {
+            dot_count += 1
+            if dot_count > 1 { return false }
+        } elif ch < "0" or ch > "9" {
+            return false
+        }
+        i += 1
+    }
+    return len(trimmed) - start > 0
+}
+
+func isAlpha(s) {
+    if len(s) == 0 { return false }
+    for ch in chars(s) {
+        if not ((ch >= "A" and ch <= "Z") or (ch >= "a" and ch <= "z")) {
+            return false
+        }
+    }
+    return true
+}
+
+func isAlphaNumeric(s) {
+    if len(s) == 0 { return false }
+    for ch in chars(s) {
+        let ok = (ch >= "A" and ch <= "Z") or
+                 (ch >= "a" and ch <= "z") or
+                 (ch >= "0" and ch <= "9")
+        if not ok { return false }
+    }
+    return true
+}
+
+func isUpperCase(s) {
+    if len(s) == 0 { return false }
+    return upper(s) == s
+}
+
+func isLowerCase(s) {
+    if len(s) == 0 { return false }
+    return lower(s) == s
+}
+
+func isPalindrome(s) {
+    let clean = lower(s)
+    let rev   = reverse(clean)
+    return clean == rev
+}
+
+func startsWithAny(s, prefixes) {
+    for p in prefixes {
+        if starts(s, p) { return true }
+    }
+    return false
+}
+
+func endsWithAny(s, suffixes) {
+    for sx in suffixes {
+        if ends(s, sx) { return true }
+    }
+    return false
+}
+
+/* ── Transform ──────────────────────────────────────────── */
+
+func reverse(s) {
+    let chs = chars(s)
+    let out = ""
+    let i = len(chs) - 1
+    while i >= 0 {
+        out = out + chs[i]
+        i -= 1
+    }
+    return out
+}
+
+func truncate(s, maxLen, ellipsis) {
+    ellipsis = ellipsis ?? "..."
+    if len(s) <= maxLen { return s }
+    return slice(s, 0, maxLen - len(ellipsis)) + ellipsis
+}
+
+func stripLeft(s, ch) {
+    ch = ch ?? " "
+    let i = 0
+    while i < len(s) and slice(s, i, i + 1) == ch { i += 1 }
+    return slice(s, i)
+}
+
+func stripRight(s, ch) {
+    ch = ch ?? " "
+    let i = len(s)
+    while i > 0 and slice(s, i - 1, i) == ch { i -= 1 }
+    return slice(s, 0, i)
+}
+
+func strip(s, ch) {
+    return stripRight(stripLeft(s, ch), ch)
+}
+
+func removeAll(s, target) {
+    return join("", split(s, target))
+}
+
+func replaceAll(s, from, to) {
+    return join(to, split(s, from))
+}
+
+func replaceFirst(s, from, to) {
+    let parts = split(s, from)
+    if len(parts) < 2 { return s }
+    let result = parts[0] + to
+    let i = 1
+    while i < len(parts) {
+        if i > 1 { result = result + from }
+        result = result + parts[i]
+        i += 1
+    }
+    return result
+}
+
+func insertAt(s, pos, text) {
+    return slice(s, 0, pos) + text + slice(s, pos)
+}
+
+func deleteAt(s, start, end) {
+    return slice(s, 0, start) + slice(s, end)
+}
+
+func wrap(s, prefix, suffix) {
+    suffix = suffix ?? prefix
+    return prefix + s + suffix
+}
+
+func unwrap(s, prefix, suffix) {
+    suffix = suffix ?? prefix
+    if starts(s, prefix) and ends(s, suffix) {
+        return slice(s, len(prefix), len(s) - len(suffix))
+    }
+    return s
+}
+
+/* ── Parsing & Conversion ───────────────────────────────── */
+
+func toBool(s) {
+    let lo = lower(trim(s))
+    if lo == "true" or lo == "yes" or lo == "1" or lo == "on" { return true }
+    if lo == "false" or lo == "no"  or lo == "0" or lo == "off" { return false }
+    return void
+}
+
+func toLines(s)   { return split(s, "\n") }
+func toWords(s)   { return split(trim(s), " ") }
+
+func indent(s, spaces) {
+    spaces = spaces ?? 4
+    let pad = repeat(" ", spaces)
+    let lines = toLines(s)
+    let result = []
+    for line in lines { push(result, pad + line) }
+    return join("\n", result)
+}
+
+func dedent(s, spaces) {
+    spaces = spaces ?? 4
+    let lines = toLines(s)
+    let result = []
+    for line in lines {
+        let i = 0
+        while i < spaces and i < len(line) and slice(line, i, i + 1) == " " {
+            i += 1
+        }
+        push(result, slice(line, i))
+    }
+    return join("\n", result)
+}
+
+func slugify(s) {
+    let out = lower(s)
+    out = replaceAll(out, " ", "-")
+    let clean = ""
+    for ch in chars(out) {
+        let ok = (ch >= "a" and ch <= "z") or
+                 (ch >= "0" and ch <= "9") or
+                 ch == "-"
+        if ok { clean = clean + ch }
+    }
+    return strip(clean, "-")
+}
+
+func template(tmpl, vars) {
+    let result = tmpl
+    for k in keys(vars) {
+        result = replaceAll(result, "{{" + k + "}}", str(vars[k]))
+    }
+    return result
+}
+
+func countWords(s) {
+    let words = split(trim(s), " ")
+    let count = 0
+    for w in words {
+        if len(trim(w)) > 0 { count += 1 }
+    }
+    return count
+}
+
+func commonPrefix(a, b) {
+    let i = 0
+    while i < len(a) and i < len(b) and
+          slice(a, i, i + 1) == slice(b, i, i + 1) {
+        i += 1
+    }
+    return slice(a, 0, i)
+}
+
+func levenshtein(a, b) {
+    let m = len(a)
+    let n = len(b)
+    let dp = []
+    let i = 0
+    while i <= m {
+        let row = []
+        let j = 0
+        while j <= n {
+            push(row, 0)
+            j += 1
+        }
+        push(dp, row)
+        i += 1
+    }
+    i = 0
+    while i <= m { dp[i][0] = i; i += 1 }
+    let j = 0
+    while j <= n { dp[0][j] = j; j += 1 }
+    i = 1
+    while i <= m {
+        j = 1
+        while j <= n {
+            let cost = 0
+            if slice(a, i - 1, i) != slice(b, j - 1, j) { cost = 1 }
+            let del  = dp[i - 1][j] + 1
+            let ins  = dp[i][j - 1] + 1
+            let sub  = dp[i - 1][j - 1] + cost
+            dp[i][j] = min(del, min(ins, sub))
+            j += 1
+        }
+        i += 1
+    }
+    return dp[m][n]
+}
+
+func similarity(a, b) {
+    let dist = levenshtein(a, b)
+    let maxLen = max(len(a), len(b))
+    if maxLen == 0 { return 1.0 }
+    return 1.0 - float(dist) / float(maxLen)
+}
+
+func charFrequency(s) {
+    let freq = {}
+    for ch in chars(s) {
+        if has(freq, ch) { freq[ch] = freq[ch] + 1 }
+        else              { freq[ch] = 1 }
+    }
+    return freq
+}
+
+func wrapWords(s, lineWidth) {
+    let words = toWords(s)
+    let lines = []
+    let current = ""
+    for w in words {
+        if len(current) == 0 {
+            current = w
+        } elif len(current) + 1 + len(w) <= lineWidth {
+            current = current + " " + w
+        } else {
+            push(lines, current)
+            current = w
+        }
+    }
+    if len(current) > 0 { push(lines, current) }
+    return join("\n", lines)
+}

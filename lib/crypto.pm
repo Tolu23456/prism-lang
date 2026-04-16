@@ -1,0 +1,380 @@
+/* Prism Standard Library — crypto module
+   Pure Prism implementation — no Python imports.
+   Hash functions (FNV-1a, DJB2, SDBM, Bernstein, Adler-32,
+   CRC-32, MurmurHash3), simple ciphers (XOR, Caesar, Vigenere,
+   ROT-13), base64 encode/decode, and checksum utilities.
+*/
+
+/* ── FNV-1a (32-bit) ─────────────────────────────────────── */
+
+func fnv1a(s) {
+    let hash = 2166136261
+    for ch in chars(s) {
+        hash = hash ^ ord(ch)
+        hash = (hash * 16777619) % 4294967296
+    }
+    return hash
+}
+
+func fnv1a_hex(s) {
+    return intToHex(fnv1a(s), 8)
+}
+
+/* ── DJB2 ────────────────────────────────────────────────── */
+
+func djb2(s) {
+    let hash = 5381
+    for ch in chars(s) {
+        hash = ((hash << 5) + hash + ord(ch)) % 4294967296
+    }
+    return hash
+}
+
+func djb2_hex(s) {
+    return intToHex(djb2(s), 8)
+}
+
+/* ── SDBM ────────────────────────────────────────────────── */
+
+func sdbm(s) {
+    let hash = 0
+    for ch in chars(s) {
+        hash = (ord(ch) + (hash << 6) + (hash << 16) - hash) % 4294967296
+    }
+    return abs(hash)
+}
+
+/* ── Bernstein ───────────────────────────────────────────── */
+
+func bernstein(s) {
+    let hash = 0
+    for ch in chars(s) {
+        hash = (33 * hash + ord(ch)) % 4294967296
+    }
+    return hash
+}
+
+/* ── Adler-32 ────────────────────────────────────────────── */
+
+func adler32(s) {
+    let a = 1
+    let b = 0
+    for ch in chars(s) {
+        a = (a + ord(ch)) % 65521
+        b = (b + a) % 65521
+    }
+    return (b << 16) | a
+}
+
+func adler32_hex(s) {
+    return intToHex(adler32(s), 8)
+}
+
+/* ── CRC-32 (IEEE 802.3) ─────────────────────────────────── */
+
+let _crc32_table = void
+
+func _buildCRC32Table() {
+    let table = []
+    let i = 0
+    while i < 256 {
+        let c = i
+        let j = 0
+        while j < 8 {
+            if c & 1 != 0 {
+                c = 0xEDB88320 ^ (c >> 1)
+            } else {
+                c = c >> 1
+            }
+            c = c % 4294967296
+            j += 1
+        }
+        push(table, c)
+        i += 1
+    }
+    _crc32_table = table
+}
+
+func crc32(s) {
+    if _crc32_table == void { _buildCRC32Table() }
+    let crc = 0xFFFFFFFF
+    for ch in chars(s) {
+        let idx = (crc ^ ord(ch)) & 0xFF
+        crc = _crc32_table[idx] ^ (crc >> 8)
+        crc = crc % 4294967296
+    }
+    return (crc ^ 0xFFFFFFFF) % 4294967296
+}
+
+func crc32_hex(s) {
+    return intToHex(crc32(s), 8)
+}
+
+/* ── MurmurHash3 (32-bit x86) ───────────────────────────── */
+
+func murmur3(s, seed) {
+    seed = seed ?? 0
+    let c1 = 0xCC9E2D51
+    let c2 = 0x1B873593
+    let h  = seed
+    let n  = len(s)
+    let i  = 0
+    while i + 4 <= n {
+        let k = ord(slice(s, i, i+1)) |
+                (ord(slice(s, i+1, i+2)) << 8) |
+                (ord(slice(s, i+2, i+3)) << 16) |
+                (ord(slice(s, i+3, i+4)) << 24)
+        k = k % 4294967296
+        k = (k * c1) % 4294967296
+        k = ((k << 15) | (k >> 17)) % 4294967296
+        k = (k * c2) % 4294967296
+        h = h ^ k
+        h = ((h << 13) | (h >> 19)) % 4294967296
+        h = ((h * 5) + 0xE6546B64) % 4294967296
+        i += 4
+    }
+    let rem = n % 4
+    let k2  = 0
+    if rem >= 3 { k2 = k2 ^ (ord(slice(s, n - 3, n - 2)) << 16) }
+    if rem >= 2 { k2 = k2 ^ (ord(slice(s, n - 2, n - 1)) << 8) }
+    if rem >= 1 {
+        k2 = k2 ^ ord(slice(s, n - 1, n))
+        k2 = (k2 * c1) % 4294967296
+        k2 = ((k2 << 15) | (k2 >> 17)) % 4294967296
+        k2 = (k2 * c2) % 4294967296
+        h  = h ^ k2
+    }
+    h = h ^ n
+    h = h ^ (h >> 16)
+    h = (h * 0x85EBCA6B) % 4294967296
+    h = h ^ (h >> 13)
+    h = (h * 0xC2B2AE35) % 4294967296
+    h = h ^ (h >> 16)
+    return h
+}
+
+func murmur3_hex(s, seed) {
+    return intToHex(murmur3(s, seed), 8)
+}
+
+/* ── Int utilities ───────────────────────────────────────── */
+
+func intToHex(n, width) {
+    n = abs(int(n))
+    let hx = "0123456789abcdef"
+    let out = ""
+    while n > 0 {
+        out = slice(hx, n % 16, n % 16 + 1) + out
+        n = n // 16
+    }
+    if len(out) == 0 { out = "0" }
+    while len(out) < width { out = "0" + out }
+    return out
+}
+
+/* ── Base64 ──────────────────────────────────────────────── */
+
+const _B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+func base64Encode(s) {
+    let bytes  = []
+    for ch in chars(s) { push(bytes, ord(ch)) }
+    let result = ""
+    let i      = 0
+    let b64    = chars(_B64_CHARS)
+    while i < len(bytes) {
+        let b0 = bytes[i]
+        let b1 = (i + 1 < len(bytes)) ? bytes[i + 1] : 0
+        let b2 = (i + 2 < len(bytes)) ? bytes[i + 2] : 0
+        result = result + b64[(b0 >> 2) & 0x3F]
+        result = result + b64[((b0 & 0x03) << 4) | ((b1 >> 4) & 0x0F)]
+        if i + 1 < len(bytes) {
+            result = result + b64[((b1 & 0x0F) << 2) | ((b2 >> 6) & 0x03)]
+        } else {
+            result = result + "="
+        }
+        if i + 2 < len(bytes) {
+            result = result + b64[b2 & 0x3F]
+        } else {
+            result = result + "="
+        }
+        i += 3
+    }
+    return result
+}
+
+func base64Decode(s) {
+    let b64    = _B64_CHARS
+    let bytes  = []
+    let i      = 0
+    let chs    = chars(s)
+    let n      = len(chs)
+    while i < n {
+        let c0 = indexOf(b64, chs[i])
+        let c1 = i + 1 < n ? indexOf(b64, chs[i + 1]) : 0
+        let c2 = i + 2 < n and chs[i + 2] != "=" ? indexOf(b64, chs[i + 2]) : -1
+        let c3 = i + 3 < n and chs[i + 3] != "=" ? indexOf(b64, chs[i + 3]) : -1
+        push(bytes, ((c0 << 2) | (c1 >> 4)) & 0xFF)
+        if c2 >= 0 { push(bytes, ((c1 << 4) | (c2 >> 2)) & 0xFF) }
+        if c3 >= 0 { push(bytes, ((c2 << 6) | c3) & 0xFF) }
+        i += 4
+    }
+    let out = ""
+    for b in bytes { out = out + chr(b) }
+    return out
+}
+
+func indexOf(s, ch) {
+    let i = 0
+    while i < len(s) {
+        if slice(s, i, i + 1) == ch { return i }
+        i += 1
+    }
+    return -1
+}
+
+func base64UrlEncode(s) {
+    let enc = base64Encode(s)
+    let out = ""
+    for ch in chars(enc) {
+        if      ch == "+" { out = out + "-" }
+        elif ch == "/" { out = out + "_" }
+        elif ch == "=" { }
+        else           { out = out + ch }
+    }
+    return out
+}
+
+/* ── Ciphers ─────────────────────────────────────────────── */
+
+func xorCipher(s, key) {
+    let key_chs = chars(key)
+    if len(key_chs) == 0 { error("xorCipher: empty key") }
+    let out = ""
+    let i   = 0
+    for ch in chars(s) {
+        let k = ord(key_chs[i % len(key_chs)])
+        out = out + chr(ord(ch) ^ k)
+        i += 1
+    }
+    return out
+}
+
+func caesarEncrypt(s, shift) {
+    shift = ((shift % 26) + 26) % 26
+    let out = ""
+    for ch in chars(s) {
+        if ch >= "A" and ch <= "Z" {
+            let c = (ord(ch) - 65 + shift) % 26
+            out = out + chr(c + 65)
+        } elif ch >= "a" and ch <= "z" {
+            let c = (ord(ch) - 97 + shift) % 26
+            out = out + chr(c + 97)
+        } else {
+            out = out + ch
+        }
+    }
+    return out
+}
+
+func caesarDecrypt(s, shift) {
+    return caesarEncrypt(s, 26 - shift)
+}
+
+func rot13(s) {
+    return caesarEncrypt(s, 13)
+}
+
+func vigenereEncrypt(s, key) {
+    let key_chs = chars(lower(key))
+    let out = ""
+    let ki  = 0
+    for ch in chars(s) {
+        if (ch >= "A" and ch <= "Z") or (ch >= "a" and ch <= "z") {
+            let is_upper = ch >= "A" and ch <= "Z"
+            let base = is_upper ? 65 : 97
+            let shift = ord(key_chs[ki % len(key_chs)]) - 97
+            let enc = (ord(ch) - base + shift) % 26
+            out = out + chr(enc + base)
+            ki += 1
+        } else {
+            out = out + ch
+        }
+    }
+    return out
+}
+
+func vigenereDecrypt(s, key) {
+    let key_chs = chars(lower(key))
+    let out = ""
+    let ki  = 0
+    for ch in chars(s) {
+        if (ch >= "A" and ch <= "Z") or (ch >= "a" and ch <= "z") {
+            let is_upper = ch >= "A" and ch <= "Z"
+            let base = is_upper ? 65 : 97
+            let shift = ord(key_chs[ki % len(key_chs)]) - 97
+            let dec = (ord(ch) - base - shift + 26) % 26
+            out = out + chr(dec + base)
+            ki += 1
+        } else {
+            out = out + ch
+        }
+    }
+    return out
+}
+
+/* ── Checksum ────────────────────────────────────────────── */
+
+func luhn(numberStr) {
+    let digits = []
+    for ch in chars(numberStr) {
+        if ch >= "0" and ch <= "9" { push(digits, parseInt(ch)) }
+    }
+    let sum = 0
+    let alt = false
+    let i = len(digits) - 1
+    while i >= 0 {
+        let d = digits[i]
+        if alt {
+            d = d * 2
+            if d > 9 { d = d - 9 }
+        }
+        sum += d
+        alt = not alt
+        i -= 1
+    }
+    return sum % 10 == 0
+}
+
+func luhnDigit(numberStr) {
+    let padded = numberStr + "0"
+    let digits = []
+    for ch in chars(padded) {
+        if ch >= "0" and ch <= "9" { push(digits, parseInt(ch)) }
+    }
+    let sum = 0
+    let alt = true
+    let i = len(digits) - 1
+    while i >= 0 {
+        let d = digits[i]
+        if alt {
+            d = d * 2
+            if d > 9 { d = d - 9 }
+        }
+        sum += d
+        alt = not alt
+        i -= 1
+    }
+    return (10 - (sum % 10)) % 10
+}
+
+func hammingDistance(a, b) {
+    if len(a) != len(b) { error("hammingDistance: strings must be same length") }
+    let dist = 0
+    let i = 0
+    while i < len(a) {
+        if slice(a, i, i+1) != slice(b, i, i+1) { dist += 1 }
+        i += 1
+    }
+    return dist
+}

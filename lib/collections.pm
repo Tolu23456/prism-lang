@@ -1,0 +1,808 @@
+/* Prism Standard Library — collections module
+   Pure Prism implementation — no Python imports.
+   Arrays, dicts, Stack, Queue, PriorityQueue,
+   LinkedList, Set, Trie, Deque, and more.
+*/
+
+/* ── Array Utilities ────────────────────────────────────── */
+
+func flatten(arr, depth) {
+    depth = depth ?? 1
+    let result = []
+    for item in arr {
+        if type(item) == "array" and depth > 0 {
+            let inner = flatten(item, depth - 1)
+            for x in inner { push(result, x) }
+        } else {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+func deepFlatten(arr) {
+    let result = []
+    for item in arr {
+        if type(item) == "array" {
+            let inner = deepFlatten(item)
+            for x in inner { push(result, x) }
+        } else {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+func uniqueBy(arr, key_fn) {
+    let seen = {}
+    let result = []
+    for item in arr {
+        let k = str(key_fn(item))
+        if not has(seen, k) {
+            seen[k] = true
+            push(result, item)
+        }
+    }
+    return result
+}
+
+func uniqueArr(arr) {
+    return uniqueBy(arr, fn(x) => x)
+}
+
+func zipArrays(a, b) {
+    let result = []
+    let limit  = min(len(a), len(b))
+    let i = 0
+    while i < limit {
+        push(result, [a[i], b[i]])
+        i += 1
+    }
+    return result
+}
+
+func zipWith(f, a, b) {
+    let result = []
+    let limit  = min(len(a), len(b))
+    let i = 0
+    while i < limit {
+        push(result, f(a[i], b[i]))
+        i += 1
+    }
+    return result
+}
+
+func unzip(pairs) {
+    let a = []
+    let b = []
+    for pair in pairs {
+        push(a, pair[0])
+        push(b, pair[1])
+    }
+    return [a, b]
+}
+
+func groupBy(arr, key_fn) {
+    let groups = {}
+    for item in arr {
+        let k = str(key_fn(item))
+        if not has(groups, k) { groups[k] = [] }
+        push(groups[k], item)
+    }
+    return groups
+}
+
+func chunk(arr, size) {
+    if size <= 0 { error("chunk: size must be > 0") }
+    let result = []
+    let i = 0
+    while i < len(arr) {
+        push(result, slice(arr, i, i + size))
+        i += size
+    }
+    return result
+}
+
+func countBy(arr, key_fn) {
+    let counts = {}
+    for item in arr {
+        let k = str(key_fn(item))
+        if has(counts, k) { counts[k] = counts[k] + 1 }
+        else              { counts[k] = 1 }
+    }
+    return counts
+}
+
+func sumBy(arr, key_fn) {
+    let total = 0
+    for item in arr { total += key_fn(item) }
+    return total
+}
+
+func minBy(arr, key_fn) {
+    if len(arr) == 0 { return void }
+    let best = arr[0]
+    let best_k = key_fn(best)
+    for item in arr {
+        let k = key_fn(item)
+        if k < best_k { best = item; best_k = k }
+    }
+    return best
+}
+
+func maxBy(arr, key_fn) {
+    if len(arr) == 0 { return void }
+    let best = arr[0]
+    let best_k = key_fn(best)
+    for item in arr {
+        let k = key_fn(item)
+        if k > best_k { best = item; best_k = k }
+    }
+    return best
+}
+
+func take(arr, n) { return slice(arr, 0, n) }
+
+func drop(arr, n) {
+    if n >= len(arr) { return [] }
+    return slice(arr, n)
+}
+
+func first(arr) {
+    if len(arr) == 0 { return void }
+    return arr[0]
+}
+
+func last(arr) {
+    if len(arr) == 0 { return void }
+    return arr[len(arr) - 1]
+}
+
+func nth(arr, n) {
+    if n < 0 { return arr[len(arr) + n] }
+    return arr[n]
+}
+
+func rotate(arr, n) {
+    if len(arr) == 0 { return [] }
+    let k = n % len(arr)
+    if k < 0 { k = k + len(arr) }
+    return slice(arr, k) + slice(arr, 0, k)
+}
+
+func interleave(a, b) {
+    let result = []
+    let limit = min(len(a), len(b))
+    let i = 0
+    while i < limit {
+        push(result, a[i])
+        push(result, b[i])
+        i += 1
+    }
+    while i < len(a) { push(result, a[i]); i += 1 }
+    while i < len(b) { push(result, b[i]); i += 1 }
+    return result
+}
+
+func range_step(start, stop, step) {
+    step = step ?? 1
+    let result = []
+    let i = start
+    while (step > 0 and i < stop) or (step < 0 and i > stop) {
+        push(result, i)
+        i += step
+    }
+    return result
+}
+
+func transpose(matrix) {
+    if len(matrix) == 0 { return [] }
+    let rows = len(matrix)
+    let cols = len(matrix[0])
+    let result = []
+    let j = 0
+    while j < cols {
+        let row = []
+        let i = 0
+        while i < rows {
+            push(row, matrix[i][j])
+            i += 1
+        }
+        push(result, row)
+        j += 1
+    }
+    return result
+}
+
+func product(arr) {
+    let p = 1
+    for x in arr { p *= x }
+    return p
+}
+
+func sortBy(arr, key_fn) {
+    let n = len(arr)
+    let sorted = []
+    for x in arr { push(sorted, x) }
+    let i = 1
+    while i < n {
+        let key = sorted[i]
+        let kv  = key_fn(key)
+        let j   = i - 1
+        while j >= 0 and key_fn(sorted[j]) > kv {
+            sorted[j + 1] = sorted[j]
+            j -= 1
+        }
+        sorted[j + 1] = key
+        i += 1
+    }
+    return sorted
+}
+
+func binarySearch(arr, target) {
+    let lo = 0
+    let hi = len(arr) - 1
+    while lo <= hi {
+        let mid = (lo + hi) // 2
+        if arr[mid] == target { return mid }
+        elif arr[mid] < target { lo = mid + 1 }
+        else { hi = mid - 1 }
+    }
+    return -1
+}
+
+func intersection(a, b) {
+    let set_b = {}
+    for x in b { set_b[str(x)] = x }
+    let result = []
+    for x in a {
+        if has(set_b, str(x)) { push(result, x) }
+    }
+    return result
+}
+
+func difference(a, b) {
+    let set_b = {}
+    for x in b { set_b[str(x)] = true }
+    let result = []
+    for x in a {
+        if not has(set_b, str(x)) { push(result, x) }
+    }
+    return result
+}
+
+func symmetricDiff(a, b) {
+    let ab = difference(a, b)
+    let ba = difference(b, a)
+    return ab + ba
+}
+
+func isSubset(sub, sup) {
+    let set_sup = {}
+    for x in sup { set_sup[str(x)] = true }
+    for x in sub {
+        if not has(set_sup, str(x)) { return false }
+    }
+    return true
+}
+
+func cartesianProduct(a, b) {
+    let result = []
+    for x in a {
+        for y in b { push(result, [x, y]) }
+    }
+    return result
+}
+
+func combinations(arr, k) {
+    if k == 0 { return [[]] }
+    if len(arr) == 0 { return [] }
+    let head = arr[0]
+    let tail = slice(arr, 1)
+    let with_head = []
+    for combo in combinations(tail, k - 1) {
+        push(with_head, [head] + combo)
+    }
+    let without_head = combinations(tail, k)
+    return with_head + without_head
+}
+
+func permutations(arr) {
+    if len(arr) <= 1 { return [arr] }
+    let result = []
+    let i = 0
+    while i < len(arr) {
+        let rest = slice(arr, 0, i) + slice(arr, i + 1)
+        for perm in permutations(rest) {
+            push(result, [arr[i]] + perm)
+        }
+        i += 1
+    }
+    return result
+}
+
+func windowSlide(arr, size) {
+    let result = []
+    let i = 0
+    while i <= len(arr) - size {
+        push(result, slice(arr, i, i + size))
+        i += 1
+    }
+    return result
+}
+
+func accumulate(arr) {
+    let result = []
+    let total = 0
+    for x in arr {
+        total += x
+        push(result, total)
+    }
+    return result
+}
+
+func scan(arr, f, init) {
+    let acc = init
+    let result = [acc]
+    for x in arr {
+        acc = f(acc, x)
+        push(result, acc)
+    }
+    return result
+}
+
+/* ── Dict Utilities ─────────────────────────────────────── */
+
+func dictMerge(a, b) {
+    let result = {}
+    for k in keys(a) { result[k] = a[k] }
+    for k in keys(b) { result[k] = b[k] }
+    return result
+}
+
+func dictPick(d, ks) {
+    let result = {}
+    for k in ks {
+        if has(d, k) { result[k] = d[k] }
+    }
+    return result
+}
+
+func dictOmit(d, ks) {
+    let skip = {}
+    for k in ks { skip[k] = true }
+    let result = {}
+    for k in keys(d) {
+        if not has(skip, k) { result[k] = d[k] }
+    }
+    return result
+}
+
+func dictMap(d, f) {
+    let result = {}
+    for k in keys(d) { result[k] = f(k, d[k]) }
+    return result
+}
+
+func dictFilter(d, f) {
+    let result = {}
+    for k in keys(d) {
+        if f(k, d[k]) { result[k] = d[k] }
+    }
+    return result
+}
+
+func dictInvert(d) {
+    let result = {}
+    for k in keys(d) { result[str(d[k])] = k }
+    return result
+}
+
+func dictEntries(d) {
+    let result = []
+    for k in keys(d) { push(result, [k, d[k]]) }
+    return result
+}
+
+func dictFromEntries(pairs) {
+    let result = {}
+    for pair in pairs { result[pair[0]] = pair[1] }
+    return result
+}
+
+func dictGet(d, k, default_val) {
+    if has(d, k) { return d[k] }
+    return default_val
+}
+
+/* ── Stack ──────────────────────────────────────────────── */
+
+class Stack {
+    func init() {
+        self._data = []
+    }
+
+    func push(val)  { push(self._data, val); return self }
+    func pop()      {
+        if self.isEmpty() { error("Stack: pop() on empty stack") }
+        return self._data.pop()
+    }
+    func peek()     {
+        if self.isEmpty() { error("Stack: peek() on empty stack") }
+        return self._data[len(self._data) - 1]
+    }
+    func size()     { return len(self._data) }
+    func isEmpty()  { return len(self._data) == 0 }
+    func clear()    { self._data = []; return self }
+    func toArray()  { return slice(self._data, 0) }
+}
+
+/* ── Queue ──────────────────────────────────────────────── */
+
+class Queue {
+    func init() {
+        self._data = []
+        self._head = 0
+    }
+
+    func enqueue(val) { push(self._data, val); return self }
+    func dequeue() {
+        if self.isEmpty() { error("Queue: dequeue() on empty queue") }
+        let val = self._data[self._head]
+        self._head += 1
+        if self._head > len(self._data) // 2 {
+            self._data = slice(self._data, self._head)
+            self._head = 0
+        }
+        return val
+    }
+    func front()  {
+        if self.isEmpty() { error("Queue: front() on empty queue") }
+        return self._data[self._head]
+    }
+    func size()   { return len(self._data) - self._head }
+    func isEmpty(){ return self.size() == 0 }
+    func clear()  { self._data = []; self._head = 0; return self }
+    func toArray(){ return slice(self._data, self._head) }
+}
+
+/* ── Deque (double-ended queue) ─────────────────────────── */
+
+class Deque {
+    func init() { self._data = [] }
+
+    func pushFront(val) { self._data = [val] + self._data; return self }
+    func pushBack(val)  { push(self._data, val); return self }
+    func popFront() {
+        if self.isEmpty() { error("Deque: popFront() on empty deque") }
+        let v = self._data[0]
+        self._data = slice(self._data, 1)
+        return v
+    }
+    func popBack() {
+        if self.isEmpty() { error("Deque: popBack() on empty deque") }
+        return self._data.pop()
+    }
+    func front()   { return self._data[0] }
+    func back()    { return self._data[len(self._data) - 1] }
+    func size()    { return len(self._data) }
+    func isEmpty() { return len(self._data) == 0 }
+    func toArray() { return slice(self._data, 0) }
+}
+
+/* ── Set ────────────────────────────────────────────────── */
+
+class Set {
+    func init(arr) {
+        self._data = {}
+        if arr != void {
+            for x in arr { self.add(x) }
+        }
+    }
+
+    func add(val)     { self._data[str(val)] = val; return self }
+    func remove(val)  {
+        if has(self._data, str(val)) { delete self._data[str(val)] }
+        return self
+    }
+    func has(val)     { return has(self._data, str(val)) }
+    func size()       { return len(keys(self._data)) }
+    func isEmpty()    { return self.size() == 0 }
+    func toArray()    {
+        let result = []
+        for k in keys(self._data) { push(result, self._data[k]) }
+        return result
+    }
+    func union(other) {
+        let s = new Set(self.toArray())
+        for x in other.toArray() { s.add(x) }
+        return s
+    }
+    func intersection(other) {
+        let s = new Set(void)
+        for x in self.toArray() {
+            if other.has(x) { s.add(x) }
+        }
+        return s
+    }
+    func difference(other) {
+        let s = new Set(void)
+        for x in self.toArray() {
+            if not other.has(x) { s.add(x) }
+        }
+        return s
+    }
+    func isSubset(other) {
+        for x in self.toArray() {
+            if not other.has(x) { return false }
+        }
+        return true
+    }
+}
+
+/* ── PriorityQueue (min-heap) ───────────────────────────── */
+
+class PriorityQueue {
+    func init() { self._heap = [] }
+
+    func _parent(i)  { return (i - 1) // 2 }
+    func _left(i)    { return 2 * i + 1 }
+    func _right(i)   { return 2 * i + 2 }
+
+    func _swap(i, j) {
+        let t = self._heap[i]
+        self._heap[i] = self._heap[j]
+        self._heap[j] = t
+    }
+
+    func _bubbleUp(i) {
+        while i > 0 {
+            let p = self._parent(i)
+            if self._heap[i][0] < self._heap[p][0] {
+                self._swap(i, p)
+                i = p
+            } else { return }
+        }
+    }
+
+    func _sinkDown(i) {
+        let n = len(self._heap)
+        while true {
+            let smallest = i
+            let l = self._left(i)
+            let r = self._right(i)
+            if l < n and self._heap[l][0] < self._heap[smallest][0] { smallest = l }
+            if r < n and self._heap[r][0] < self._heap[smallest][0] { smallest = r }
+            if smallest == i { return }
+            self._swap(i, smallest)
+            i = smallest
+        }
+    }
+
+    func enqueue(priority, value) {
+        push(self._heap, [priority, value])
+        self._bubbleUp(len(self._heap) - 1)
+        return self
+    }
+
+    func dequeue() {
+        if self.isEmpty() { error("PriorityQueue: dequeue() on empty queue") }
+        let top = self._heap[0]
+        let last = self._heap.pop()
+        if len(self._heap) > 0 {
+            self._heap[0] = last
+            self._sinkDown(0)
+        }
+        return top[1]
+    }
+
+    func peek()    { return self._heap[0][1] }
+    func size()    { return len(self._heap) }
+    func isEmpty() { return len(self._heap) == 0 }
+}
+
+/* ── LinkedList ─────────────────────────────────────────── */
+
+struct ListNode { val, next }
+
+class LinkedList {
+    func init() {
+        self._head = void
+        self._size = 0
+    }
+
+    func prepend(val) {
+        let node = new ListNode(val, self._head)
+        self._head = node
+        self._size += 1
+        return self
+    }
+
+    func append(val) {
+        let node = new ListNode(val, void)
+        if self._head == void {
+            self._head = node
+        } else {
+            let cur = self._head
+            while cur.next != void { cur = cur.next }
+            cur.next = node
+        }
+        self._size += 1
+        return self
+    }
+
+    func removeFirst() {
+        if self._head == void { error("LinkedList: removeFirst() on empty list") }
+        let val = self._head.val
+        self._head = self._head.next
+        self._size -= 1
+        return val
+    }
+
+    func size()    { return self._size }
+    func isEmpty() { return self._size == 0 }
+
+    func toArray() {
+        let result = []
+        let cur = self._head
+        while cur != void {
+            push(result, cur.val)
+            cur = cur.next
+        }
+        return result
+    }
+
+    func contains(val) {
+        let cur = self._head
+        while cur != void {
+            if cur.val == val { return true }
+            cur = cur.next
+        }
+        return false
+    }
+}
+
+/* ── Trie ───────────────────────────────────────────────── */
+
+class TrieNode {
+    func init() {
+        self.children = {}
+        self.isEnd    = false
+    }
+}
+
+class Trie {
+    func init() { self._root = new TrieNode() }
+
+    func insert(word) {
+        let node = self._root
+        for ch in chars(word) {
+            if not has(node.children, ch) {
+                node.children[ch] = new TrieNode()
+            }
+            node = node.children[ch]
+        }
+        node.isEnd = true
+        return self
+    }
+
+    func search(word) {
+        let node = self._root
+        for ch in chars(word) {
+            if not has(node.children, ch) { return false }
+            node = node.children[ch]
+        }
+        return node.isEnd
+    }
+
+    func startsWith(prefix) {
+        let node = self._root
+        for ch in chars(prefix) {
+            if not has(node.children, ch) { return false }
+            node = node.children[ch]
+        }
+        return true
+    }
+
+    func _collect(node, prefix, results) {
+        if node.isEnd { push(results, prefix) }
+        for ch in keys(node.children) {
+            self._collect(node.children[ch], prefix + ch, results)
+        }
+    }
+
+    func autocomplete(prefix) {
+        let node = self._root
+        for ch in chars(prefix) {
+            if not has(node.children, ch) { return [] }
+            node = node.children[ch]
+        }
+        let results = []
+        self._collect(node, prefix, results)
+        return results
+    }
+}
+
+/* ── Graph (adjacency list) ─────────────────────────────── */
+
+class Graph {
+    func init(directed) {
+        self._adj    = {}
+        self._directed = directed ?? false
+    }
+
+    func addVertex(v) {
+        if not has(self._adj, v) { self._adj[v] = [] }
+        return self
+    }
+
+    func addEdge(u, v, weight) {
+        weight = weight ?? 1
+        self.addVertex(u)
+        self.addVertex(v)
+        push(self._adj[u], [v, weight])
+        if not self._directed { push(self._adj[v], [u, weight]) }
+        return self
+    }
+
+    func neighbors(v) {
+        if not has(self._adj, v) { return [] }
+        return self._adj[v]
+    }
+
+    func vertices() { return keys(self._adj) }
+
+    func bfs(start) {
+        let visited = {}
+        let order   = []
+        let queue   = [start]
+        visited[start] = true
+        while len(queue) > 0 {
+            let node = queue[0]
+            queue = slice(queue, 1)
+            push(order, node)
+            for edge in self.neighbors(node) {
+                let nb = edge[0]
+                if not has(visited, nb) {
+                    visited[nb] = true
+                    push(queue, nb)
+                }
+            }
+        }
+        return order
+    }
+
+    func dfs(start) {
+        let visited = {}
+        let order   = []
+        func _dfs(node) {
+            if has(visited, node) { return }
+            visited[node] = true
+            push(order, node)
+            for edge in self.neighbors(node) {
+                _dfs(edge[0])
+            }
+        }
+        _dfs(start)
+        return order
+    }
+
+    func hasPath(start, end) {
+        let visited = dfs_set(self, start)
+        return has(visited, end)
+    }
+}
+
+func dfs_set(graph, start) {
+    let visited = {}
+    let stack   = [start]
+    while len(stack) > 0 {
+        let n = stack.pop()
+        if has(visited, n) { continue }
+        visited[n] = true
+        for edge in graph.neighbors(n) {
+            push(stack, edge[0])
+        }
+    }
+    return visited
+}

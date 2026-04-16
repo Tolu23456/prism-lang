@@ -1,0 +1,439 @@
+/* Prism Standard Library — matrix module
+   Pure Prism implementation — no Python imports.
+   2D matrix creation, arithmetic, decomposition,
+   and linear algebra operations.
+*/
+
+/* ── Construction ────────────────────────────────────────── */
+
+func zeros(rows, cols) {
+    let m = []
+    let i = 0
+    while i < rows {
+        let row = []
+        let j = 0
+        while j < cols { push(row, 0); j += 1 }
+        push(m, row)
+        i += 1
+    }
+    return m
+}
+
+func ones(rows, cols) {
+    let m = []
+    let i = 0
+    while i < rows {
+        let row = []
+        let j = 0
+        while j < cols { push(row, 1); j += 1 }
+        push(m, row)
+        i += 1
+    }
+    return m
+}
+
+func identity(n) {
+    let m = zeros(n, n)
+    let i = 0
+    while i < n {
+        m[i][i] = 1
+        i += 1
+    }
+    return m
+}
+
+func diagonal(vals) {
+    let n = len(vals)
+    let m = zeros(n, n)
+    let i = 0
+    while i < n {
+        m[i][i] = vals[i]
+        i += 1
+    }
+    return m
+}
+
+func fromArray(arr, rows, cols) {
+    if len(arr) != rows * cols {
+        error("matrix.fromArray: length mismatch")
+    }
+    let m = []
+    let i = 0
+    while i < rows {
+        let row = []
+        let j = 0
+        while j < cols {
+            push(row, arr[i * cols + j])
+            j += 1
+        }
+        push(m, row)
+        i += 1
+    }
+    return m
+}
+
+func toArray(m) {
+    let result = []
+    for row in m {
+        for val in row { push(result, val) }
+    }
+    return result
+}
+
+func fill(rows, cols, val) {
+    let m = []
+    let i = 0
+    while i < rows {
+        let row = []
+        let j = 0
+        while j < cols { push(row, val); j += 1 }
+        push(m, row)
+        i += 1
+    }
+    return m
+}
+
+/* ── Shape ───────────────────────────────────────────────── */
+
+func rows(m)    { return len(m) }
+func cols(m)    { return len(m) > 0 ? len(m[0]) : 0 }
+func shape(m)   { return [rows(m), cols(m)] }
+func isSquare(m){ return rows(m) == cols(m) }
+
+func clone(m) {
+    let result = []
+    for row in m {
+        let r = []
+        for val in row { push(r, val) }
+        push(result, r)
+    }
+    return result
+}
+
+/* ── Arithmetic ──────────────────────────────────────────── */
+
+func add(a, b) {
+    if rows(a) != rows(b) or cols(a) != cols(b) {
+        error("matrix.add: shape mismatch")
+    }
+    let result = zeros(rows(a), cols(a))
+    let i = 0
+    while i < rows(a) {
+        let j = 0
+        while j < cols(a) {
+            result[i][j] = a[i][j] + b[i][j]
+            j += 1
+        }
+        i += 1
+    }
+    return result
+}
+
+func sub(a, b) {
+    if rows(a) != rows(b) or cols(a) != cols(b) {
+        error("matrix.sub: shape mismatch")
+    }
+    let result = zeros(rows(a), cols(a))
+    let i = 0
+    while i < rows(a) {
+        let j = 0
+        while j < cols(a) {
+            result[i][j] = a[i][j] - b[i][j]
+            j += 1
+        }
+        i += 1
+    }
+    return result
+}
+
+func scale(m, k) {
+    let result = zeros(rows(m), cols(m))
+    let i = 0
+    while i < rows(m) {
+        let j = 0
+        while j < cols(m) {
+            result[i][j] = m[i][j] * k
+            j += 1
+        }
+        i += 1
+    }
+    return result
+}
+
+func mul(a, b) {
+    if cols(a) != rows(b) {
+        error("matrix.mul: incompatible shapes")
+    }
+    let r = rows(a)
+    let c = cols(b)
+    let k = cols(a)
+    let result = zeros(r, c)
+    let i = 0
+    while i < r {
+        let j = 0
+        while j < c {
+            let s = 0
+            let p = 0
+            while p < k {
+                s += a[i][p] * b[p][j]
+                p += 1
+            }
+            result[i][j] = s
+            j += 1
+        }
+        i += 1
+    }
+    return result
+}
+
+func hadamard(a, b) {
+    if rows(a) != rows(b) or cols(a) != cols(b) {
+        error("matrix.hadamard: shape mismatch")
+    }
+    let result = zeros(rows(a), cols(a))
+    let i = 0
+    while i < rows(a) {
+        let j = 0
+        while j < cols(a) {
+            result[i][j] = a[i][j] * b[i][j]
+            j += 1
+        }
+        i += 1
+    }
+    return result
+}
+
+func transpose(m) {
+    let r = rows(m)
+    let c = cols(m)
+    let result = zeros(c, r)
+    let i = 0
+    while i < r {
+        let j = 0
+        while j < c {
+            result[j][i] = m[i][j]
+            j += 1
+        }
+        i += 1
+    }
+    return result
+}
+
+func neg(m) { return scale(m, -1) }
+
+func pow_matrix(m, p) {
+    if not isSquare(m) { error("matrix.pow: must be square") }
+    if p == 0 { return identity(rows(m)) }
+    let result = identity(rows(m))
+    let i = 0
+    while i < p {
+        result = mul(result, m)
+        i += 1
+    }
+    return result
+}
+
+/* ── Properties ──────────────────────────────────────────── */
+
+func trace(m) {
+    if not isSquare(m) { error("matrix.trace: must be square") }
+    let s = 0
+    let i = 0
+    while i < rows(m) {
+        s += m[i][i]
+        i += 1
+    }
+    return s
+}
+
+func frobenius(m) {
+    let s = 0
+    for row in m {
+        for val in row { s += val * val }
+    }
+    return sqrt(s)
+}
+
+func det(m) {
+    let n = rows(m)
+    if not isSquare(m) { error("matrix.det: must be square") }
+    if n == 1 { return m[0][0] }
+    if n == 2 { return m[0][0] * m[1][1] - m[0][1] * m[1][0] }
+    if n == 3 {
+        return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+             - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+             + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0])
+    }
+    let work = clone(m)
+    let sign = 1
+    let i = 0
+    while i < n {
+        let pivot_row = i
+        let j = i + 1
+        while j < n {
+            if abs(work[j][i]) > abs(work[pivot_row][i]) { pivot_row = j }
+            j += 1
+        }
+        if pivot_row != i {
+            let t = work[i]; work[i] = work[pivot_row]; work[pivot_row] = t
+            sign = -sign
+        }
+        if work[i][i] == 0 { return 0 }
+        j = i + 1
+        while j < n {
+            let factor = work[j][i] / work[i][i]
+            let k = i
+            while k < n {
+                work[j][k] -= factor * work[i][k]
+                k += 1
+            }
+            j += 1
+        }
+        i += 1
+    }
+    let d = sign
+    i = 0
+    while i < n {
+        d *= work[i][i]
+        i += 1
+    }
+    return d
+}
+
+func inverse(m) {
+    let n = rows(m)
+    if not isSquare(m) { error("matrix.inverse: must be square") }
+    let aug = []
+    let i = 0
+    while i < n {
+        let row = []
+        for val in m[i] { push(row, float(val)) }
+        let j = 0
+        while j < n {
+            push(row, (i == j) ? 1.0 : 0.0)
+            j += 1
+        }
+        push(aug, row)
+        i += 1
+    }
+    i = 0
+    while i < n {
+        let pivot = aug[i][i]
+        if abs(pivot) < 1e-12 { error("matrix.inverse: singular matrix") }
+        let j = 0
+        while j < 2 * n {
+            aug[i][j] = aug[i][j] / pivot
+            j += 1
+        }
+        let k = 0
+        while k < n {
+            if k != i {
+                let factor = aug[k][i]
+                j = 0
+                while j < 2 * n {
+                    aug[k][j] -= factor * aug[i][j]
+                    j += 1
+                }
+            }
+            k += 1
+        }
+        i += 1
+    }
+    let result = zeros(n, n)
+    i = 0
+    while i < n {
+        let j = 0
+        while j < n {
+            result[i][j] = aug[i][j + n]
+            j += 1
+        }
+        i += 1
+    }
+    return result
+}
+
+func rank(m) {
+    let work = clone(m)
+    let r = rows(work)
+    let c = cols(work)
+    let rank_count = 0
+    let row_idx = 0
+    let col = 0
+    while col < c and row_idx < r {
+        let pivot = row_idx
+        let i = row_idx + 1
+        while i < r {
+            if abs(work[i][col]) > abs(work[pivot][col]) { pivot = i }
+            i += 1
+        }
+        if abs(work[pivot][col]) < 1e-10 { col += 1; continue }
+        let t = work[row_idx]; work[row_idx] = work[pivot]; work[pivot] = t
+        let factor = work[row_idx][col]
+        let j = col
+        while j < c {
+            work[row_idx][j] = work[row_idx][j] / factor
+            j += 1
+        }
+        i = 0
+        while i < r {
+            if i != row_idx {
+                let f = work[i][col]
+                j = col
+                while j < c {
+                    work[i][j] -= f * work[row_idx][j]
+                    j += 1
+                }
+            }
+            i += 1
+        }
+        rank_count += 1
+        row_idx += 1
+        col += 1
+    }
+    return rank_count
+}
+
+/* ── Vector ops ──────────────────────────────────────────── */
+
+func dotVec(a, b) {
+    if len(a) != len(b) { error("matrix.dotVec: length mismatch") }
+    let s = 0
+    let i = 0
+    while i < len(a) {
+        s += a[i] * b[i]
+        i += 1
+    }
+    return s
+}
+
+func cross3(a, b) {
+    if len(a) != 3 or len(b) != 3 { error("matrix.cross3: need 3D vectors") }
+    return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0]
+    ]
+}
+
+func normVec(v) {
+    let mag = sqrt(dotVec(v, v))
+    if mag == 0 { error("matrix.normVec: zero vector") }
+    let result = []
+    for x in v { push(result, x / mag) }
+    return result
+}
+
+func print_matrix(m) {
+    for row in m {
+        let parts = []
+        for val in row {
+            push(parts, padLeft(str(round(val * 1000) / 1000), 10, " "))
+        }
+        output(join("", parts))
+    }
+}
+
+func padLeft(s, w, ch) {
+    while len(s) < w { s = ch + s }
+    return s
+}

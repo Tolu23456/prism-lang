@@ -1,0 +1,181 @@
+How the language should look
+Variables can be created using
+
+let a = value; or
+const b = value
+
+This should work also
+let a (without a value)
+
+but if
+const a (without value should raise an error)
+
+INPUT and OUTPUT
+the keyword for input is input() and for output is output()
+
+DATATYPES
+It should support this various datatypes
+Integers
+Float
+String
+Boolean
+Complex
+Array
+Dictionary
+Sets
+Tuple
+
+The datatypes can be decleared like so
+INT
+let a = 120 
+or
+let b 
+b = 20
+
+FLOAT
+et a = 1.20 
+or
+let b 
+b = 2.0
+
+BOOLEAN
+let a = true
+or
+let b = false
+or
+let c = unknown
+It doesn't support declearing a variable first then add the value, it can also be define or decleared like this
+let a = bool(0) or let a = bool(false)
+let b = bool(1) or let b = bool(true)
+let c = bool(-1) or let b = bool(unknown)
+
+COMPLEX
+let a = 12j
+or 
+let b = 3.5j
+
+Other literals
+let h = 0xFF             # hex  → 255
+let o = 0b1010           # bin  → 10
+
+STRING
+should support both single, double and triple quotes
+let a = "Hello"
+let b = 'Hello'
+let c = """Hello"""
+The Triple quotes is used to write multiline strings unline the single and double quotes which are single line
+Characteristic
+1. Immutability: Once a string is created, its characters cannot be changed or updated individually. Any modification creates a entirely new string.
+2. Indexing: You can access individual characters using zero-based indexing (e.g., s[0] for the first character) or negative indexing (e.g., s[-1] for the last).
+3. Slicing: Extracts a substring using the [start:end:step] syntax. The start is inclusive, while the end is exclusive.
+4. Verbatim Literals: Prefixed with @ (e.g., @"C:\path"), these interpret backslashes literally and allow for multi-line text.
+5. Concatenation: Using the + operator to join two strings (e.g., "Hi " + "there").
+6. Repetition: Using the * operator to repeat a string multiple times (e.g., "abc" * 3).
+7. Membership: The in and not in keywords check if a substring exists within a string.
+8. Length: The len() function returns the total number of characters. 
+Methods
+must support the following method
+1. Case Modification: .upper(), .lower(), .capitalize(), and .title()
+2. Trimming: .strip(), .lstrip(), and .rstrip() remove leading/trailing whitespace or specific characters.
+3. Search and Replace: .find() and .index() locate substrings, while .replace() substitutes text.
+4. Splitting and Joining: .split() breaks a string into a list, and .join() merges a list into a single string with a specified delimiter.
+5. Boolean Checks: .isdigit(), .isalpha(), .isspace(), .startswith(), and .endswith() validate string content.
+
+ARRAY
+arrays should support the following characteristics
+Characteristics
+1. Zero Based Index
+2. Must be mutable
+3. Must be hetrogenous meaning it must support any datatypes including itself making a 1D, 2D and so
+4. Must allow duplicates
+5. Must be Contiguous Memory mean Elements are stored in adjacent memory locations, allowing for high-performance access.
+It doesn't support declearing a variable first then add the value, so it must be decleared like this
+let array_1 = []
+or 
+let array_2 = arr[]
+or with value like this
+let array_1 = [1, "A", 3.4, true, [19]]
+or 
+let array_2 = arr[0xFF, {}, (), set()]
+items in the list can be accessed like so
+array_1[index_value]
+and using
+index_value of -1 returns the last item in the list
+methods
+must have the following methods
+1. .add(item): Adds an element to the end.
+2. .insert(index, item): Adds an element at a specific position.
+3. .remove(item): Removes the first occurrence of a specific value.
+4. .pop(index): Removes and returns the item at a given index (defaults to the last item).
+5. .sort(): Arranges items in ascending order in-place.
+6. .extend(iterable): Appends elements from another collection to the end of the list. 
+7. Slicing: Extract a portion of a list using [start:stop:step]
+
+DICTIONARY
+let dict_1 = {"key": "value"}
+it is a key value pair data types
+dictionaries should support the following characteristics
+Characteristics
+1. Must be flexible meaning it can grow, it doesn't have a fixed size
+2. must be ordered meaning it maintained the insertion order of items
+3. Performance: It is implemented as a hash table, providing fast lookups with an average time complexity of O(1).
+4. Flexible Values: Values can be of any data type, including lists, other dictionaries, or even custom objects.
+5. Mutable: You can add, remove, or change items after the dictionary is created
+6. Uniqueness: Every key must be unique and cannot be null. However, values can be duplicated or null (if the type is a reference type).
+7. Must support nested dictionaries
+
+methods
+.keys()	Returns a view object of all keys in the dictionary.
+.values()	Returns a view object of all values.
+.items()	Returns a view of key-value pairs as tuples, ideal for looping.
+.erase()	Erases all items from the dictionary.
+
+SETS
+It doesn't support declearing a variable first then add the value, so it must be decleared like this
+let set_1 = {}
+to create an empty set or like this with value
+let set_2 = {1, 2, 4, 5}
+empty set must be like this
+let empty_set = set()
+see also
+let empty_set_2 = set([1, 2, 3, 4])
+characteristice
+1. Unique Elements: Sets automatically remove any duplicate values. If you add the same item twice, Python only keeps one instance.
+2. Mutable Collection: You can add or remove items after the set is created.
+3. Immutable Elements: While the set itself is mutable, the individual elements must be hashable (immutable), such as strings, numbers, or tuples.
+4. Must be an unordered collection based on a hash table. It provides average time complexity for addition, removal, and lookups
+methods
+must support the following methods
+1. Operations: Supports mathematical operations like Union (|), Intersection (&), Difference (-), and Symmetric Difference (^).
+2. Methods: Key methods include .add(), .update(), .remove()/.discard(), and .pop() for managing elements.
+
+TUPLE
+single tuple must include a tailing comma or prism will interprete it as standard variable
+let tuple_1 = 1,
+or 
+let tuple_2 = (1, 2, 3, 4)
+characteristics
+1.Ordered: Items have a defined order that will not change.
+Immutable: You cannot modify, add, or delete elements after the tuple is defined.
+2. Allow Duplicates: Since items are indexed, a tuple can contain multiple instances of the same value.
+3. Heterogeneous: A single tuple can store various data types, such as integers, strings, and even other tuples or lists.
+4. Packing: You can create a tuple without parentheses by just separating values with commas: let packed = 1, 2, 3 while unpacking works like so let a, b, c = (1, 2, 3)
+methods
+1. Accessing Items: Use square brackets and index numbers (starting at 0). For example, my_tuple[0] returns the first item.
+2. Slicing: Extract a subset of a tuple using my_tuple[start:stop:step].
+3. Built-in Methods: Tuples only have two primary methods due to their immutability:
+4. .count(value): Returns how many times a value appears.
+5. .index(value): Returns the first index where a value is found. 
+
+FUNTION
+function in prism are decleared using the func keyword followed by the function name. Here is a syntax
+func greet_user(){
+	output("Hello User")
+}
+the above function returns null by default since it didn't return anything, it was created with arguements
+func get_user_info(str name, int age, bool is_adult){
+	return f"Name: {name}, Age: {age}, Is Adult: {is_adult}")
+}
+this function will return a value
+function can also return 0,1, -1 for false, true or unknown respectively
+like so return 0, return 1, return -1 is vaild
