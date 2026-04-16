@@ -7,6 +7,7 @@
 #include "interpreter.h"
 #include "parser.h"
 #include "value.h"
+#include "xgui.h"
 
 /* ================================================================== GUI State */
 
@@ -181,19 +182,31 @@ static Value *builtin_bool_fn(Value **args, int argc) {
 static Value *builtin_int_fn(Value **args, int argc) {
     if (argc < 1) return value_int(0);
     Value *v = args[0];
-    if (v->type == VAL_INT)    return value_retain(v);
-    if (v->type == VAL_FLOAT)  return value_int((long long)v->float_val);
-    if (v->type == VAL_BOOL)   return value_int(v->bool_val == 1 ? 1 : 0);
-    if (v->type == VAL_STRING) return value_int(strtoll(v->str_val, NULL, 10));
+    if (v->type == VAL_INT)     return value_retain(v);
+    if (v->type == VAL_FLOAT)   return value_int((long long)v->float_val);
+    if (v->type == VAL_BOOL)    return value_int(v->bool_val == 1 ? 1 : 0);
+    if (v->type == VAL_NULL)    return value_int(0);
+    if (v->type == VAL_COMPLEX) return value_int((long long)v->complex_val.real);
+    if (v->type == VAL_STRING) {
+        const char *s = v->str_val;
+        if (s[0] == '0' && (s[1] == 'b' || s[1] == 'B'))
+            return value_int(strtoll(s + 2, NULL, 2));
+        if (s[0] == '0' && (s[1] == 'o' || s[1] == 'O'))
+            return value_int(strtoll(s + 2, NULL, 8));
+        return value_int(strtoll(s, NULL, 0));
+    }
     return value_int(0);
 }
 
 static Value *builtin_float_fn(Value **args, int argc) {
     if (argc < 1) return value_float(0.0);
     Value *v = args[0];
-    if (v->type == VAL_FLOAT)  return value_retain(v);
-    if (v->type == VAL_INT)    return value_float((double)v->int_val);
-    if (v->type == VAL_STRING) return value_float(strtod(v->str_val, NULL));
+    if (v->type == VAL_FLOAT)   return value_retain(v);
+    if (v->type == VAL_INT)     return value_float((double)v->int_val);
+    if (v->type == VAL_BOOL)    return value_float(v->bool_val == 1 ? 1.0 : 0.0);
+    if (v->type == VAL_NULL)    return value_float(0.0);
+    if (v->type == VAL_COMPLEX) return value_float(v->complex_val.real);
+    if (v->type == VAL_STRING)  return value_float(strtod(v->str_val, NULL));
     return value_float(0.0);
 }
 
@@ -213,9 +226,84 @@ static Value *builtin_set_fn(Value **args, int argc) {
             for (int i = 0; i < arr->len; i++) value_set_add(s, arr->items[i]);
         } else if (src->type == VAL_SET) {
             for (int i = 0; i < src->set.len; i++) value_set_add(s, src->set.items[i]);
+        } else if (src->type == VAL_DICT) {
+            for (int i = 0; i < src->dict.len; i++) value_set_add(s, src->dict.entries[i].key);
+        } else if (src->type == VAL_STRING) {
+            const char *p = src->str_val;
+            while (*p) {
+                char buf[5] = {0};
+                buf[0] = *p++;
+                value_set_add(s, value_string(buf));
+            }
         }
     }
     return s;
+}
+
+static Value *builtin_array_fn(Value **args, int argc) {
+    Value *a = value_array_new();
+    if (argc >= 1) {
+        Value *src = args[0];
+        if (src->type == VAL_ARRAY) {
+            for (int i = 0; i < src->array.len; i++) value_array_push(a, src->array.items[i]);
+        } else if (src->type == VAL_TUPLE) {
+            for (int i = 0; i < src->tuple.len; i++) value_array_push(a, src->tuple.items[i]);
+        } else if (src->type == VAL_SET) {
+            for (int i = 0; i < src->set.len; i++) value_array_push(a, src->set.items[i]);
+        } else if (src->type == VAL_DICT) {
+            for (int i = 0; i < src->dict.len; i++) value_array_push(a, src->dict.entries[i].key);
+        } else if (src->type == VAL_STRING) {
+            const char *p = src->str_val;
+            while (*p) {
+                char buf[5] = {0};
+                buf[0] = *p++;
+                value_array_push(a, value_string(buf));
+            }
+        } else {
+            value_array_push(a, src);
+        }
+    }
+    return a;
+}
+
+static Value *builtin_tuple_fn(Value **args, int argc) {
+    if (argc < 1) return value_tuple_new(NULL, 0);
+    Value *src = args[0];
+    if (src->type == VAL_TUPLE) return value_retain(src);
+    if (src->type == VAL_ARRAY)
+        return value_tuple_new(src->array.items, src->array.len);
+    if (src->type == VAL_SET)
+        return value_tuple_new(src->set.items, src->set.len);
+    if (src->type == VAL_DICT) {
+        Value **keys = malloc(src->dict.len * sizeof(Value *));
+        for (int i = 0; i < src->dict.len; i++) keys[i] = src->dict.entries[i].key;
+        Value *t = value_tuple_new(keys, src->dict.len);
+        free(keys);
+        return t;
+    }
+    return value_tuple_new(&src, 1);
+}
+
+static Value *builtin_complex_fn(Value **args, int argc) {
+    if (argc < 1) return value_complex(0.0, 0.0);
+    double real = 0.0, imag = 0.0;
+    if (argc >= 1) {
+        Value *v = args[0];
+        if (v->type == VAL_COMPLEX)  return value_retain(v);
+        if (v->type == VAL_INT)      real = (double)v->int_val;
+        else if (v->type == VAL_FLOAT) real = v->float_val;
+        else if (v->type == VAL_STRING) {
+            char *end;
+            real = strtod(v->str_val, &end);
+            if (*end == '+' || *end == '-') imag = strtod(end, NULL);
+        }
+    }
+    if (argc >= 2) {
+        Value *v = args[1];
+        if (v->type == VAL_INT)   imag = (double)v->int_val;
+        else if (v->type == VAL_FLOAT) imag = v->float_val;
+    }
+    return value_complex(real, imag);
 }
 
 static Value *builtin_type_fn(Value **args, int argc) {
@@ -303,6 +391,9 @@ static void register_builtins(Interpreter *interp) {
         {"float",       builtin_float_fn},
         {"str",         builtin_str_fn},
         {"set",         builtin_set_fn},
+        {"array",       builtin_array_fn},
+        {"tuple",       builtin_tuple_fn},
+        {"complex",     builtin_complex_fn},
         {"type",        builtin_type_fn},
         {"gui_window",  builtin_gui_window},
         {"gui_label",   builtin_gui_label},

@@ -1,0 +1,51 @@
+/* Prism Style Sheet — default dark theme */
+
+window {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    padding: 20 24;
+    font-size: 13;
+    font: sans;
+}
+
+label {
+    color: #cdd6f4;
+    font-size: 13;
+    font: sans;
+    padding: 2 0;
+}
+
+button {
+    background: #89b4fa;
+    color: #1e1e2e;
+    border-radius: 6;
+    padding: 9 22;
+    font-size: 13;
+    font: sans;
+}
+
+button:hover {
+    background: #b4d0fb;
+    border-radius: 6;
+    padding: 9 22;
+    font-size: 13;
+}
+
+input {
+    background: #313244;
+    color: #cdd6f4;
+    border: 1 #585b70;
+    border-radius: 5;
+    padding: 7 12;
+    font-size: 13;
+    font: sans;
+}
+
+input:focus {
+    background: #313244;
+    color: #cdd6f4;
+    border: 2 #89b4fa;
+    border-radius: 5;
+    padding: 7 12;
+    font-size: 13;
+}

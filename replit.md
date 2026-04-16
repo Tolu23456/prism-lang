@@ -76,7 +76,8 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 - **Functions**: `func name(type param) { ... }` with `return`
 - **I/O**: `output(...)`, `input(prompt)`
 - **Typecasting**: `int(x)`, `float(x)`, `bool(x)`, `str(x)`, `complex(real, imag)`, `array(x)`, `tuple(x)`, `set(x)` — convert between all types. `int()` recognises `"0xFF"`, `"0b1010"`, `"0o17"` string literals.
-- **PGUI**: native GTK3-style GUI helpers `pgui_window`, `pgui_label`, `pgui_button`, `pgui_input`, `pgui_box`, `pgui_run`
+- **PGUI**: legacy web-rendered GUI helpers `gui_window`, `gui_label`, `gui_button`, `gui_input`, `gui_run` (generates HTML)
+- **XGUI**: native X11 desktop GUI — `xgui_init(w,h,title)`, `xgui_style(path)`, `xgui_running()`, `xgui_begin()`, `xgui_end()`, `xgui_label(text)`, `xgui_button(text)→bool`, `xgui_input(id,placeholder)→str`, `xgui_spacer(h)`, `xgui_row_begin()`, `xgui_row_end()`, `xgui_close()`. Requires X11 display (desktop Linux/macOS with XQuartz). Style loaded from `.pss` files.
 - **Operators**: arithmetic `+ - * / % **`, comparison, logical `&& || !`, bitwise `& | ^ ~`
 - **Membership**: `x in arr`, `x not in arr`
 - **Slicing**: `s[start:stop:step]` for strings, arrays, tuples
