@@ -38,6 +38,13 @@
 ### Changed
 - REPL startup banner now reads the version from `PRISM_VERSION` instead of a
   hard-coded string.
+- `Makefile` gains `PREFIX` / `BINDIR` variables (default `PREFIX=/usr/local`)
+  and two new targets:
+  - `make install` — builds `prism` then copies it to `$(BINDIR)/prism` with
+    `install -m 755`. Supports `DESTDIR` for staged installs
+    (e.g. `make install DESTDIR=/tmp/pkg`).
+  - `make uninstall` — removes `$(BINDIR)/prism`.
+  Both are listed in `.PHONY`.
 
 ---
 

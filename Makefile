@@ -1,5 +1,7 @@
-CC     = gcc
-CFLAGS = -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L
+CC      = gcc
+CFLAGS  = -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L
+PREFIX  = /usr/local
+BINDIR  = $(DESTDIR)$(PREFIX)/bin
 
 # Detect X11 / Xft availability via pkg-config
 X11_CFLAGS  := $(shell pkg-config --cflags x11 xft fontconfig 2>/dev/null)
@@ -66,4 +68,13 @@ test: $(TARGET)
 	@chmod +x tests/run_tests.sh
 	@bash tests/run_tests.sh
 
-.PHONY: all clean run test
+install: $(TARGET)
+	@mkdir -p $(BINDIR)
+	install -m 755 $(TARGET) $(BINDIR)/$(TARGET)
+	@echo "Installed prism -> $(BINDIR)/$(TARGET)"
+
+uninstall:
+	rm -f $(BINDIR)/$(TARGET)
+	@echo "Removed $(BINDIR)/$(TARGET)"
+
+.PHONY: all clean run test install uninstall
