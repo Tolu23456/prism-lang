@@ -50,7 +50,7 @@
 - [ ] `fs` module: read_file, write_file, path operations
 - [ ] `os` module: env vars, exit, args
 - [ ] `net` module: basic HTTP requests
-- [ ] `json` module: parse and serialize JSON
+- [ ] Native `json` module: parse JSON into Prism dictionaries/arrays and serialize Prism dictionaries/arrays back to JSON
 
 ## Quality
 - [ ] Improve error messages with source location context
