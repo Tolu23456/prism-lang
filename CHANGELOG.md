@@ -3,6 +3,55 @@
 ## Unreleased
 
 ### Added
+- **Immortal singleton cache**: `null`, `true`, `false`, `unknown`, and all integers
+  −5–255 are now pre-allocated once and reused as immortal `Value*` pointers.
+  Immortal values bypass reference counting and are never touched by the GC,
+  eliminating thousands of alloc/free cycles for the most common values.
+- **String interning** (`gc_intern_string`, `value_string_intern`): an FNV-1a
+  open-chaining hash table in the GC stores one immortal `Value*` per unique
+  string (up to 128 bytes).  Identical strings share a pointer; duplicate
+  allocations are counted as `intern_bytes_saved` in the stats.
+- **Generational GC** (young/old split): every newly tracked `Value` starts as
+  `GC_GEN_YOUNG`.  A minor GC collects only young objects — reachable ones are
+  promoted to `GC_GEN_OLD`, unreachable ones are freed.  A major GC sweeps
+  all generations.  A major GC fires automatically after 8 minor GCs
+  (configurable via `gc->major_interval`).
+- **Adaptive GC policy** (`GC_POLICY_ADAPTIVE`): after each collection the
+  survival rate (survivors / total before sweep) is fed into an exponential
+  moving average (α = 0.30).  The collection threshold is raised when objects
+  tend to survive (long-lived program) and lowered when they die quickly (many
+  temporaries), clamped between 64 KB and 64 MB.
+- **Workload-aware GC hints** (`gc_set_workload`): the runtime now detects four
+  workload modes — `script` (adaptive default), `repl` (low-latency, 256 KB
+  threshold), `gui` (low-latency, 512 KB threshold), and `bench` (throughput,
+  8 MB threshold) — and seeds the adaptive tuner accordingly.
+- **Memory diagnostics** (`--mem-report`): prints a full human-readable memory
+  report at shutdown covering per-type allocation breakdown with byte estimates,
+  generational summary (young/old live counts, promotions), intern table stats
+  (strings shared, bytes saved), adaptive metrics (survival EMA, current
+  threshold), immortal singleton count, and qualitative health indicators
+  (live/alloc ratio, array growth warnings).
+- Added `--gc-policy=adaptive` to the CLI argument parser.
+- `formatter.c` added to the Makefile so `--format` and `--format-write` now
+  link correctly.
+
+### Changed
+- `value_retain` and `value_release` short-circuit immediately for immortal
+  values (`gc_immortal = 1`), removing ref-count overhead for all common values.
+- `gc_collect_sweep` is now an alias for `gc_collect_major` (kept for API
+  compatibility); callers should prefer `gc_collect_minor` / `gc_collect_major`
+  directly.
+- `gc_print_stats` output now includes workload, minor/major collection counts,
+  generational live counts, promotion count, survival EMA, and intern stats
+  alongside the existing per-type breakdown.
+- Updated `todo.md` to mark string interning, immortal singletons, generational
+  GC, adaptive policy, workload hints, and `--mem-report` as completed.
+
+---
+
+## Previous — AGC scaffold + VM completion
+
+### Added
 - Completed the core Prism VM path: user-defined functions now carry compiled
   bytecode chunks and execute through VM call frames instead of falling back to
   the tree-walking interpreter.

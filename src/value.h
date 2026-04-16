@@ -47,6 +47,8 @@ struct Value {
     ValueType type;
     int       ref_count;
     unsigned char gc_marked;
+    unsigned char gc_immortal;    /* 1 = never freed by GC or value_release */
+    unsigned char gc_generation;  /* 0 = young, 1 = old */
     struct Value *gc_next;
 
     union {
@@ -77,7 +79,7 @@ struct Value {
     };
 };
 
-/* Reference counting */
+/* Reference counting — immortal values bypass both operations */
 Value *value_retain(Value *v);
 void   value_release(Value *v);
 
@@ -87,7 +89,8 @@ Value *value_int(long long n);
 Value *value_float(double d);
 Value *value_complex(double real, double imag);
 Value *value_string(const char *s);
-Value *value_string_take(char *s);   /* takes ownership */
+Value *value_string_take(char *s);        /* takes ownership of heap string */
+Value *value_string_intern(const char *s);/* interned immortal string */
 Value *value_bool(int b);
 Value *value_array_new(void);
 Value *value_dict_new(void);
@@ -96,6 +99,10 @@ Value *value_tuple_new(Value **items, int count);
 Value *value_function(const char *name, Param *params, int param_count,
                       ASTNode *body, Env *closure);
 Value *value_builtin(const char *name, BuiltinFn fn);
+
+/* Immortal singleton lifecycle — call at program start / shutdown */
+void value_immortals_init(void);
+void value_immortals_free(void);
 
 /* Array operations */
 void   value_array_push(Value *arr, Value *item);

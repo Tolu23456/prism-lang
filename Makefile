@@ -2,33 +2,35 @@ CC     = gcc
 CFLAGS = -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L
 
 SRCS = \
-    src/main.c \
-    src/lexer.c \
-    src/ast.c \
-    src/parser.c \
-    src/value.c \
-    src/gc.c \
-    src/interpreter.c \
-    src/chunk.c \
-    src/compiler.c \
-    src/vm.c \
-    src/gui_native.c
+	src/main.c \
+	src/lexer.c \
+	src/ast.c \
+	src/parser.c \
+	src/value.c \
+	src/gc.c \
+	src/interpreter.c \
+	src/chunk.c \
+	src/compiler.c \
+	src/vm.c \
+	src/gui_native.c \
+	src/formatter.c
 
 OBJS   = $(SRCS:.c=.o)
 TARGET = prism
 
 HEADERS = \
-    src/lexer.h \
-    src/ast.h \
-    src/value.h \
-    src/gc.h \
-    src/parser.h \
-    src/interpreter.h \
-    src/chunk.h \
-    src/compiler.h \
-    src/vm.h \
-    src/opcode.h \
-    src/gui_native.h
+	src/lexer.h \
+	src/ast.h \
+	src/value.h \
+	src/gc.h \
+	src/parser.h \
+	src/interpreter.h \
+	src/chunk.h \
+	src/compiler.h \
+	src/vm.h \
+	src/opcode.h \
+	src/gui_native.h \
+	src/formatter.h
 
 all: $(TARGET)
 

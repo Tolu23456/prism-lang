@@ -17,15 +17,23 @@
 - [x] VM benchmark mode via `--bench`
 - [x] x86-64 assembly fast paths for VM integer arithmetic dispatch
 - [x] Bytecode cache serializer via `--emit-bytecode` writing `.pmc` files
+- [x] Immortal singleton cache: `null`, `true`, `false`, `unknown`, and integers −5–255 bypass GC and ref-counting entirely
+- [x] String interning via FNV-1a hash table — identical short strings share one immortal `Value*`
+- [x] Generational GC: young/old generation split, minor (young-only) and major (full) collections
+- [x] Promotion: reachable young objects automatically promoted to old generation after surviving a minor GC
+- [x] Adaptive GC policy (`GC_POLICY_ADAPTIVE`): survival-rate EMA adjusts collection threshold automatically
+- [x] Workload-aware GC hints: REPL, script, GUI, and bench modes tune initial thresholds and major-GC interval
+- [x] Memory diagnostics via `--mem-report`: per-type breakdown, generational summary, intern stats, adaptive metrics, health indicators
 
 ## Next Steps — AGC
 - [ ] Add temporary root stack for expression/interpreter values
-- [ ] Make mark/sweep safe as the default collection mode
+- [ ] Make sweep the default collection mode (remove opt-in requirement)
 - [ ] Replace most retain/release runtime paths with AGC ownership
 - [ ] Add cycle-focused tests/examples for arrays, dicts, closures, and objects
 - [ ] Add AST arena allocator for parser/compiler memory
-- [ ] Add string interning and immortal cached values for `true`, `false`, `unknown`, `void`
-- [ ] Add young/old generational heap after sweep mode is stable
+- [ ] Add actual string interning call-sites: use `value_string_intern()` for dict keys and identifier strings
+- [ ] Add young/old generation counters to GC stats printed by `--gc-stats` (already tracked internally; expose clearly)
+- [ ] Promote major GC trigger from "every 8 minors" to threshold-based (when old-gen exceeds a size limit)
 
 ## Next Steps — VM
 
