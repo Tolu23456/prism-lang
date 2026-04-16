@@ -750,6 +750,8 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
     if (!node || interp->had_error) return value_null();
     if (interp->returning || interp->breaking || interp->continuing) return value_null();
 
+    gc_set_alloc_site(interp->filename, node->line);
+
     switch (node->type) {
 
     /* ---- literals ---- */

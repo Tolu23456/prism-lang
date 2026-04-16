@@ -8,15 +8,77 @@
 #include "chunk.h"
 #include "gc.h"
 
+/* ================================================================== immortal singletons
+ *
+ * Common values that would otherwise be re-allocated on every use are
+ * created once, marked immortal, and returned from the constructors.
+ * Immortal values bypass reference counting and are never tracked by
+ * or freed by the GC.
+ * ================================================================== */
+
+#define SMALL_INT_RANGE  (GC_SMALL_INT_MAX - GC_SMALL_INT_MIN + 1)
+
+static Value *s_val_null    = NULL;
+static Value *s_val_true    = NULL;
+static Value *s_val_false   = NULL;
+static Value *s_val_unknown = NULL;
+static Value  s_small_ints[SMALL_INT_RANGE]; /* static storage, no heap alloc */
+static bool   s_singletons_ready = false;
+
+static void init_immortal(Value *v, ValueType t) {
+    memset(v, 0, sizeof(*v));
+    v->type        = t;
+    v->ref_count   = 1;
+    v->gc_immortal = 1;
+    /* NOT gc_track_value — immortals live outside the GC object list */
+}
+
+void value_immortals_init(void) {
+    if (s_singletons_ready) return;
+
+    /* heap singletons for null / bool (small structs, but need stable ptrs) */
+    s_val_null    = calloc(1, sizeof(Value));
+    s_val_true    = calloc(1, sizeof(Value));
+    s_val_false   = calloc(1, sizeof(Value));
+    s_val_unknown = calloc(1, sizeof(Value));
+
+    init_immortal(s_val_null,    VAL_NULL);
+    init_immortal(s_val_true,    VAL_BOOL);  s_val_true->bool_val    =  1;
+    init_immortal(s_val_false,   VAL_BOOL);  s_val_false->bool_val   =  0;
+    init_immortal(s_val_unknown, VAL_BOOL);  s_val_unknown->bool_val = -1;
+
+    /* small-integer cache: static array, in-place init */
+    for (int i = 0; i < SMALL_INT_RANGE; i++) {
+        init_immortal(&s_small_ints[i], VAL_INT);
+        s_small_ints[i].int_val = (long long)(GC_SMALL_INT_MIN + i);
+    }
+
+    s_singletons_ready = true;
+
+    /* tell the GC how many immortals we have (informational only) */
+    gc_global()->stats.immortal_count = 4 + SMALL_INT_RANGE;
+}
+
+void value_immortals_free(void) {
+    if (!s_singletons_ready) return;
+    free(s_val_null);    s_val_null    = NULL;
+    free(s_val_true);    s_val_true    = NULL;
+    free(s_val_false);   s_val_false   = NULL;
+    free(s_val_unknown); s_val_unknown = NULL;
+    /* s_small_ints is a static array — no heap to free */
+    s_singletons_ready = false;
+}
+
 /* ------------------------------------------------------------------ ref count */
 
 Value *value_retain(Value *v) {
-    if (v) v->ref_count++;
+    if (!v || v->gc_immortal) return v;
+    v->ref_count++;
     return v;
 }
 
 void value_release(Value *v) {
-    if (!v) return;
+    if (!v || v->gc_immortal) return;
     if (--v->ref_count > 0) return;
 
     gc_untrack_value(v);
@@ -64,18 +126,45 @@ void value_release(Value *v) {
 
 static Value *val_new(ValueType t) {
     Value *v = calloc(1, sizeof(Value));
-    v->type = t;
-    v->ref_count = 1;
-    v->gc_marked = 0;
-    v->gc_next = NULL;
+    v->type         = t;
+    v->ref_count    = 1;
+    v->gc_marked    = 0;
+    v->gc_immortal  = 0;
+    v->gc_generation = GC_GEN_YOUNG;
+    v->gc_next      = NULL;
     gc_track_value(v);
     return v;
 }
 
-Value *value_null(void)        { return val_new(VAL_NULL); }
-Value *value_int(long long n)  { Value *v = val_new(VAL_INT);   v->int_val = n;   return v; }
-Value *value_float(double d)   { Value *v = val_new(VAL_FLOAT); v->float_val = d; return v; }
-Value *value_bool(int b)       { Value *v = val_new(VAL_BOOL);  v->bool_val = b;  return v; }
+Value *value_null(void) {
+    if (s_singletons_ready) return s_val_null;
+    return val_new(VAL_NULL);
+}
+
+Value *value_int(long long n) {
+    if (s_singletons_ready && n >= GC_SMALL_INT_MIN && n <= GC_SMALL_INT_MAX)
+        return &s_small_ints[n - GC_SMALL_INT_MIN];
+    Value *v = val_new(VAL_INT);
+    v->int_val = n;
+    return v;
+}
+
+Value *value_float(double d) {
+    Value *v = val_new(VAL_FLOAT);
+    v->float_val = d;
+    return v;
+}
+
+Value *value_bool(int b) {
+    if (s_singletons_ready) {
+        if (b > 0)  return s_val_true;
+        if (b == 0) return s_val_false;
+        return s_val_unknown;
+    }
+    Value *v = val_new(VAL_BOOL);
+    v->bool_val = b;
+    return v;
+}
 
 Value *value_complex(double real, double imag) {
     Value *v = val_new(VAL_COMPLEX);
@@ -94,6 +183,10 @@ Value *value_string_take(char *s) {
     Value *v = val_new(VAL_STRING);
     v->str_val = s ? s : strdup("");
     return v;
+}
+
+Value *value_string_intern(const char *s) {
+    return gc_intern_string(gc_global(), s ? s : "");
 }
 
 Value *value_array_new(void) {
@@ -332,9 +425,10 @@ bool value_set_remove(Value *set, Value *item) {
 
 bool value_equals(Value *a, Value *b) {
     if (!a || !b) return a == b;
+    /* immortal singletons can use pointer equality for bool/null */
+    if (a == b) return true;
     if (a->type == VAL_NULL && b->type == VAL_NULL) return true;
     if (a->type != b->type) {
-        /* numeric cross-type */
         if (a->type == VAL_INT   && b->type == VAL_FLOAT)
             return (double)a->int_val == b->float_val;
         if (a->type == VAL_FLOAT && b->type == VAL_INT)
@@ -408,7 +502,6 @@ char *value_to_string(Value *v) {
         case VAL_INT:    snprintf(buf, sizeof(buf), "%lld", v->int_val); return strdup(buf);
         case VAL_FLOAT: {
             snprintf(buf, sizeof(buf), "%g", v->float_val);
-            /* ensure there is a decimal point if not present */
             if (!strchr(buf, '.') && !strchr(buf, 'e') && !strchr(buf, 'n') && !strchr(buf, 'i'))
                 snprintf(buf, sizeof(buf), "%g", v->float_val);
             return strdup(buf);
@@ -464,10 +557,10 @@ char *value_to_string(Value *v) {
         case VAL_DICT: {
             char *out = strdup("{");
             for (int i = 0; i < v->dict.len; i++) {
-                char *k = value_to_string(v->dict.entries[i].key);
+                char *k  = value_to_string(v->dict.entries[i].key);
                 char *vv = value_to_string(v->dict.entries[i].val);
-                bool ks = v->dict.entries[i].key->type == VAL_STRING;
-                bool vs = v->dict.entries[i].val->type == VAL_STRING;
+                bool ks  = v->dict.entries[i].key->type == VAL_STRING;
+                bool vs  = v->dict.entries[i].val->type == VAL_STRING;
                 size_t need = strlen(out) + strlen(k) + strlen(vv) + 16;
                 out = realloc(out, need);
                 if (ks) strcat(out, "\"");
@@ -604,7 +697,7 @@ Value *value_sub(Value *a, Value *b) {
         double db = (b->type == VAL_INT) ? (double)b->int_val : b->float_val;
         return value_float(da - db);
     }
-    if (a->type == VAL_SET && b->type == VAL_SET) { /* set difference */
+    if (a->type == VAL_SET && b->type == VAL_SET) {
         Value *res = value_set_new();
         for (int i = 0; i < a->set.len; i++)
             if (!value_set_has(b, a->set.items[i]))
@@ -624,12 +717,11 @@ Value *value_mul(Value *a, Value *b) {
         double db = (b->type == VAL_INT) ? (double)b->int_val : b->float_val;
         return value_float(da * db);
     }
-    /* string * int repetition */
     if (a->type == VAL_STRING && b->type == VAL_INT) {
         long long n = b->int_val;
         if (n <= 0) return value_string("");
         size_t la = strlen(a->str_val);
-        char *s = malloc(la * n + 1);
+        char *s = malloc(la * (size_t)n + 1);
         s[0] = '\0';
         for (long long i = 0; i < n; i++) strcat(s, a->str_val);
         return value_string_take(s);
@@ -640,13 +732,13 @@ Value *value_mul(Value *a, Value *b) {
 
 Value *value_div(Value *a, Value *b) {
     double da, db;
-    if (a->type == VAL_INT)   da = (double)a->int_val;
+    if (a->type == VAL_INT)        da = (double)a->int_val;
     else if (a->type == VAL_FLOAT) da = a->float_val;
     else return NULL;
-    if (b->type == VAL_INT)   db = (double)b->int_val;
+    if (b->type == VAL_INT)        db = (double)b->int_val;
     else if (b->type == VAL_FLOAT) db = b->float_val;
     else return NULL;
-    if (db == 0.0) return NULL; /* division by zero */
+    if (db == 0.0) return NULL;
     if (a->type == VAL_INT && b->type == VAL_INT && a->int_val % b->int_val == 0)
         return value_int(a->int_val / b->int_val);
     return value_float(da / db);
@@ -673,8 +765,8 @@ Value *value_pow(Value *a, Value *b) {
 }
 
 Value *value_neg(Value *a) {
-    if (a->type == VAL_INT)   return value_int(-a->int_val);
-    if (a->type == VAL_FLOAT) return value_float(-a->float_val);
+    if (a->type == VAL_INT)     return value_int(-a->int_val);
+    if (a->type == VAL_FLOAT)   return value_float(-a->float_val);
     if (a->type == VAL_COMPLEX) return value_complex(-a->complex_val.real, -a->complex_val.imag);
     return NULL;
 }

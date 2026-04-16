@@ -75,6 +75,7 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 - **Control flow**: `if/elif/else`, `while`, `for x in iterable`, `break`, `continue`
 - **Functions**: `func name(type param) { ... }` with `return`
 - **I/O**: `output(...)`, `input(prompt)`
+- **Typecasting**: `int(x)`, `float(x)`, `bool(x)`, `str(x)`, `complex(real, imag)`, `array(x)`, `tuple(x)`, `set(x)` — convert between all types. `int()` recognises `"0xFF"`, `"0b1010"`, `"0o17"` string literals.
 - **PGUI**: native GTK3-style GUI helpers `pgui_window`, `pgui_label`, `pgui_button`, `pgui_input`, `pgui_box`, `pgui_run`
 - **Operators**: arithmetic `+ - * / % **`, comparison, logical `&& || !`, bitwise `& | ^ ~`
 - **Membership**: `x in arr`, `x not in arr`

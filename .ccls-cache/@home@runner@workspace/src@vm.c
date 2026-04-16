@@ -994,6 +994,7 @@ int vm_run(VM *vm, Chunk *chunk) {
     while (!vm->had_error) {
         uint8_t op = READ_BYTE();
         int line   = CURR_LINE();
+        gc_set_alloc_site(frame->chunk->source_file, line);
 
         switch ((Opcode)op) {
 
@@ -1426,6 +1427,9 @@ int vm_run(VM *vm, Chunk *chunk) {
 
                 CallFrame *new_frame = &vm->frames[vm->frame_count++];
                 new_frame->chunk = callee->func.chunk;
+                /* inherit source file so alloc-site tracking is accurate */
+                if (!new_frame->chunk->source_file)
+                    new_frame->chunk->source_file = frame->chunk->source_file;
                 new_frame->ip = 0;
                 new_frame->stack_base = vm->stack_top;
                 new_frame->env = fn_env;
