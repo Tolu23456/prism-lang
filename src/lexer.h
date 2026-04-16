@@ -31,6 +31,7 @@ typedef enum {
     TOKEN_NULL,
     TOKEN_BREAK,
     TOKEN_CONTINUE,
+    TOKEN_IMPORT,
 
     /* Built-in function keywords */
     TOKEN_OUTPUT,

@@ -15,5 +15,6 @@ typedef struct {
 Parser  *parser_new(const char *source);
 void     parser_free(Parser *p);
 ASTNode *parser_parse(Parser *p);
+ASTNode *parser_parse_source(const char *source, char *errbuf, int errlen);
 
 #endif

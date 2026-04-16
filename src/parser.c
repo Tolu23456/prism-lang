@@ -1028,6 +1028,19 @@ static ASTNode *parse_stmt(Parser *p) {
         advance(p);
         return ast_node_new(NODE_CONTINUE, line);
     }
+    if (check(p, TOKEN_IMPORT)) {
+        advance(p);
+        if (!check(p, TOKEN_STRING_LIT)) {
+            snprintf(p->error_msg, sizeof(p->error_msg),
+                     "line %d: expected string path after 'import'", line);
+            p->had_error = 1;
+            return ast_node_new(NODE_NULL_LIT, line);
+        }
+        ASTNode *n = ast_node_new(NODE_IMPORT, line);
+        n->import_stmt.path = strdup(p->current->value);
+        advance(p);
+        return n;
+    }
     if (check(p, TOKEN_LBRACE))
         return parse_block(p);
 
@@ -1039,6 +1052,20 @@ static ASTNode *parse_stmt(Parser *p) {
 }
 
 /* ================================================================== top-level */
+
+ASTNode *parser_parse_source(const char *source, char *errbuf, int errlen) {
+    Parser *p = parser_new(source);
+    ASTNode *prog = parser_parse(p);
+    if (p->had_error) {
+        if (errbuf && errlen > 0)
+            snprintf(errbuf, errlen, "%s", p->error_msg);
+        ast_node_free(prog);
+        parser_free(p);
+        return NULL;
+    }
+    parser_free(p);
+    return prog;
+}
 
 ASTNode *parser_parse(Parser *p) {
     ASTNode *program = ast_node_new(NODE_PROGRAM, 1);

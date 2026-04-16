@@ -74,6 +74,7 @@ static const KW KEYWORDS[] = {
     {"null",     TOKEN_NULL},
     {"break",    TOKEN_BREAK},
     {"continue", TOKEN_CONTINUE},
+    {"import",   TOKEN_IMPORT},
     {"output",   TOKEN_OUTPUT},
     {"input",    TOKEN_INPUT},
     {"len",      TOKEN_LEN},

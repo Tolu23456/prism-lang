@@ -35,4 +35,7 @@ void         interpreter_free(Interpreter *interp);
 void         interpreter_run(Interpreter *interp, ASTNode *program);
 Value       *interpreter_eval(Interpreter *interp, ASTNode *node, Env *env);
 
+/* Public f-string processor: evaluate {expr} segments using the given env. */
+char        *interpreter_process_fstring(Interpreter *interp, const char *tmpl, Env *env);
+
 #endif

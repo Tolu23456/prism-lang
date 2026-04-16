@@ -963,6 +963,37 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         interp->continuing = true;
         return value_null();
 
+    /* ---- import ---- */
+    case NODE_IMPORT: {
+        const char *path = node->import_stmt.path;
+        FILE *f = fopen(path, "r");
+        if (!f) {
+            char msg[256];
+            snprintf(msg, sizeof(msg), "cannot import '%s': file not found", path);
+            interp->had_error = 1;
+            snprintf(interp->error_msg, sizeof(interp->error_msg), "%s", msg);
+            return value_null();
+        }
+        fseek(f, 0, SEEK_END);
+        long sz = ftell(f); rewind(f);
+        char *src = malloc(sz + 1);
+        fread(src, 1, sz, f); src[sz] = '\0'; fclose(f);
+
+        char errbuf[512] = {0};
+        ASTNode *prog = parser_parse_source(src, errbuf, sizeof(errbuf));
+        free(src);
+        if (!prog) {
+            interp->had_error = 1;
+            snprintf(interp->error_msg, sizeof(interp->error_msg),
+                     "import '%s': %s", path, errbuf);
+            return value_null();
+        }
+        Value *r = eval_node(interp, prog, env);
+        ast_node_free(prog);
+        value_release(r);
+        return value_null();
+    }
+
     /* ---- if ---- */
     case NODE_IF: {
         for (int i = 0; i < node->if_stmt.branch_count; i++) {
@@ -1371,4 +1402,8 @@ void interpreter_run(Interpreter *interp, ASTNode *program) {
 
 Value *interpreter_eval(Interpreter *interp, ASTNode *node, Env *env) {
     return eval_node(interp, node, env);
+}
+
+char *interpreter_process_fstring(Interpreter *interp, const char *tmpl, Env *env) {
+    return process_fstring(interp, tmpl, env);
 }

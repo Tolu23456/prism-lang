@@ -8,8 +8,12 @@
 #include "parser.h"
 #include "value.h"
 #include "interpreter.h"
+#include "chunk.h"
+#include "compiler.h"
+#include "vm.h"
+#include "gui_native.h"
 
-/* ------------------------------------------------------------------ file runner */
+/* ------------------------------------------------------------------ file reader */
 
 static char *read_file(const char *path) {
     FILE *f = fopen(path, "r");
@@ -24,8 +28,11 @@ static char *read_file(const char *path) {
     return buf;
 }
 
-static int run_source(const char *source, const char *filename) {
-    Parser *parser = parser_new(source);
+/* ------------------------------------------------------------------ VM script runner */
+
+static int run_source_vm(const char *source, const char *filename) {
+    /* Parse */
+    Parser  *parser  = parser_new(source);
     ASTNode *program = parser_parse(parser);
 
     if (parser->had_error) {
@@ -35,34 +42,54 @@ static int run_source(const char *source, const char *filename) {
         return 1;
     }
 
-    Interpreter *interp = interpreter_new();
-    interpreter_run(interp, program);
+    /* Compile — compile() returns 0 on success, non-zero on error */
+    Chunk  chunk;
+    char   errbuf[512] = {0};
+    int    cerr = compile(program, &chunk, errbuf, sizeof(errbuf));
+
+    if (cerr) {
+        fprintf(stderr, "[%s] Compile error: %s\n", filename,
+                errbuf[0] ? errbuf : "(unknown compiler error)");
+        chunk_free(&chunk);
+        ast_node_free(program);
+        parser_free(parser);
+        return 1;
+    }
+
+    /* Execute — AST must stay alive while VM runs (function bodies are AST ptrs) */
+    VM *vm = vm_new();
+    gui_register_builtins(vm->globals);
+
+    vm_run(vm, &chunk);
 
     int exit_code = 0;
-    if (interp->had_error) {
-        fprintf(stderr, "[%s] Runtime error: %s\n", filename, interp->error_msg);
+    if (vm->had_error) {
+        fprintf(stderr, "[%s] Runtime error: %s\n", filename, vm->error_msg);
         exit_code = 1;
     }
 
-    interpreter_free(interp);
+    vm_free(vm);
+    chunk_free(&chunk);
+
+    /* Safe to free AST now that VM is done */
     ast_node_free(program);
     parser_free(parser);
+
     return exit_code;
 }
 
 /* ------------------------------------------------------------------ REPL */
 
 static void run_repl(void) {
-    printf("Prism %s - Interactive Mode\n", "0.1.0");
-    printf("Type 'exit' or Ctrl-D to quit.\n\n");
+    printf("Prism 0.2.0 - Interactive Mode (type 'exit' or Ctrl-D to quit)\n\n");
 
     Interpreter *interp = interpreter_new();
-    char line[4096];
+    gui_register_builtins(interp->globals);
 
+    char line[4096];
     while (1) {
         printf(">>> ");
         fflush(stdout);
-
         if (!fgets(line, sizeof(line), stdin)) { printf("\n"); break; }
 
         size_t len = strlen(line);
@@ -77,8 +104,8 @@ static void run_repl(void) {
         if (p->had_error) {
             fprintf(stderr, "Parse error: %s\n", p->error_msg);
         } else {
-            interp->had_error = 0;
-            interp->returning = false;
+            interp->had_error  = 0;
+            interp->returning  = false;
             interp->return_val = NULL;
 
             Value *result = interpreter_eval(interp, ast, interp->globals);
@@ -111,16 +138,13 @@ int main(int argc, char **argv) {
 
     if (argc == 2) {
         const char *path = argv[1];
-        /* check extension */
-        const char *dot = strrchr(path, '.');
+        const char *dot  = strrchr(path, '.');
         if (!dot || strcmp(dot, ".pm") != 0) {
-            fprintf(stderr, "Warning: file '%s' does not have .pm extension\n", path);
+            fprintf(stderr, "Warning: '%s' does not have .pm extension\n", path);
         }
-
         char *src = read_file(path);
         if (!src) return 1;
-
-        int code = run_source(src, path);
+        int code = run_source_vm(src, path);
         free(src);
         return code;
     }

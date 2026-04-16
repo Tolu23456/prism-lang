@@ -49,6 +49,9 @@ typedef enum {
     /* Membership */
     NODE_IN_EXPR,
     NODE_NOT_IN_EXPR,
+
+    /* Import */
+    NODE_IMPORT,
 } NodeType;
 
 typedef struct ASTNode ASTNode;
@@ -161,6 +164,9 @@ struct ASTNode {
 
         /* NODE_IN_EXPR / NODE_NOT_IN_EXPR */
         struct { ASTNode *item; ASTNode *container; } in_expr;
+
+        /* NODE_IMPORT */
+        struct { char *path; } import_stmt;
     };
 };
 

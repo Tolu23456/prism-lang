@@ -149,6 +149,10 @@ void ast_node_free(ASTNode *n) {
             ast_node_free(n->in_expr.container);
             break;
 
+        case NODE_IMPORT:
+            free(n->import_stmt.path);
+            break;
+
         default:
             break;
     }
