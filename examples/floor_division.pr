@@ -1,0 +1,74 @@
+/* Prism example: Floor division (//) and integer arithmetic */
+
+print("=== Floor Division Examples ===\n")
+
+/* Basic floor division */
+print("7 // 2   =", 7 // 2)      /* 3 */
+print("-7 // 2  =", -7 // 2)     /* -4 (rounds toward -infinity) */
+print("7 // -2  =", 7 // -2)     /* -4 */
+print("-7 // -2 =", -7 // -2)    /* 3 */
+print("10 // 3  =", 10 // 3)     /* 3 */
+print("10 // 10 =", 10 // 10)    /* 1 */
+print("1 // 2   =", 1 // 2)      /* 0 */
+print()
+
+/* Integer quotient and remainder */
+func divmod(a, b) {
+    let q = a // b
+    let r = a - q * b
+    return (q, r)
+}
+
+let pairs = [(17, 5), (-17, 5), (17, -5), (-17, -5)]
+for pair in pairs {
+    let q_r = divmod(pair[0], pair[1])
+    print(pair[0], "//", pair[1], "=", q_r[0],
+          "  remainder:", q_r[1])
+}
+print()
+
+/* Integer digit extraction */
+func digits(n) {
+    if n < 0 { n = -n }
+    if n == 0 { return [0] }
+    let result = []
+    while n > 0 {
+        let d = n % 10
+        push(result, d)
+        n = n // 10
+    }
+    return reverse(result)
+}
+
+print("digits(12345) =", digits(12345))
+print("digits(1000)  =", digits(1000))
+print("digits(7)     =", digits(7))
+print()
+
+/* Page calculation */
+func page_count(items, per_page) {
+    return (items + per_page - 1) // per_page
+}
+
+print("100 items, 10 per page:", page_count(100, 10), "pages")
+print("101 items, 10 per page:", page_count(101, 10), "pages")
+print("99  items, 10 per page:", page_count(99, 10),  "pages")
+print()
+
+/* Integer square root */
+func isqrt(n) {
+    if n < 0 { return -1 }
+    if n == 0 { return 0 }
+    let x = n
+    let y = (x + 1) // 2
+    while y < x {
+        x = y
+        y = (x + n // x) // 2
+    }
+    return x
+}
+
+print("isqrt(16)  =", isqrt(16))    /* 4 */
+print("isqrt(17)  =", isqrt(17))    /* 4 */
+print("isqrt(100) =", isqrt(100))   /* 10 */
+print("isqrt(99)  =", isqrt(99))    /* 9 */

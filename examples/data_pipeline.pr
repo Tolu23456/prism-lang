@@ -1,0 +1,72 @@
+/* Prism example: Data pipeline — filter, map, reduce, group */
+
+print("=== Data Pipeline Example ===\n")
+
+/* Dataset: list of (name, score, category) tuples */
+let students = [
+    {"name": "Alice",   "score": 92, "grade": "A"},
+    {"name": "Bob",     "score": 78, "grade": "C"},
+    {"name": "Carol",   "score": 85, "grade": "B"},
+    {"name": "Dave",    "score": 91, "grade": "A"},
+    {"name": "Eve",     "score": 67, "grade": "D"},
+    {"name": "Frank",   "score": 88, "grade": "B"},
+    {"name": "Grace",   "score": 95, "grade": "A"},
+    {"name": "Henry",   "score": 72, "grade": "C"},
+    {"name": "Iris",    "score": 60, "grade": "D"},
+    {"name": "Jack",    "score": 84, "grade": "B"}
+]
+
+/* ── filter: passing students (score >= 70) ──────────────── */
+let passing = filter(students, func(s) { return s["score"] >= 70 })
+print("Passing students:", len(passing), "out of", len(students))
+
+/* ── map: extract names ───────────────────────────────────── */
+let names = map(passing, func(s) { return s["name"] })
+print("Names:", join(", ", names))
+
+/* ── reduce: average score ────────────────────────────────── */
+let total = reduce(students, func(acc, s) { return acc + s["score"] }, 0)
+let avg = total / len(students)
+print("Class average:", round(avg, 1))
+
+/* ── Group by grade ──────────────────────────────────────── */
+let by_grade = {}
+for s in students {
+    let g = s["grade"]
+    if !has(by_grade, g) { by_grade[g] = [] }
+    push(by_grade[g], s["name"])
+}
+
+print("\nBy grade:")
+for grade in ["A", "B", "C", "D"] {
+    if has(by_grade, grade) {
+        print(" ", grade, ":", join(", ", by_grade[grade]))
+    }
+}
+
+/* ── Top 3 students ──────────────────────────────────────── */
+let sorted_students = sorted(students, func(a, b) { return b["score"] - a["score"] })
+print("\nTop 3 students:")
+let i = 0
+while i < 3 {
+    let s = sorted_students[i]
+    print(" ", i+1, ".", s["name"], "-", s["score"])
+    i += 1
+}
+
+/* ── Score distribution ──────────────────────────────────── */
+let histogram = {"90-100": 0, "80-89": 0, "70-79": 0, "60-69": 0}
+for s in students {
+    let sc = s["score"]
+    if 90 <= sc <= 100 { histogram["90-100"] += 1 }
+    elif 80 <= sc < 90 { histogram["80-89"] += 1 }
+    elif 70 <= sc < 80 { histogram["70-79"] += 1 }
+    else               { histogram["60-69"] += 1 }
+}
+
+print("\nScore distribution:")
+for band in ["90-100", "80-89", "70-79", "60-69"] {
+    let count = histogram[band]
+    let bar = repeat("█", count)
+    print(" ", band, ":", bar, count)
+}

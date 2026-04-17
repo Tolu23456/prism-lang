@@ -116,6 +116,13 @@ void value_release(Value *v) {
                 chunk_free(v->func.chunk);
                 free(v->func.chunk);
             }
+            if (v->func.owns_params && v->func.params) {
+                for (int i = 0; i < v->func.param_count; i++) {
+                    free(v->func.params[i].name);
+                    if (v->func.params[i].type_hint) free(v->func.params[i].type_hint);
+                }
+                free(v->func.params);
+            }
             free(v->func.name);
             env_free(v->func.closure); /* release reference to captured env */
             break;
@@ -233,12 +240,24 @@ Value *value_function(const char *name, Param *params, int param_count,
                       ASTNode *body, Env *closure) {
     Value *v = val_new(VAL_FUNCTION);
     v->func.name        = strdup(name ? name : "<anonymous>");
-    v->func.params      = params;
     v->func.param_count = param_count;
     v->func.body        = body;
     v->func.closure     = env_retain(closure); /* keep env alive for closures */
     v->func.chunk       = NULL;
     v->func.owns_chunk  = false;
+    /* Copy the params array so this Value is independent of the AST lifetime. */
+    if (params && param_count > 0) {
+        v->func.params = malloc((size_t)param_count * sizeof(Param));
+        for (int i = 0; i < param_count; i++) {
+            v->func.params[i].name       = strdup(params[i].name);
+            v->func.params[i].type_hint  = params[i].type_hint ? strdup(params[i].type_hint) : NULL;
+            v->func.params[i].default_val = params[i].default_val; /* ASTNode*, shared */
+        }
+        v->func.owns_params = true;
+    } else {
+        v->func.params      = NULL;
+        v->func.owns_params = false;
+    }
     return v;
 }
 

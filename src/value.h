@@ -71,6 +71,7 @@ struct Value {
             Env     *closure;
             Chunk   *chunk;
             bool     owns_chunk;
+            bool     owns_params; /* true if params array was copied and must be freed */
         } func;
 
         struct {

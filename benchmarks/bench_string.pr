@@ -1,0 +1,65 @@
+/* Prism benchmark: String operations
+   Tests string concatenation, searching, and manipulation performance.
+*/
+
+print("=== String Benchmark ===")
+
+/* String building */
+let t1 = clock()
+let s = ""
+let i = 0
+while i < 1000 {
+    s = s + "x"
+    i += 1
+}
+let e1 = clock() - t1
+print("string concat x1000:", e1, "ms  len:", len(s))
+
+/* String search */
+let haystack = repeat("hello world ", 100)
+let t2 = clock()
+let found = 0
+let j = 0
+while j < 1000 {
+    if contains(haystack, "world") { found += 1 }
+    j += 1
+}
+let e2 = clock() - t2
+print("contains x1000:", e2, "ms  found:", found)
+
+/* Split and join */
+let data = "apple,banana,cherry,date,elderberry,fig,grape,honeydew"
+let t3 = clock()
+let k = 0
+while k < 10000 {
+    let parts = split(data, ",")
+    let _ = join("|", parts)
+    k += 1
+}
+let e3 = clock() - t3
+print("split+join x10000:", e3, "ms")
+
+/* Upper/lower */
+let word = "Hello World Benchmark Test"
+let t4 = clock()
+let l = 0
+while l < 10000 {
+    let _ = upper(word)
+    let _ = lower(word)
+    l += 1
+}
+let e4 = clock() - t4
+print("upper+lower x10000:", e4, "ms")
+
+/* Replace */
+let t5 = clock()
+let m = 0
+while m < 5000 {
+    let _ = replace("the quick brown fox", "fox", "cat")
+    m += 1
+}
+let e5 = clock() - t5
+print("replace x5000:", e5, "ms")
+
+print("")
+print("[PASS] string benchmark complete")

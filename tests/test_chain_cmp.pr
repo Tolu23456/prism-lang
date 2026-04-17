@@ -1,5 +1,4 @@
 /* Test chain comparisons */
-import "testing"
 
 let pass = 0
 let fail = 0

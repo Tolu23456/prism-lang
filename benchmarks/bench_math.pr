@@ -1,0 +1,80 @@
+/* Prism benchmark: Mathematical computations
+   Tests numeric type dispatch and arithmetic speed.
+*/
+
+print("=== Math Benchmark ===")
+
+/* Integer arithmetic loop */
+let t1 = clock()
+let sum = 0
+let i = 0
+while i < 10000000 {
+    sum += i
+    i += 1
+}
+let e1 = clock() - t1
+print("int sum 10M:", e1, "ms  result:", sum)
+print("  expected:  49999995000000")
+
+/* Float arithmetic loop */
+let t2 = clock()
+let fsum = 0.0
+let j = 0
+while j < 1000000 {
+    fsum += float(j) * 1.00001
+    j += 1
+}
+let e2 = clock() - t2
+print("float sum 1M:", e2, "ms  result:", round(fsum, 0))
+
+/* Sieve of Eratosthenes to N */
+func sieve(n) {
+    let is_prime = []
+    let k = 0
+    while k <= n { push(is_prime, true); k += 1 }
+    is_prime[0] = false
+    if n >= 1 { is_prime[1] = false }
+    let p = 2
+    while p * p <= n {
+        if is_prime[p] {
+            let mult = p * p
+            while mult <= n {
+                is_prime[mult] = false
+                mult += p
+            }
+        }
+        p += 1
+    }
+    let primes = []
+    let q = 2
+    while q <= n {
+        if is_prime[q] { push(primes, q) }
+        q += 1
+    }
+    return primes
+}
+
+let t3 = clock()
+let primes = sieve(100000)
+let e3 = clock() - t3
+print("sieve(100000):", e3, "ms  primes found:", len(primes))
+print("  last prime:", primes[-1])
+print("  expected count: 9592")
+
+/* Floor division benchmark */
+let t4 = clock()
+let fdsum = 0
+let r = 0
+while r < 10000000 {
+    fdsum += (r * 7 + 3) // 5
+    r += 1
+}
+let e4 = clock() - t4
+print("floor_div 10M:", e4, "ms  result:", fdsum)
+
+print("")
+if len(primes) == 9592 {
+    print("[PASS] math benchmark")
+} else {
+    print("[WARN] prime count unexpected:", len(primes))
+}

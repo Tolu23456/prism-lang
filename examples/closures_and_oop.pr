@@ -1,0 +1,126 @@
+/* Prism example: Object-oriented programming via closures */
+
+print("=== OOP via Closures ===\n")
+
+/* ── Class-like pattern ──────────────────────────────────── */
+func Animal(name, sound) {
+    /* "private" state */
+    let _name  = name
+    let _sound = sound
+    let _energy = 100
+
+    /* "methods" via returned dict */
+    return {
+        "name":  func()    { return _name },
+        "speak": func()    { print(_name, "says", _sound + "!") },
+        "eat":   func(n) {
+            _energy = min(100, _energy + n)
+            print(_name, "eats", n, "energy →", _energy)
+        },
+        "run": func(n) {
+            _energy = max(0, _energy - n)
+            print(_name, "runs, energy →", _energy)
+        },
+        "status": func() {
+            print(_name, "energy:", _energy)
+        }
+    }
+}
+
+let cat = Animal("Whiskers", "meow")
+let dog = Animal("Rex", "woof")
+
+cat["speak"]()
+dog["speak"]()
+cat["eat"](20)
+dog["run"](30)
+cat["status"]()
+dog["status"]()
+
+print()
+
+/* ── Inheritance-like via delegation ─────────────────────── */
+func Dog(name) {
+    let base = Animal(name, "woof")
+
+    /* extend with dog-specific methods */
+    base["fetch"] = func(item) {
+        print(base["name"](), "fetches the", item)
+        base["run"](10)
+    }
+    base["shake"] = func() {
+        print(base["name"](), "shakes paw! 🐾")
+    }
+    return base
+}
+
+let buddy = Dog("Buddy")
+buddy["speak"]()
+buddy["fetch"]("ball")
+buddy["shake"]()
+buddy["status"]()
+
+print()
+
+/* ── Counter with observer ───────────────────────────────── */
+func Counter(start, on_change) {
+    let val = start
+    let _callback = on_change ?? func(v) {}   /* no-op if null */
+
+    return {
+        "inc":   func() { val += 1; _callback(val) },
+        "dec":   func() { val -= 1; _callback(val) },
+        "reset": func() { val = start; _callback(val) },
+        "get":   func() { return val }
+    }
+}
+
+let log_changes = func(v) { print("  counter →", v) }
+let c = Counter(0, log_changes)
+c["inc"]()
+c["inc"]()
+c["inc"]()
+c["dec"]()
+print("final:", c["get"]())
+
+print()
+
+/* ── Linked list ─────────────────────────────────────────── */
+func Node(val) {
+    return {"val": val, "next": null}
+}
+
+func LinkedList() {
+    let head = null
+    let _size = 0
+
+    func push_front(v) {
+        let node = Node(v)
+        node["next"] = head
+        head = node
+        _size += 1
+    }
+    func to_array() {
+        let arr = []
+        let cur = head
+        while cur != null {
+            push(arr, cur["val"])
+            cur = cur["next"]
+        }
+        return arr
+    }
+    func size() { return _size }
+
+    return {
+        "push": push_front,
+        "list": to_array,
+        "size": size
+    }
+}
+
+let ll = LinkedList()
+ll["push"](3)
+ll["push"](2)
+ll["push"](1)
+print("LinkedList:", ll["list"]())    /* [1, 2, 3] */
+print("size:", ll["size"]())          /* 3 */

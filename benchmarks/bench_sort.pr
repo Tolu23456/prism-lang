@@ -1,0 +1,117 @@
+/* Prism benchmark: Sorting algorithms
+   Tests array manipulation, comparison, and loop performance.
+*/
+
+func swap(arr, i, j) {
+    let tmp = arr[i]
+    arr[i] = arr[j]
+    arr[j] = tmp
+}
+
+func bubble_sort(arr) {
+    let n = len(arr)
+    let i = 0
+    while i < n {
+        let j = 0
+        while j < n - i - 1 {
+            if arr[j] > arr[j+1] { swap(arr, j, j+1) }
+            j += 1
+        }
+        i += 1
+    }
+}
+
+func insertion_sort(arr) {
+    let n = len(arr)
+    let i = 1
+    while i < n {
+        let key = arr[i]
+        let j = i - 1
+        while j >= 0 and arr[j] > key {
+            arr[j+1] = arr[j]
+            j -= 1
+        }
+        arr[j+1] = key
+        i += 1
+    }
+}
+
+func merge(left, right) {
+    let result = []
+    let i = 0
+    let j = 0
+    while i < len(left) and j < len(right) {
+        if left[i] <= right[j] {
+            push(result, left[i])
+            i += 1
+        } else {
+            push(result, right[j])
+            j += 1
+        }
+    }
+    while i < len(left)  { push(result, left[i]);  i += 1 }
+    while j < len(right) { push(result, right[j]); j += 1 }
+    return result
+}
+
+func merge_sort(arr) {
+    let n = len(arr)
+    if n <= 1 { return arr }
+    let mid = n // 2
+    let left  = merge_sort(arr[0:mid])
+    let right = merge_sort(arr[mid:n])
+    return merge(left, right)
+}
+
+/* Generate test data */
+func make_arr(n) {
+    let arr = []
+    let i = n
+    while i > 0 {
+        push(arr, i)
+        i -= 1
+    }
+    return arr
+}
+
+func is_sorted(arr) {
+    let i = 0
+    while i < len(arr) - 1 {
+        if arr[i] > arr[i+1] { return false }
+        i += 1
+    }
+    return true
+}
+
+print("=== Sort Benchmark ===")
+
+/* Bubble sort 200 elements */
+let a1 = make_arr(200)
+let t1 = clock()
+bubble_sort(a1)
+let e1 = clock() - t1
+print("bubble_sort(200):", e1, "ms  sorted:", is_sorted(a1))
+
+/* Insertion sort 500 elements */
+let a2 = make_arr(500)
+let t2 = clock()
+insertion_sort(a2)
+let e2 = clock() - t2
+print("insertion_sort(500):", e2, "ms  sorted:", is_sorted(a2))
+
+/* Merge sort 1000 elements */
+let a3 = make_arr(1000)
+let t3 = clock()
+let a3s = merge_sort(a3)
+let e3 = clock() - t3
+print("merge_sort(1000):", e3, "ms  sorted:", is_sorted(a3s))
+
+/* Built-in sort 5000 elements */
+let a4 = make_arr(5000)
+let t4 = clock()
+sort(a4)
+let e4 = clock() - t4
+print("builtin sort(5000):", e4, "ms  sorted:", is_sorted(a4))
+
+print("")
+print("[PASS] all arrays are sorted")

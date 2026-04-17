@@ -465,6 +465,34 @@ static Value *bi_contains(Value **a, int n) {
     if(a[0]->type==VAL_DICT){ Value *f=value_dict_get(a[0],a[1]); return value_bool(f?1:0); }
     return value_bool(0);
 }
+
+static Value *bi_starts_with(Value **a, int n) {
+    if(n<2||a[0]->type!=VAL_STRING||a[1]->type!=VAL_STRING) return value_bool(0);
+    size_t pl = strlen(a[1]->str_val);
+    return value_bool(strncmp(a[0]->str_val, a[1]->str_val, pl) == 0 ? 1 : 0);
+}
+
+static Value *bi_ends_with(Value **a, int n) {
+    if(n<2||a[0]->type!=VAL_STRING||a[1]->type!=VAL_STRING) return value_bool(0);
+    size_t sl = strlen(a[0]->str_val);
+    size_t pl = strlen(a[1]->str_val);
+    if(pl > sl) return value_bool(0);
+    return value_bool(strcmp(a[0]->str_val + sl - pl, a[1]->str_val) == 0 ? 1 : 0);
+}
+
+static Value *bi_floor_div(Value **a, int n) {
+    if(n<2) return value_null();
+    if(a[0]->type==VAL_INT && a[1]->type==VAL_INT) {
+        if(a[1]->int_val==0) { fprintf(stderr,"[prism] // by zero\n"); return value_null(); }
+        long long q = a[0]->int_val / a[1]->int_val;
+        if((a[0]->int_val ^ a[1]->int_val) < 0 && q * a[1]->int_val != a[0]->int_val) q--;
+        return value_int(q);
+    }
+    double fa = (a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val;
+    double fb = (a[1]->type==VAL_INT)?(double)a[1]->int_val:a[1]->float_val;
+    if(fb==0.0) { fprintf(stderr,"[prism] // by zero\n"); return value_null(); }
+    return value_float(floor(fa/fb));
+}
 static Value *bi_split(Value **a, int n) {
     if(n<1||a[0]->type!=VAL_STRING)return value_array_new();
     const char *s=a[0]->str_val;
@@ -1141,8 +1169,11 @@ void prism_register_stdlib(Env *env) {
         {"ltrim",        bi_ltrim},
         {"rtrim",        bi_rtrim},
         {"starts",       bi_starts},
+        {"startsWith",   bi_starts_with},
         {"ends",         bi_ends},
+        {"endsWith",     bi_ends_with},
         {"contains",     bi_contains},
+        {"floorDiv",     bi_floor_div},
         {"split",        bi_split},
         {"join",         bi_join},
         {"replace",      bi_replace},

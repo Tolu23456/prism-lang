@@ -1,0 +1,102 @@
+/* Tests for Prism standard library modules — uses actual exported names */
+
+import "lib/math"
+import "lib/strings"
+import "lib/collections"
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if got == expected {
+        pass += 1
+    } else {
+        print("FAIL:", label, "  got:", got, "expected:", expected)
+        fail += 1
+    }
+}
+
+func assert_near(label, got, expected, tol) {
+    let diff = got - expected
+    if diff < 0 { diff = -diff }
+    if diff <= tol { pass += 1 }
+    else { print("FAIL:", label, "  got:", got, "expected≈", expected); fail += 1 }
+}
+
+/* ── Math module ─────────────────────────────────────────────── */
+assert_near("TAU",          TAU,        6.28318, 0.0001)
+assert_near("GOLDEN_RATIO", GOLDEN_RATIO, 1.61803, 0.0001)
+assert("gcdOf(12,8)",    gcdOf(12,8),    4)
+assert("lcmOf(4,6)",     lcmOf(4,6),     12)
+assert("isPrime(7)",     isPrime(7),     true)
+assert("isPrime(9)",     isPrime(9),     false)
+assert("isPrime(2)",     isPrime(2),     true)
+assert("isPrime(1)",     isPrime(1),     false)
+assert("fibonacci(0)",   fibonacci(0),   0)
+assert("fibonacci(1)",   fibonacci(1),   1)
+assert("fibonacci(10)",  fibonacci(10),  55)
+assert_near("clamp lo",  clamp(0,1,10),  1,  0)
+assert_near("clamp hi",  clamp(15,1,10), 10, 0)
+assert_near("clamp mid", clamp(5,1,10),  5,  0)
+assert("factorial(5)",   factorial(5),   120)
+assert("factorial(0)",   factorial(0),   1)
+assert("isEven(4)",      isEven(4),      true)
+assert("isOdd(3)",       isOdd(3),       true)
+assert_near("statMean",  statMean([1,2,3,4,5]), 3.0, 0.001)
+
+/* ── Strings module ──────────────────────────────────────────── */
+assert("capitalize",      capitalize("hello"),        "Hello")
+assert("titleCase",       titleCase("hello world"),   "Hello World")
+assert("camelCase",       camelCase("hello world"),   "helloWorld")
+assert("snakeCase",       snakeCase("helloWorld"),    "hello_world")
+assert("kebabCase",       kebabCase("hello world"),   "hello-world")
+assert("padLeft",         padLeft("5", 3, "0"),        "005")
+assert("padRight",        padRight("5", 3, "0"),       "500")
+assert("repeat",          repeat("ab", 3),             "ababab")
+assert("reverse",         reverse("hello"),            "olleh")
+assert("isPalindrome",    isPalindrome("racecar"),      true)
+assert("isPalindrome no", isPalindrome("hello"),        false)
+assert("isNumeric",       isNumeric("123"),            true)
+assert("isNumeric str",   isNumeric("12a"),            false)
+assert("isAlpha",         isAlpha("abc"),              true)
+assert("isAlpha num",     isAlpha("ab1"),              false)
+assert("truncate",        truncate("hello world", 8, "..."), "hello...")
+assert("isEmpty",         isEmpty(""),                 true)
+assert("isEmpty non",     isEmpty("x"),                false)
+assert("countOccurrences",countOccurrences("hello", "l"), 2)
+assert("swapCase",        swapCase("Hello"),           "hELLO")
+assert("isBlank",         isBlank("   "),              true)
+assert("isPalindrome2",   isPalindrome("abcba"),        true)
+
+/* ── Collections module ──────────────────────────────────────── */
+let arr = [3, 1, 4, 1, 5, 9, 2, 6]
+
+assert("uniqueArr",   uniqueArr([1,2,2,3,3,3]),       [1,2,3])
+assert("zipArrays",   zipArrays([1,2,3],[4,5,6]),     [[1,4],[2,5],[3,6]])
+assert("first",       first([10,20,30]),               10)
+assert("last",        last([10,20,30]),                30)
+assert("statSum",     statSum([1,2,3,4,5]),            15)
+assert("product",     product([1,2,3,4,5]),            120)
+assert("take",        take([1,2,3,4,5], 3),            [1,2,3])
+assert("drop",        drop([1,2,3,4,5], 2),            [3,4,5])
+
+let flat = flatten([1,[2,[3,[4]]]], 10)
+assert("flatten deep", flat, [1,2,3,4])
+
+let sorted_arr = sortBy([3,1,4,1,5,9,2,6], func(a,b) { return a - b })
+assert("sortBy asc first",  sorted_arr[0],  1)
+assert("sortBy asc last",   sorted_arr[-1], 9)
+assert("sortBy asc len",    len(sorted_arr),8)
+
+let chunked = chunk([1,2,3,4,5], 2)
+assert("chunk first", chunked[0], [1,2])
+assert("chunk last",  chunked[-1],[5])
+assert("chunk len",   len(chunked), 3)
+
+let win = windowSlide([1,2,3,4,5], 3)
+assert("windowSlide", win[0], [1,2,3])
+assert("windowSlide2",win[-1],[3,4,5])
+
+print("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { print("[PASS] test_stdlib") }
+else { print("[FAIL] test_stdlib") }

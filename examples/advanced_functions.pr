@@ -1,0 +1,120 @@
+/* Prism example: Advanced function patterns — closures, higher-order, currying */
+
+print("=== Advanced Function Examples ===\n")
+
+/* ── Higher-order functions ──────────────────────────────── */
+func apply(f, x) { return f(x) }
+func compose(f, g) { return func(x) { return f(g(x)) } }
+func twice(f) { return compose(f, f) }
+
+let double  = func(x) { return x * 2 }
+let add1    = func(x) { return x + 1 }
+let square  = func(x) { return x * x }
+
+print("apply double 5:", apply(double, 5))           /* 10 */
+print("apply square 5:", apply(square, 5))           /* 25 */
+print("compose double add1 of 5:", compose(double, add1)(5))  /* 12 */
+print("twice double 5:", twice(double)(5))           /* 20 */
+print("twice add1 5:", twice(add1)(5))               /* 7 */
+
+print()
+
+/* ── Currying ────────────────────────────────────────────── */
+func curry_add(a) {
+    return func(b) { return a + b }
+}
+
+let add5  = curry_add(5)
+let add10 = curry_add(10)
+print("add5(3):", add5(3))        /* 8 */
+print("add10(3):", add10(3))      /* 13 */
+print("add5(add10(2)):", add5(add10(2)))   /* 17 */
+
+print()
+
+/* ── Memoization ─────────────────────────────────────────── */
+func memoize(f) {
+    let cache = {}
+    return func(n) {
+        let key = str(n)
+        if has(cache, key) { return cache[key] }
+        let result = f(n)
+        cache[key] = result
+        return result
+    }
+}
+
+/* Slow Fibonacci, memoized */
+func slow_fib(n) {
+    if n < 2 { return n }
+    return memo_fib(n - 1) + memo_fib(n - 2)
+}
+
+/* Must declare memo_fib first, then reassign */
+let memo_fib = null
+memo_fib = memoize(func(n) {
+    if n < 2 { return n }
+    return memo_fib(n - 1) + memo_fib(n - 2)
+})
+
+let t = clock()
+print("memo_fib(35):", memo_fib(35))
+print("time:", clock() - t, "ms  (memoized = fast)")
+
+print()
+
+/* ── Partial application ─────────────────────────────────── */
+func partial(f, fixed_arg) {
+    return func(x) { return f(fixed_arg, x) }
+}
+
+func power(base, exp) {
+    return base ** exp
+}
+
+let square2  = partial(power, 2)    /* 2^x */
+let cube_of3 = partial(power, 3)    /* 3^x */
+
+print("square2(8):", square2(8))    /* 256.0 */
+print("cube_of3(4):", cube_of3(4))  /* 81.0 */
+
+print()
+
+/* ── Function pipelines ──────────────────────────────────── */
+func pipeline(fns) {
+    return func(x) {
+        let val = x
+        for f in fns { val = f(val) }
+        return val
+    }
+}
+
+let process = pipeline([
+    func(x) { return x * 2 },
+    func(x) { return x + 1 },
+    func(x) { return x * x }
+])
+
+print("pipeline(5):", process(5))   /* ((5*2)+1)^2 = 11^2 = 121 */
+print("pipeline(3):", process(3))   /* ((3*2)+1)^2 = 7^2  = 49 */
+
+print()
+
+/* ── Accumulator pattern ─────────────────────────────────── */
+func make_accumulator(initial) {
+    let total = initial
+    return {
+        "add":   func(n) { total += n; return total },
+        "sub":   func(n) { total -= n; return total },
+        "reset": func()  { total = initial; return total },
+        "value": func()  { return total }
+    }
+}
+
+let acc = make_accumulator(0)
+acc["add"](10)
+acc["add"](5)
+acc["sub"](3)
+print("acc value:", acc["value"]())    /* 12 */
+acc["reset"]()
+print("acc after reset:", acc["value"]())  /* 0 */

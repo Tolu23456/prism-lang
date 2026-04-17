@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include "compiler.h"
 #include "opcode.h"
 #include "chunk.h"
@@ -82,6 +83,89 @@ static uint16_t name_const(Compiler *c, const char *name) {
 static void compile_node(Compiler *c, ASTNode *node);
 static void compile_expr(Compiler *c, ASTNode *node);
 static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body);
+
+/* ================================================================== Constant folding
+ *
+ * Tries to evaluate a binary expression at compile time if both operands are
+ * integer or float literals.  Returns NULL when it cannot fold.
+ */
+static Value *try_constant_fold(ASTNode *node) {
+    if (node->type != NODE_BINOP) return NULL;
+
+    ASTNode *L = node->binop.left;
+    ASTNode *R = node->binop.right;
+    const char *op = node->binop.op;
+
+    /* Only fold pure int/float literals */
+    bool L_int   = (L->type == NODE_INT_LIT);
+    bool L_float = (L->type == NODE_FLOAT_LIT);
+    bool R_int   = (R->type == NODE_INT_LIT);
+    bool R_float = (R->type == NODE_FLOAT_LIT);
+
+    if (!((L_int || L_float) && (R_int || R_float))) return NULL;
+
+    /* Avoid folding division by zero — leave it to runtime for proper error */
+    if ((strcmp(op, "/") == 0 || strcmp(op, "%") == 0 || strcmp(op, "//") == 0) &&
+        ((R_int && R->int_lit.value == 0) || (R_float && R->float_lit.value == 0.0)))
+        return NULL;
+
+    if (L_int && R_int) {
+        long long a = L->int_lit.value;
+        long long b = R->int_lit.value;
+        if      (strcmp(op, "+")  == 0) return value_int(a + b);
+        if      (strcmp(op, "-")  == 0) return value_int(a - b);
+        if      (strcmp(op, "*")  == 0) return value_int(a * b);
+        if      (strcmp(op, "/")  == 0) return value_float((double)a / (double)b);
+        if      (strcmp(op, "//") == 0) {
+            long long q = a / b;
+            if ((a ^ b) < 0 && q * b != a) q--;
+            return value_int(q);
+        }
+        if      (strcmp(op, "%")  == 0) return value_int(a % b);
+        if      (strcmp(op, "**") == 0) return value_float(pow((double)a, (double)b));
+        if      (strcmp(op, "==") == 0) return value_bool(a == b ? 1 : 0);
+        if      (strcmp(op, "!=") == 0) return value_bool(a != b ? 1 : 0);
+        if      (strcmp(op, "<")  == 0) return value_bool(a <  b ? 1 : 0);
+        if      (strcmp(op, "<=") == 0) return value_bool(a <= b ? 1 : 0);
+        if      (strcmp(op, ">")  == 0) return value_bool(a >  b ? 1 : 0);
+        if      (strcmp(op, ">=") == 0) return value_bool(a >= b ? 1 : 0);
+        if      (strcmp(op, "&")  == 0) return value_int(a & b);
+        if      (strcmp(op, "|")  == 0) return value_int(a | b);
+        if      (strcmp(op, "^")  == 0) return value_int(a ^ b);
+        if      (strcmp(op, "<<") == 0) return (b >= 0 && b < 64) ? value_int(a << b) : value_int(0);
+        if      (strcmp(op, ">>") == 0) return (b >= 0 && b < 64) ? value_int(a >> b) : value_int(0);
+        return NULL;
+    }
+
+    /* Mixed int/float */
+    double a = L_int ? (double)L->int_lit.value : L->float_lit.value;
+    double b = R_int ? (double)R->int_lit.value : R->float_lit.value;
+    if      (strcmp(op, "+")  == 0) return value_float(a + b);
+    if      (strcmp(op, "-")  == 0) return value_float(a - b);
+    if      (strcmp(op, "*")  == 0) return value_float(a * b);
+    if      (strcmp(op, "/")  == 0) return value_float(a / b);
+    if      (strcmp(op, "//") == 0) return value_float(floor(a / b));
+    if      (strcmp(op, "**") == 0) return value_float(pow(a, b));
+    if      (strcmp(op, "==") == 0) return value_bool(a == b ? 1 : 0);
+    if      (strcmp(op, "!=") == 0) return value_bool(a != b ? 1 : 0);
+    if      (strcmp(op, "<")  == 0) return value_bool(a <  b ? 1 : 0);
+    if      (strcmp(op, "<=") == 0) return value_bool(a <= b ? 1 : 0);
+    if      (strcmp(op, ">")  == 0) return value_bool(a >  b ? 1 : 0);
+    if      (strcmp(op, ">=") == 0) return value_bool(a >= b ? 1 : 0);
+    return NULL;
+}
+
+/* Emit an integer value as efficiently as possible. */
+static void emit_int(Compiler *c, long long v, int ln) {
+    if (v >= -32768 && v <= 32767) {
+        /* Small int: use 3-byte OP_PUSH_INT_IMM instead of a const pool entry */
+        emit3(c, OP_PUSH_INT_IMM, (uint16_t)(int16_t)v, ln);
+    } else {
+        Value *val = value_int(v);
+        emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, val), ln);
+        value_release(val);
+    }
+}
 
 static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body) {
     Chunk *chunk = malloc(sizeof(Chunk));
@@ -335,17 +419,13 @@ static void compile_node(Compiler *c, ASTNode *node) {
         break;
     }
 
-    /* ---- link statement: load xgui_load_style and call it for each path ---- */
+    /* ---- link statement: link style.pss or link style.pss, design.pss ---- */
     case NODE_LINK_STMT: {
-        uint16_t fn_idx = name_const(c, "xgui_load_style");
         for (int i = 0; i < node->link_stmt.path_count; i++) {
-            emit3(c, OP_LOAD_NAME, fn_idx, ln);
             Value *pv = value_string(node->link_stmt.paths[i]);
             uint16_t pi = (uint16_t)chunk_add_const(c->chunk, pv);
             value_release(pv);
-            emit3(c, OP_PUSH_CONST, pi, ln);
-            emit3(c, OP_CALL, 1, ln);
-            emit1(c, OP_POP, ln);
+            emit3(c, OP_LINK_STYLE, pi, ln);
         }
         break;
     }
@@ -355,6 +435,7 @@ static void compile_node(Compiler *c, ASTNode *node) {
         uint16_t idx = chunk_add_const(c->chunk,
                        value_string(node->import_stmt.path));
         emit3(c, OP_IMPORT, idx, ln);
+        emit1(c, OP_POP, ln); /* discard the null returned by the module frame */
         break;
     }
 
@@ -406,12 +487,9 @@ static void compile_expr(Compiler *c, ASTNode *node) {
         else                                  emit1(c, OP_PUSH_UNKNOWN, ln);
         break;
 
-    case NODE_INT_LIT: {
-        Value *v = value_int(node->int_lit.value);
-        emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, v), ln);
-        value_release(v);
+    case NODE_INT_LIT:
+        emit_int(c, node->int_lit.value, ln);
         break;
-    }
 
     case NODE_FLOAT_LIT: {
         Value *v = value_float(node->float_lit.value);
@@ -472,6 +550,19 @@ static void compile_expr(Compiler *c, ASTNode *node) {
             break;
         }
 
+        /* Constant folding: evaluate int/float literal binops at compile time */
+        {
+            Value *folded = try_constant_fold(node);
+            if (folded) {
+                if (folded->type == VAL_INT)
+                    emit_int(c, folded->int_val, ln);
+                else
+                    emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, folded), ln);
+                value_release(folded);
+                break;
+            }
+        }
+
         compile_expr(c, node->binop.left);
         compile_expr(c, node->binop.right);
 
@@ -479,6 +570,7 @@ static void compile_expr(Compiler *c, ASTNode *node) {
         else if (strcmp(op, "-")  == 0) emit1(c, OP_SUB, ln);
         else if (strcmp(op, "*")  == 0) emit1(c, OP_MUL, ln);
         else if (strcmp(op, "/")  == 0) emit1(c, OP_DIV, ln);
+        else if (strcmp(op, "//") == 0) emit1(c, OP_IDIV, ln);
         else if (strcmp(op, "%")  == 0) emit1(c, OP_MOD, ln);
         else if (strcmp(op, "**") == 0) emit1(c, OP_POW, ln);
         else if (strcmp(op, "==") == 0) emit1(c, OP_EQ,  ln);
@@ -530,10 +622,11 @@ static void compile_expr(Compiler *c, ASTNode *node) {
     case NODE_UNOP: {
         compile_expr(c, node->unop.operand);
         const char *op = node->unop.op;
-        if      (strcmp(op, "-") == 0) emit1(c, OP_NEG, ln);
-        else if (strcmp(op, "+") == 0) emit1(c, OP_POS, ln);
-        else if (strcmp(op, "!") == 0) emit1(c, OP_NOT, ln);
-        else if (strcmp(op, "~") == 0) emit1(c, OP_BIT_NOT, ln);
+        if      (strcmp(op, "-")   == 0) emit1(c, OP_NEG, ln);
+        else if (strcmp(op, "+")   == 0) emit1(c, OP_POS, ln);
+        else if (strcmp(op, "!")   == 0) emit1(c, OP_NOT, ln);
+        else if (strcmp(op, "not") == 0) emit1(c, OP_NOT, ln);
+        else if (strcmp(op, "~")   == 0) emit1(c, OP_BIT_NOT, ln);
         else compiler_error(c, "unknown unary operator", ln);
         break;
     }
@@ -675,12 +768,8 @@ static void compile_expr(Compiler *c, ASTNode *node) {
     /* ---- nullish coalescing (left ?? right) ---- */
     case NODE_NULLCOAL: {
         compile_expr(c, node->nullcoal.left);
-        /* If left is NOT null/falsy, skip right (keep left) */
-        int patch = c->chunk->count;
-        emit3(c, OP_JUMP_IF_TRUE_PEEK, 0, ln);
-        emit1(c, OP_POP, ln);  /* pop null */
         compile_expr(c, node->nullcoal.right);
-        chunk_patch16(c->chunk, patch + 1, (uint16_t)(c->chunk->count - (patch + 3)));
+        emit1(c, OP_NULL_COAL, ln);
         break;
     }
 
@@ -720,6 +809,25 @@ int compile(ASTNode *program, Chunk *out, char *error_buf, int error_buf_len) {
     chunk_init(out);
     compile_node(&c, program);
     emit1(&c, OP_HALT, 0);
+
+    if (c.had_error && error_buf)
+        snprintf(error_buf, error_buf_len, "%s", c.error_msg);
+
+    return c.had_error ? 1 : 0;
+}
+
+/* Like compile() but emits OP_RETURN_NULL at the end so the VM frame
+ * can return control to the importing frame instead of halting the VM. */
+int compile_module(ASTNode *program, Chunk *out, char *error_buf, int error_buf_len) {
+    Compiler c;
+    c.chunk      = out;
+    c.had_error  = 0;
+    c.error_msg[0] = '\0';
+    c.loop       = NULL;
+
+    chunk_init(out);
+    compile_node(&c, program);
+    emit1(&c, OP_RETURN_NULL, 0);
 
     if (c.had_error && error_buf)
         snprintf(error_buf, error_buf_len, "%s", c.error_msg);

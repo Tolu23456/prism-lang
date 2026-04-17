@@ -1,0 +1,52 @@
+/* Prism benchmark: Fibonacci number computation
+   Tests recursive function call overhead and basic arithmetic.
+*/
+
+func fib(n) {
+    if n < 2 { return n }
+    return fib(n - 1) + fib(n - 2)
+}
+
+func fib_iter(n) {
+    if n < 2 { return n }
+    let a = 0
+    let b = 1
+    let i = 2
+    while i <= n {
+        let tmp = a + b
+        a = b
+        b = tmp
+        i += 1
+    }
+    return b
+}
+
+let start = clock()
+let r1 = fib(30)
+let elapsed1 = clock() - start
+
+let start2 = clock()
+let r2 = fib(35)
+let elapsed2 = clock() - start2
+
+let start3 = clock()
+let iter = 0
+while iter < 1000000 {
+    let _ = fib_iter(20)
+    iter += 1
+}
+let elapsed3 = clock() - start3
+
+print("=== Fibonacci Benchmark ===")
+print("fib(30) =", r1, "  time:", elapsed1, "ms")
+print("fib(35) =", r2, "  time:", elapsed2, "ms")
+print("fib_iter(20) x 1M iterations:", elapsed3, "ms")
+print("")
+print("fib(30) expected: 832040")
+print("fib(35) expected: 9227465")
+
+if r1 == 832040 and r2 == 9227465 {
+    print("[PASS] fibonacci correctness")
+} else {
+    print("[FAIL] fibonacci correctness: got", r1, r2)
+}

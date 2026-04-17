@@ -9,8 +9,11 @@
 #include "chunk.h"
 #include "value.h"
 #include "interpreter.h"
+#include "compiler.h"
 #include "builtins.h"
 #include "jit.h"
+#include "parser.h"
+#include "ast.h"
 #ifdef HAVE_X11
 #include "xgui.h"
 #endif
@@ -1404,6 +1407,73 @@ static Value *vm_do_slice(VM *vm, Value *obj, Value *start_v, Value *stop_v,
     return res;
 }
 
+/* ================================================================== prelude */
+
+static const char *PRISM_PRELUDE =
+    "func filter(arr, fn) {\n"
+    "    let out = []\n"
+    "    for x in arr { if fn(x) { push(out, x) } }\n"
+    "    return out\n"
+    "}\n"
+    "func map(arr, fn) {\n"
+    "    let out = []\n"
+    "    for x in arr { push(out, fn(x)) }\n"
+    "    return out\n"
+    "}\n"
+    "func reduce(arr, fn, init) {\n"
+    "    let acc = init\n"
+    "    for x in arr { acc = fn(acc, x) }\n"
+    "    return acc\n"
+    "}\n"
+    "func forEach(arr, fn) {\n"
+    "    for x in arr { fn(x) }\n"
+    "}\n"
+    "func flatMap(arr, fn) {\n"
+    "    let out = []\n"
+    "    for x in arr {\n"
+    "        let r = fn(x)\n"
+    "        if type(r) == \"array\" { for y in r { push(out, y) } }\n"
+    "        else { push(out, r) }\n"
+    "    }\n"
+    "    return out\n"
+    "}\n"
+    "func zip(a, b) {\n"
+    "    let out = []\n"
+    "    let n = len(a)\n"
+    "    if len(b) < n { n = len(b) }\n"
+    "    let i = 0\n"
+    "    while i < n { push(out, [a[i], b[i]]); i += 1 }\n"
+    "    return out\n"
+    "}\n"
+    "func all(arr, fn) {\n"
+    "    for x in arr { if not fn(x) { return false } }\n"
+    "    return true\n"
+    "}\n"
+    "func any(arr, fn) {\n"
+    "    for x in arr { if fn(x) { return true } }\n"
+    "    return false\n"
+    "}\n";
+
+int vm_run_prelude(VM *vm) {
+    Parser  *p   = parser_new(PRISM_PRELUDE);
+    ASTNode *ast = parser_parse(p);
+    if (p->had_error) { parser_free(p); if (ast) ast_node_free(ast); return 1; }
+
+    Chunk prelude_chunk;
+    char  errbuf[256] = {0};
+    /* compile() emits OP_HALT; vm_run() will push a frame with env=vm->globals
+     * and all function declarations will be stored directly in vm->globals. */
+    if (compile(ast, &prelude_chunk, errbuf, sizeof(errbuf))) {
+        ast_node_free(ast); parser_free(p); return 1;
+    }
+    ast_node_free(ast);
+    parser_free(p);
+
+    int rc = vm_run(vm, &prelude_chunk);
+    chunk_free(&prelude_chunk);
+    return rc;
+}
+
 /* ================================================================== main run loop */
 
 int vm_run(VM *vm, Chunk *chunk) {
@@ -1414,6 +1484,9 @@ int vm_run(VM *vm, Chunk *chunk) {
     frame->env        = vm->globals;
     frame->root_env   = vm->globals;
     frame->owns_env   = 0;
+    frame->owns_chunk = 0;
+    frame->local_count = 0;
+    memset(frame->locals, 0, sizeof(frame->locals));
 
 #define READ_BYTE()    (frame->chunk->code[frame->ip++])
 #define READ_U16()     (frame->ip += 2, \
@@ -1849,7 +1922,18 @@ int vm_run(VM *vm, Chunk *chunk) {
                 frame->env
             );
             fn->func.chunk = proto->func.chunk;
-            fn->func.owns_chunk = false;
+            /* Transfer chunk ownership from proto to fn so the sub-chunk
+             * stays alive even after the module chunk (and proto) is freed. */
+            if (proto->func.owns_chunk) {
+                fn->func.owns_chunk    = true;
+                proto->func.owns_chunk = false; /* proto no longer frees it */
+            } else {
+                fn->func.owns_chunk = false;
+            }
+            /* Transfer params ownership: fn already has its own copy (from
+             * value_function which always copies params), so just mark proto
+             * as non-owner to avoid double-free when proto is released. */
+            proto->func.owns_params = false;
             PUSH(fn);
             break;
         }
@@ -1892,7 +1976,10 @@ int vm_run(VM *vm, Chunk *chunk) {
                 new_frame->stack_base = vm->stack_top;
                 new_frame->env = fn_env;
                 new_frame->root_env = fn_env;
-                new_frame->owns_env = 1;
+                new_frame->owns_env   = 1;
+                new_frame->owns_chunk = 0;
+                new_frame->local_count = 0;
+                memset(new_frame->locals, 0, sizeof(new_frame->locals));
                 value_release(callee);
                 frame = new_frame;
             } else {
@@ -1940,7 +2027,21 @@ int vm_run(VM *vm, Chunk *chunk) {
 
         case OP_RETURN: {
             Value *ret = POP();
+            /* Discard any leftover stack items (e.g. for-in iterator state)
+             * that were pushed by the current frame but not popped before return. */
+            while (vm->stack_top > frame->stack_base) {
+                value_release(POP());
+            }
+            /* Release local variable slots for this frame. */
+            for (int _li = 0; _li < frame->local_count; _li++) {
+                value_release(frame->locals[_li]);
+                frame->locals[_li] = NULL;
+            }
+            frame->local_count = 0;
             vm_close_frame_env(frame);
+            if (frame->owns_chunk) {
+                chunk_free(frame->chunk); free(frame->chunk); frame->chunk = NULL;
+            }
             vm->frame_count--;
             if (vm->frame_count == 0) {
                 value_release(ret);
@@ -1952,7 +2053,19 @@ int vm_run(VM *vm, Chunk *chunk) {
         }
 
         case OP_RETURN_NULL: {
+            /* Discard any leftover stack items (e.g. for-in iterator state). */
+            while (vm->stack_top > frame->stack_base) {
+                value_release(POP());
+            }
+            for (int _li = 0; _li < frame->local_count; _li++) {
+                value_release(frame->locals[_li]);
+                frame->locals[_li] = NULL;
+            }
+            frame->local_count = 0;
             vm_close_frame_env(frame);
+            if (frame->owns_chunk) {
+                chunk_free(frame->chunk); free(frame->chunk); frame->chunk = NULL;
+            }
             vm->frame_count--;
             if (vm->frame_count == 0) goto done;
             frame = &vm->frames[vm->frame_count - 1];
@@ -2037,8 +2150,7 @@ int vm_run(VM *vm, Chunk *chunk) {
             { size_t _nr = fread(src, 1, (size_t)sz, f); (void)_nr; }
             src[sz] = '\0'; fclose(f);
 
-            /* Parse via the lexer+parser and run with the tree-walking interpreter
-             * in the current scope so imported names become available. */
+            /* Parse the module source. */
             extern ASTNode *parser_parse_source(const char *src,
                                                 char *errbuf, int errlen);
             char errbuf[512] = {0};
@@ -2048,15 +2160,40 @@ int vm_run(VM *vm, Chunk *chunk) {
                 vm_error(vm, errbuf[0] ? errbuf : "import parse error", line);
                 break;
             }
-            Interpreter *imp = calloc(1, sizeof(Interpreter));
-            imp->gc = vm->gc;
-            imp->globals = frame->env;
-            interpreter_eval(imp, prog, frame->env);
-            if (imp->had_error && !vm->had_error)
-                vm_error(vm, imp->error_msg, line);
-            imp->globals = NULL; /* don't free shared env */
-            free(imp);
+
+            /* Compile to bytecode. The module ends with OP_RETURN_NULL so
+             * the VM dispatch loop can return control to this frame. */
+            Chunk *mod_chunk = calloc(1, sizeof(Chunk));
+            char comp_err[512] = {0};
+            if (compile_module(prog, mod_chunk, comp_err, sizeof(comp_err)) != 0) {
+                ast_node_free(prog);
+                chunk_free(mod_chunk); free(mod_chunk);
+                vm_error(vm, comp_err[0] ? comp_err : "import compile error", line);
+                break;
+            }
             ast_node_free(prog);
+            mod_chunk->source_file = path;
+
+            /* Push a new call frame for the module.  It shares the current
+             * frame's env so all names it defines become visible to the importer.
+             * owns_chunk = 1 so the chunk is freed when the frame pops. */
+            if (vm->frame_count >= VM_FRAME_MAX) {
+                chunk_free(mod_chunk); free(mod_chunk);
+                vm_error(vm, "import: frame stack overflow", line);
+                break;
+            }
+            CallFrame *mod_frame = &vm->frames[vm->frame_count++];
+            mod_frame->chunk       = mod_chunk;
+            mod_frame->ip          = 0;
+            mod_frame->stack_base  = vm->stack_top;
+            mod_frame->env         = frame->env;
+            mod_frame->root_env    = frame->env;
+            mod_frame->owns_env    = 0;    /* shared — do not free */
+            mod_frame->owns_chunk  = 1;    /* we allocated it — free on return */
+            mod_frame->local_count = 0;
+            memset(mod_frame->locals, 0, sizeof(mod_frame->locals));
+            frame = mod_frame;
+            /* Control falls through to the dispatch loop which now runs the module. */
             break;
         }
 
@@ -2085,6 +2222,385 @@ int vm_run(VM *vm, Chunk *chunk) {
             break;
         }
 
+        /* ── local variable slots (O(1), no hash) ──────────────── */
+        case OP_DEFINE_LOCAL: {
+            uint16_t slot = READ_U16();
+            Value *v = POP();
+            if (slot < VM_LOCALS_MAX) {
+                value_release(frame->locals[slot]);
+                frame->locals[slot] = v;
+                if (slot >= (uint16_t)frame->local_count)
+                    frame->local_count = (int)slot + 1;
+            } else { value_release(v); }
+            break;
+        }
+        case OP_STORE_LOCAL: {
+            uint16_t slot = READ_U16();
+            Value *v = POP();
+            if (slot < VM_LOCALS_MAX) {
+                value_release(frame->locals[slot]);
+                frame->locals[slot] = v;
+            } else { value_release(v); }
+            break;
+        }
+        case OP_LOAD_LOCAL: {
+            uint16_t slot = READ_U16();
+            Value *v = (slot < VM_LOCALS_MAX && frame->locals[slot])
+                       ? value_retain(frame->locals[slot])
+                       : value_null();
+            PUSH(v);
+            break;
+        }
+        case OP_INC_LOCAL: {
+            uint16_t slot = READ_U16();
+            if (slot < VM_LOCALS_MAX && frame->locals[slot] &&
+                frame->locals[slot]->type == VAL_INT) {
+                Value *old = frame->locals[slot];
+                frame->locals[slot] = value_int(old->int_val + 1);
+                value_release(old);
+            }
+            break;
+        }
+        case OP_DEC_LOCAL: {
+            uint16_t slot = READ_U16();
+            if (slot < VM_LOCALS_MAX && frame->locals[slot] &&
+                frame->locals[slot]->type == VAL_INT) {
+                Value *old = frame->locals[slot];
+                frame->locals[slot] = value_int(old->int_val - 1);
+                value_release(old);
+            }
+            break;
+        }
+
+        /* ── small immediate integer ──────────────────────────── */
+        case OP_PUSH_INT_IMM: {
+            int16_t imm = (int16_t)READ_U16();
+            PUSH(value_int((long long)imm));
+            break;
+        }
+
+        /* ── specialized integer arithmetic (no type check) ──── */
+        case OP_ADD_INT: {
+            Value *b = POP(), *a = POP();
+            PUSH(value_int(vm_fast_iadd(a->int_val, b->int_val)));
+            value_release(a); value_release(b);
+            break;
+        }
+        case OP_SUB_INT: {
+            Value *b = POP(), *a = POP();
+            PUSH(value_int(vm_fast_isub(a->int_val, b->int_val)));
+            value_release(a); value_release(b);
+            break;
+        }
+        case OP_MUL_INT: {
+            Value *b = POP(), *a = POP();
+            PUSH(value_int(vm_fast_imul(a->int_val, b->int_val)));
+            value_release(a); value_release(b);
+            break;
+        }
+        case OP_DIV_INT: {
+            Value *b = POP(), *a = POP();
+            if (b->int_val == 0) { vm_error(vm, "division by zero", line); PUSH(value_null()); }
+            else PUSH(value_int(a->int_val / b->int_val));
+            value_release(a); value_release(b);
+            break;
+        }
+        case OP_MOD_INT: {
+            Value *b = POP(), *a = POP();
+            if (b->int_val == 0) { vm_error(vm, "modulo by zero", line); PUSH(value_null()); }
+            else PUSH(value_int(a->int_val % b->int_val));
+            value_release(a); value_release(b);
+            break;
+        }
+        case OP_NEG_INT: {
+            Value *a = POP();
+            PUSH(value_int(-a->int_val));
+            value_release(a);
+            break;
+        }
+        case OP_IDIV: {
+            Value *b = POP(), *a = POP();
+            if ((a->type == VAL_INT) && (b->type == VAL_INT)) {
+                if (b->int_val == 0) { vm_error(vm,"division by zero",line); PUSH(value_null()); }
+                else {
+                    long long q = a->int_val / b->int_val;
+                    /* floor division: round toward negative infinity */
+                    if ((a->int_val ^ b->int_val) < 0 && q * b->int_val != a->int_val) q--;
+                    PUSH(value_int(q));
+                }
+            } else if (a->type == VAL_FLOAT || b->type == VAL_FLOAT) {
+                double fa = (a->type==VAL_INT)?(double)a->int_val:a->float_val;
+                double fb = (b->type==VAL_INT)?(double)b->int_val:b->float_val;
+                if (fb == 0.0) { vm_error(vm,"division by zero",line); PUSH(value_null()); }
+                else PUSH(value_float(floor(fa/fb)));
+            } else { vm_error(vm,"// requires numeric operands",line); PUSH(value_null()); }
+            value_release(a); value_release(b);
+            break;
+        }
+
+        /* ── specialized integer comparisons ─────────────────── */
+        case OP_LT_INT: {
+            Value *b = POP(), *a = POP();
+            PUSH(value_bool(a->int_val < b->int_val ? 1 : 0));
+            value_release(a); value_release(b); break;
+        }
+        case OP_LE_INT: {
+            Value *b = POP(), *a = POP();
+            PUSH(value_bool(a->int_val <= b->int_val ? 1 : 0));
+            value_release(a); value_release(b); break;
+        }
+        case OP_GT_INT: {
+            Value *b = POP(), *a = POP();
+            PUSH(value_bool(a->int_val > b->int_val ? 1 : 0));
+            value_release(a); value_release(b); break;
+        }
+        case OP_GE_INT: {
+            Value *b = POP(), *a = POP();
+            PUSH(value_bool(a->int_val >= b->int_val ? 1 : 0));
+            value_release(a); value_release(b); break;
+        }
+        case OP_EQ_INT: {
+            Value *b = POP(), *a = POP();
+            PUSH(value_bool(a->int_val == b->int_val ? 1 : 0));
+            value_release(a); value_release(b); break;
+        }
+        case OP_NE_INT: {
+            Value *b = POP(), *a = POP();
+            PUSH(value_bool(a->int_val != b->int_val ? 1 : 0));
+            value_release(a); value_release(b); break;
+        }
+
+        /* ── wide jumps (32-bit offset) ───────────────────────── */
+        case OP_JUMP_WIDE: {
+            uint16_t lo = READ_U16(), hi = READ_U16();
+            int32_t off = (int32_t)((uint32_t)lo | ((uint32_t)hi << 16));
+            frame->ip += (int)off;
+            break;
+        }
+        case OP_JUMP_IF_FALSE_WIDE: {
+            uint16_t lo = READ_U16(), hi = READ_U16();
+            int32_t off = (int32_t)((uint32_t)lo | ((uint32_t)hi << 16));
+            Value *v = POP();
+            if (!value_truthy(v)) frame->ip += (int)off;
+            value_release(v); break;
+        }
+        case OP_JUMP_IF_TRUE_WIDE: {
+            uint16_t lo = READ_U16(), hi = READ_U16();
+            int32_t off = (int32_t)((uint32_t)lo | ((uint32_t)hi << 16));
+            Value *v = POP();
+            if (value_truthy(v)) frame->ip += (int)off;
+            value_release(v); break;
+        }
+
+        /* ── range literal [start..stop step N] ──────────────── */
+        case OP_MAKE_RANGE: {
+            uint16_t flags = READ_U16();
+            /* flags: bit0 = has step, bit1 = inclusive */
+            Value *step_v  = (flags & 1) ? POP() : NULL;
+            Value *stop_v  = POP();
+            Value *start_v = POP();
+            long long start = (start_v->type == VAL_INT) ? start_v->int_val : 0;
+            long long stop  = (stop_v->type  == VAL_INT) ? stop_v->int_val  : 0;
+            long long step2 = step_v ? (step_v->type==VAL_INT?step_v->int_val:1) : 1;
+            if (step2 == 0) step2 = 1;
+            if (flags & 2) { /* inclusive: add step direction */
+                stop += (step2 > 0) ? 1 : -1;
+            }
+            Value *arr2 = value_array_new();
+            if (step2 > 0) {
+                for (long long i = start; i < stop; i += step2)
+                    value_array_push(arr2, value_int(i));
+            } else {
+                for (long long i = start; i > stop; i += step2)
+                    value_array_push(arr2, value_int(i));
+            }
+            value_release(start_v); value_release(stop_v);
+            if (step_v) value_release(step_v);
+            PUSH(arr2);
+            break;
+        }
+
+        /* ── null coalescing ?? ───────────────────────────────── */
+        case OP_NULL_COAL: {
+            Value *rhs = POP(), *lhs = POP();
+            if (lhs->type == VAL_NULL) {
+                value_release(lhs); PUSH(rhs);
+            } else {
+                value_release(rhs); PUSH(lhs);
+            }
+            break;
+        }
+
+        /* ── safe attribute ?. ───────────────────────────────── */
+        case OP_SAFE_GET_ATTR: {
+            uint16_t name_idx = READ_U16();
+            Value *obj = POP();
+            if (obj->type == VAL_NULL) {
+                PUSH(value_null());
+            } else if (obj->type == VAL_DICT) {
+                Value *v = value_dict_get(obj, CONST(name_idx));
+                PUSH(v ? value_retain(v) : value_null());
+            } else {
+                char msg2[256];
+                snprintf(msg2,sizeof(msg2),"cannot safe-access '%s' on %s",
+                         CONST(name_idx)->str_val, value_type_name(obj->type));
+                vm_error(vm, msg2, line); PUSH(value_null());
+            }
+            value_release(obj); break;
+        }
+
+        /* ── safe index ?[] ──────────────────────────────────── */
+        case OP_SAFE_GET_INDEX: {
+            Value *idx = POP(), *obj = POP();
+            if (obj->type == VAL_NULL) {
+                PUSH(value_null());
+            } else if (obj->type == VAL_ARRAY) {
+                long long i = (idx->type==VAL_INT)?idx->int_val:0;
+                if (i < 0) i += obj->array.len;
+                PUSH((i>=0&&i<obj->array.len)?value_retain(obj->array.items[i]):value_null());
+            } else if (obj->type == VAL_DICT) {
+                Value *v = value_dict_get(obj, idx);
+                PUSH(v ? value_retain(v) : value_null());
+            } else {
+                PUSH(value_null());
+            }
+            value_release(obj); value_release(idx); break;
+        }
+
+        /* ── pipe |> operator ────────────────────────────────── */
+        case OP_PIPE: {
+            Value *fn   = POP();
+            Value *arg  = POP();
+            Value *result = value_null();
+            if (fn->type == VAL_BUILTIN) {
+                result = fn->builtin.fn(&arg, 1);
+            } else if (fn->type == VAL_FUNCTION && fn->func.chunk) {
+                /* call the function with arg as single argument via OP_CALL logic */
+                if (vm->frame_count < VM_FRAME_MAX) {
+                    Env *fn_env = env_new(fn->func.closure ? fn->func.closure : vm->globals);
+                    if (fn->func.param_count >= 1)
+                        env_set(fn_env, fn->func.params[0].name, arg, false);
+                    CallFrame *new_frame = &vm->frames[vm->frame_count++];
+                    new_frame->chunk = fn->func.chunk;
+                    new_frame->ip = 0;
+                    new_frame->stack_base = vm->stack_top;
+                    new_frame->env = fn_env;
+                    new_frame->root_env = fn_env;
+                    new_frame->owns_env   = 1;
+                    new_frame->owns_chunk = 0;
+                    new_frame->local_count = 0;
+                    frame = new_frame;
+                    value_release(arg); value_release(fn);
+                    break;
+                }
+            } else {
+                vm_error(vm, "pipe: right-hand side is not callable", line);
+            }
+            value_release(arg); value_release(fn);
+            PUSH(result ? result : value_null());
+            break;
+        }
+
+        /* ── PSS link stylesheet ─────────────────────────────── */
+        case OP_LINK_STYLE: {
+            uint16_t idx = READ_U16();
+            const char *path = CONST(idx)->str_val;
+#ifdef HAVE_X11
+            if (g_vm_xgui) {
+                xgui_load_style(g_vm_xgui, path);
+            } else {
+                /* Try loading PSS for a window that hasn't been initialized yet —
+                 * store path so xgui_init can pick it up. We just print a note. */
+                fprintf(stderr, "[pss] link '%s' (no active xgui window yet)\n", path);
+            }
+#else
+            fprintf(stderr, "[pss] link '%s' (X11 not compiled in)\n", path);
+#endif
+            break;
+        }
+
+        /* ── expect / assert ─────────────────────────────────── */
+        case OP_EXPECT: {
+            uint16_t msg_idx = READ_U16();
+            Value *cond = POP();
+            if (!value_truthy(cond)) {
+                const char *msg2 = (msg_idx < (uint16_t)frame->chunk->const_count &&
+                                   frame->chunk->constants[msg_idx]->type==VAL_STRING)
+                                   ? frame->chunk->constants[msg_idx]->str_val
+                                   : "expectation failed";
+                fprintf(stderr, "[prism] expect failed: %s (line %d)\n", msg2, line);
+                value_release(cond);
+                vm->had_error = 1;
+                snprintf(vm->error_msg, sizeof(vm->error_msg),
+                         "line %d: expect failed: %s", line, msg2);
+                goto done;
+            }
+            value_release(cond);
+            break;
+        }
+
+        /* ── match type check ─────────────────────────────────── */
+        case OP_MATCH_TYPE: {
+            uint16_t idx = READ_U16();
+            const char *tname = CONST(idx)->str_val;
+            Value *val = PEEK(0); /* don't pop — let match logic handle it */
+            bool match_ok2 = false;
+            if      (strcmp(tname,"int")==0)    match_ok2 = val->type==VAL_INT;
+            else if (strcmp(tname,"float")==0)  match_ok2 = val->type==VAL_FLOAT;
+            else if (strcmp(tname,"str")==0)    match_ok2 = val->type==VAL_STRING;
+            else if (strcmp(tname,"bool")==0)   match_ok2 = val->type==VAL_BOOL;
+            else if (strcmp(tname,"null")==0)   match_ok2 = val->type==VAL_NULL;
+            else if (strcmp(tname,"array")==0)  match_ok2 = val->type==VAL_ARRAY;
+            else if (strcmp(tname,"dict")==0)   match_ok2 = val->type==VAL_DICT;
+            else if (strcmp(tname,"set")==0)    match_ok2 = val->type==VAL_SET;
+            else if (strcmp(tname,"tuple")==0)  match_ok2 = val->type==VAL_TUPLE;
+            else match_ok2 = false;
+            PUSH(value_bool(match_ok2 ? 1 : 0));
+            break;
+        }
+
+        /* ── tail call (optimized self-recursion) ─────────────── */
+        case OP_TAIL_CALL: {
+            /* For now, implement as regular OP_CALL */
+            uint16_t argc = READ_U16();
+            Value **args = malloc(argc * sizeof(Value*));
+            for (int i = argc-1; i >= 0; i--) args[i] = POP();
+            Value *callee = POP();
+            if (callee->type == VAL_BUILTIN) {
+                Value *result = callee->builtin.fn(args, argc);
+                for (int i = 0; i < argc; i++) value_release(args[i]);
+                free(args); value_release(callee);
+                PUSH(result ? result : value_null());
+            } else if (callee->type == VAL_FUNCTION && callee->func.chunk) {
+                if (vm->frame_count >= VM_FRAME_MAX) {
+                    vm_error(vm, "call frame overflow", line);
+                    for (int i = 0; i < argc; i++) value_release(args[i]);
+                    free(args); value_release(callee); PUSH(value_null());
+                } else {
+                    Env *fn_env = env_new(callee->func.closure ? callee->func.closure : vm->globals);
+                    for (int i = 0; i < callee->func.param_count; i++) {
+                        Value *arg2 = (i < argc) ? args[i] : value_null();
+                        env_set(fn_env, callee->func.params[i].name, arg2, false);
+                        if (i >= argc) value_release(arg2);
+                    }
+                    for (int i = 0; i < argc; i++) value_release(args[i]);
+                    free(args);
+                    CallFrame *new_frame = &vm->frames[vm->frame_count++];
+                    new_frame->chunk = callee->func.chunk;
+                    new_frame->ip = 0; new_frame->stack_base = vm->stack_top;
+                    new_frame->env = fn_env; new_frame->root_env = fn_env;
+                    new_frame->owns_env = 1; new_frame->owns_chunk = 0; new_frame->local_count = 0;
+                    value_release(callee);
+                    frame = new_frame;
+                }
+            } else {
+                vm_error(vm, "value is not callable", line);
+                for (int i = 0; i < argc; i++) value_release(args[i]);
+                free(args); value_release(callee); PUSH(value_null());
+            }
+            break;
+        }
+
         default: {
             char msg[64];
             snprintf(msg, sizeof(msg), "unknown opcode %d", op);
@@ -2097,6 +2613,14 @@ int vm_run(VM *vm, Chunk *chunk) {
 done:
     while (vm->frame_count > 0) {
         CallFrame *open = &vm->frames[vm->frame_count - 1];
+        /* Free any local variable slots still live in this frame. */
+        for (int _li = 0; _li < open->local_count; _li++) {
+            if (open->locals[_li]) {
+                value_release(open->locals[_li]);
+                open->locals[_li] = NULL;
+            }
+        }
+        open->local_count = 0;
         vm_close_frame_env(open);
         vm->frame_count--;
     }

@@ -1,0 +1,110 @@
+/* Tests for newly added Prism language features:
+   - Floor division (//)
+   - Constant folding verification
+   - OP_PUSH_INT_IMM (small integers)
+   - startsWith / endsWith builtins
+   - Null coalescing (??) 
+   - Chain comparisons
+   - Bitwise operations
+   - Edge cases for arithmetic
+*/
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if got == expected {
+        pass += 1
+    } else {
+        print("FAIL:", label, "  got:", got, "expected:", expected)
+        fail += 1
+    }
+}
+
+/* ── Floor division (//) ─────────────────────────────────── */
+assert("7 // 2",       7 // 2,       3)
+assert("7 // -2",      7 // -2,      -4)
+assert("-7 // 2",      -7 // 2,      -4)
+assert("-7 // -2",     -7 // -2,     3)
+assert("10 // 3",      10 // 3,      3)
+assert("0 // 5",       0 // 5,       0)
+assert("100 // 10",    100 // 10,    10)
+assert("1 // 1",       1 // 1,       1)
+
+/* ── Constant folding (verifiable at runtime) ─────────────── */
+assert("fold 2+3",     2+3,          5)
+assert("fold 10-4",    10-4,         6)
+assert("fold 3*7",     3*7,          21)
+assert("fold 8//3",    8//3,         2)
+assert("fold 2**8",    2**8,         256.0)
+assert("fold 10==10",  10==10,       true)
+assert("fold 10!=9",   10!=9,        true)
+assert("fold 5<10",    5<10,         true)
+assert("fold 10>5",    10>5,         true)
+assert("fold 3 & 5",   3 & 5,        1)
+assert("fold 3 | 5",   3 | 5,        7)
+assert("fold 3 ^ 5",   3 ^ 5,        6)
+assert("fold 1<<3",    1<<3,         8)
+assert("fold 16>>2",   16>>2,        4)
+
+/* ── startsWith / endsWith ─────────────────────────────────── */
+assert("startsWith match",    startsWith("hello world", "hello"), true)
+assert("startsWith no-match", startsWith("hello world", "world"), false)
+assert("startsWith empty",    startsWith("hello", ""),             true)
+assert("endsWith match",      endsWith("hello world", "world"),   true)
+assert("endsWith no-match",   endsWith("hello world", "hello"),   false)
+assert("endsWith full match",  endsWith("hello", "hello"),         true)
+assert("endsWith longer",      endsWith("hi", "hello"),            false)
+
+/* ── Null coalescing (??) ─────────────────────────────────── */
+let maybe = null
+let result1 = maybe ?? "default"
+assert("null ?? default", result1, "default")
+
+let real_val = "actual"
+let result2 = real_val ?? "fallback"
+assert("real ?? fallback", result2, "actual")
+
+let zero_val = 0
+let result3 = zero_val ?? 99
+assert("0 ?? 99 (not null)", result3, 0)
+
+/* ── Chain comparisons ─────────────────────────────────────── */
+let x = 5
+assert("1 < x < 10",   1 < x < 10,   true)
+assert("5 <= x <= 5",  5 <= x <= 5,  true)
+assert("5 < x < 10",   5 < x < 10,   false)
+assert("1 < x < 5",    1 < x < 5,    false)
+
+/* ── Bitwise ops (runtime) ──────────────────────────────────── */
+let a = 0b1010
+let b = 0b1100
+assert("a & b",  a & b,  8)
+assert("a | b",  a | b,  14)
+assert("a ^ b",  a ^ b,  6)
+assert("~a (int)", ~a,   -11)
+assert("a << 1", a << 1, 20)
+assert("b >> 1", b >> 1, 6)
+
+/* ── Small integer range (OP_PUSH_INT_IMM path) ─────────────── */
+assert("imm -32768",  -32768, -32768)
+assert("imm  32767",   32767,  32767)
+assert("imm  0",          0,      0)
+assert("imm  1",          1,      1)
+assert("imm -1",         -1,     -1)
+
+/* ── Integer edge cases ─────────────────────────────────────── */
+assert("large int",  1000000 * 1000000, 1000000000000)
+assert("neg mod",    -5 % 3,           -2)
+assert("pow 0",      5 ** 0,           1.0)
+assert("pow 1",      5 ** 1,           5.0)
+
+/* ── contains / indexOf ─────────────────────────────────────── */
+assert("contains str",   contains("hello world", "world"), true)
+assert("contains false", contains("hello world", "xyz"),   false)
+assert("indexOf found",  indexOf("hello", "l"),            2)
+assert("indexOf missing",indexOf("hello", "z"),            -1)
+
+print("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { print("[PASS] test_new_features") }
+else { print("[FAIL] test_new_features") }

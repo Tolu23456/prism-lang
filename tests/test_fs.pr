@@ -43,7 +43,7 @@ assert("append_file", c2, "Hello\nWorld\nAppended\n")
 
 /* listdir */
 let entries = listdir("/tmp")
-assert("listdir is array", entries is arr, true)
+assert("listdir is array", entries is array, true)
 assert("listdir non-empty", len(entries) > 0, true)
 
 /* getcwd */

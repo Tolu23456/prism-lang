@@ -33,8 +33,12 @@ func snakeCase(s) {
     let out = ""
     let chs = chars(s)
     for ch in chs {
-        if ch >= "A" and ch <= "Z" {
-            if len(out) > 0 { out = out + "_" }
+        if ch == " " or ch == "-" {
+            let n = len(out)
+            if n > 0 and slice(out, n-1) != "_" { out = out + "_" }
+        } elif ch >= "A" and ch <= "Z" {
+            let n = len(out)
+            if n > 0 and slice(out, n-1) != "_" { out = out + "_" }
             out = out + lower(ch)
         } else {
             out = out + ch

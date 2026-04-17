@@ -1,0 +1,155 @@
+/* Prism example: Classic algorithms showcase */
+
+print("=== Classic Algorithms ===\n")
+
+/* ── Binary search ──────────────────────────────────────── */
+func binary_search(arr, target) {
+    let lo = 0
+    let hi = len(arr) - 1
+    while lo <= hi {
+        let mid = (lo + hi) // 2
+        if arr[mid] == target { return mid }
+        elif arr[mid] < target { lo = mid + 1 }
+        else { hi = mid - 1 }
+    }
+    return -1
+}
+
+let sorted = [2, 5, 8, 12, 16, 23, 38, 56, 72, 91]
+print("Array:", sorted)
+print("Search 23: index", binary_search(sorted, 23))   /* 5 */
+print("Search 72: index", binary_search(sorted, 72))   /* 8 */
+print("Search 99: index", binary_search(sorted, 99))   /* -1 */
+
+print()
+
+/* ── Quicksort ───────────────────────────────────────────── */
+func quicksort(arr) {
+    let n = len(arr)
+    if n <= 1 { return arr }
+    let pivot = arr[n // 2]
+    let left   = filter(arr, func(x) { return x < pivot })
+    let middle = filter(arr, func(x) { return x == pivot })
+    let right  = filter(arr, func(x) { return x > pivot })
+    return quicksort(left) + middle + quicksort(right)
+}
+
+let unsorted = [64, 34, 25, 12, 22, 11, 90, 3, 47, 58]
+print("Unsorted:", unsorted)
+let sorted2 = quicksort(unsorted)
+print("Quicksorted:", sorted2)
+
+print()
+
+/* ── Stack using array ───────────────────────────────────── */
+func Stack() {
+    let data = []
+    return {
+        "push":  func(v) { push(data, v) },
+        "pop":   func() { return pop(data) },
+        "peek":  func() { return data[-1] },
+        "empty": func() { return len(data) == 0 },
+        "size":  func() { return len(data) }
+    }
+}
+
+let stack = Stack()
+stack["push"](1)
+stack["push"](2)
+stack["push"](3)
+print("Stack size:", stack["size"]())       /* 3 */
+print("Peek:", stack["peek"]())             /* 3 */
+print("Pop:", stack["pop"]())               /* 3 */
+print("Pop:", stack["pop"]())               /* 2 */
+print("Size after 2 pops:", stack["size"]()) /* 1 */
+
+print()
+
+/* ── Balanced parentheses check ─────────────────────────── */
+func is_balanced(s) {
+    let depth = 0
+    let pairs = {"(": ")", "[": "]", "{": "}"}
+    let stack2 = []
+    for ch in s {
+        if ch == "(" or ch == "[" or ch == "{" {
+            push(stack2, ch)
+        } elif ch == ")" or ch == "]" or ch == "}" {
+            if len(stack2) == 0 { return false }
+            let top = pop(stack2)
+            let expected = pairs[top]
+            if ch != expected { return false }
+        }
+    }
+    return len(stack2) == 0
+}
+
+let tests = ["()", "()[]{}", "(]", "([)]", "{[]}"]
+for t in tests {
+    print(f'"{t}" balanced:', is_balanced(t))
+}
+
+print()
+
+/* ── Longest common subsequence ─────────────────────────── */
+func lcs(a, b) {
+    let m = len(a)
+    let n = len(b)
+    /* build 2D DP table as flat array */
+    let dp = []
+    let k = 0
+    while k <= (m + 1) * (n + 1) { push(dp, 0); k += 1 }
+    let i = 1
+    while i <= m {
+        let j = 1
+        while j <= n {
+            let ai = a[i - 1]
+            let bj = b[j - 1]
+            if ai == bj {
+                dp[i * (n+1) + j] = dp[(i-1)*(n+1) + (j-1)] + 1
+            } else {
+                let above = dp[(i-1)*(n+1) + j]
+                let left  = dp[i*(n+1) + (j-1)]
+                dp[i*(n+1)+j] = max(above, left)
+            }
+            j += 1
+        }
+        i += 1
+    }
+    return dp[m * (n+1) + n]
+}
+
+print("LCS('ABCBDAB', 'BDCAB'):", lcs("ABCBDAB", "BDCAB"))   /* 4 */
+print("LCS('AGGTAB', 'GXTXAYB'):", lcs("AGGTAB", "GXTXAYB")) /* 4 */
+
+print()
+
+/* ── Sieve of Eratosthenes ───────────────────────────────── */
+func sieve(limit) {
+    let composite = []
+    let k = 0
+    while k <= limit { push(composite, false); k += 1 }
+    composite[0] = true
+    if limit >= 1 { composite[1] = true }
+    let p = 2
+    while p * p <= limit {
+        if !composite[p] {
+            let m = p * p
+            while m <= limit {
+                composite[m] = true
+                m += p
+            }
+        }
+        p += 1
+    }
+    let primes = []
+    let q = 2
+    while q <= limit {
+        if !composite[q] { push(primes, q) }
+        q += 1
+    }
+    return primes
+}
+
+let p50 = sieve(50)
+print("Primes up to 50:", p50)
+print("Count:", len(p50))  /* 15 */

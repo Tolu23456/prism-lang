@@ -1,0 +1,74 @@
+/* Prism example: Null safety operators - ?? null coalescing */
+
+print("=== Null Safety Examples ===\n")
+
+/* Basic null coalescing */
+let name = null
+let display = name ?? "Anonymous"
+print("name ??:", display)          /* Anonymous */
+
+let user = "Alice"
+let user_display = user ?? "Guest"
+print("user ??:", user_display)     /* Alice */
+
+/* Chained null coalescing */
+let a = null
+let b = null
+let c = "found"
+let val = a ?? b ?? c
+print("chain ??:", val)             /* found */
+
+/* Zero is NOT null */
+let score = 0
+let safe_score = score ?? -1
+print("0 ??:", safe_score)          /* 0 (not -1) */
+
+/* Empty string is NOT null */
+let empty = ""
+let safe_str = empty ?? "default"
+print("'' ??:", safe_str)           /* "" (not "default") */
+
+/* False is NOT null */
+let flag = false
+let safe_flag = flag ?? true
+print("false ??:", safe_flag)       /* false (not true) */
+
+print()
+
+/* Config pattern */
+func get_config(overrides, key, fallback) {
+    let v = overrides[key] ?? fallback
+    return v
+}
+
+let config = {"host": "localhost", "port": null}
+print("host:", get_config(config, "host", "127.0.0.1"))    /* localhost */
+print("port:", get_config(config, "port", 8080))           /* 8080 */
+print("timeout:", get_config(config, "timeout", 30))       /* 30 */
+
+print()
+
+/* Default function parameters using ?? */
+func greet(name, greeting) {
+    greeting = greeting ?? "Hello"
+    return f"{greeting}, {name}!"
+}
+
+print(greet("Alice", null))         /* Hello, Alice! */
+print(greet("Bob", "Hi"))           /* Hi, Bob! */
+print(greet("Carol", "Greetings"))  /* Greetings, Carol! */
+
+print()
+
+/* Deep null safety chain */
+func safe_get_field(obj, field, default_val) {
+    if obj is null { return default_val }
+    let v = obj[field]
+    return v ?? default_val
+}
+
+let record = {"name": "Test", "value": null}
+print("name field:", safe_get_field(record, "name", "N/A"))
+print("value field:", safe_get_field(record, "value", 0))
+print("missing field:", safe_get_field(record, "missing", "N/A"))
+print("null object:", safe_get_field(null, "anything", "safe default"))

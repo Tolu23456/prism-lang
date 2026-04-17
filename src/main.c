@@ -91,6 +91,7 @@ static int emit_llvm_from_source(const char *source, const char *filename) {
     vm->jit = jit_new();
     chunk.source_file = filename;
     gui_register_builtins(vm->globals);
+    vm_run_prelude(vm);
     vm_run(vm, &chunk);
     gc_collect_audit(vm->gc, vm->globals, vm, &chunk);
 
@@ -156,6 +157,16 @@ static int run_source_vm(const char *source, const char *filename) {
     VM *vm = vm_new();
     chunk.source_file = filename;
     gui_register_builtins(vm->globals);
+
+    /* Load the prelude (defines filter, map, reduce, forEach, zip, all, any) */
+    int prelude_rc = vm_run_prelude(vm);
+    fprintf(stderr, "DEBUG prelude_rc=%d had_error=%d filter=%s\n", prelude_rc, vm->had_error,
+            env_get(vm->globals, "filter") ? "FOUND" : "NOT FOUND");
+    if (vm->had_error) {
+        fprintf(stderr, "[prism] Prelude error: %s\n", vm->error_msg);
+        vm_free(vm); chunk_free(&chunk); ast_node_free(program); parser_free(parser);
+        return 1;
+    }
 
     if (opt_jit) {
         vm->jit         = jit_new();
