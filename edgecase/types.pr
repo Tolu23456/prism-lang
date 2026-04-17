@@ -1,0 +1,84 @@
+# edgecase/types.pr
+# Edge cases for type checking, type casting, is/is not, null, unknown, bool
+
+# ── 1. typeof / type checking with is ─────────────────────────────────────────
+assert_eq(1 is int,     true,  "1 is int")
+assert_eq(1.0 is float, true,  "1.0 is float")
+assert_eq("hi" is str,  true,  "str is str")
+assert_eq(true is bool, true,  "true is bool")
+assert_eq(null is null, true,  "null is null")
+assert_eq([1] is array, true,  "array is array")
+
+assert_eq("hi" is int,  false, "str is not int")
+assert_eq(1 is str,     false, "int is not str")
+
+# ── 2. is not ─────────────────────────────────────────────────────────────────
+assert_eq(1 is not str,  true,  "1 is not str")
+assert_eq("x" is not int, true, "str is not int")
+
+# ── 3. int() casting ──────────────────────────────────────────────────────────
+assert_eq(int(3.9),   3,   "int truncates float")
+assert_eq(int("42"),  42,  "int from string")
+assert_eq(int(true),  1,   "int from true")
+assert_eq(int(false), 0,   "int from false")
+
+# ── 4. float() casting ────────────────────────────────────────────────────────
+assert_eq(float(3),     3.0, "float from int")
+assert_eq(float("1.5"), 1.5, "float from string")
+assert_eq(float(true),  1.0, "float from true")
+
+# ── 5. str() casting ──────────────────────────────────────────────────────────
+assert_eq(str(42),    "42",    "str from int")
+assert_eq(str(3.14),  "3.14",  "str from float")
+assert_eq(str(true),  "true",  "str from true")
+assert_eq(str(false), "false", "str from false")
+assert_eq(str(null),  "null",  "str from null")
+
+# ── 6. bool() casting — tri-state ────────────────────────────────────────────
+assert_eq(bool(1),       true,    "bool 1 = true")
+assert_eq(bool(0),       false,   "bool 0 = false")
+assert_eq(bool(-1),      unknown, "bool -1 = unknown")
+assert_eq(bool(true),    true,    "bool true = true")
+assert_eq(bool(false),   false,   "bool false = false")
+assert_eq(bool(unknown),  unknown, "bool unknown = unknown")
+
+# ── 7. null checks ────────────────────────────────────────────────────────────
+let nothing = null
+assert_eq(nothing == null, true,  "null eq null")
+assert_eq(nothing != null, false, "null neq null false")
+assert_eq(nothing is null, true,  "null is null")
+
+# ── 8. unknown tri-state ─────────────────────────────────────────────────────
+let maybe = unknown
+assert_eq(maybe == unknown, true,  "unknown eq unknown")
+assert_eq(maybe is unknown, true,  "is unknown check")
+assert_eq(maybe == true,    false, "unknown is not true")
+assert_eq(maybe == false,   false, "unknown is not false")
+
+# ── 9. Truthiness in if conditions ────────────────────────────────────────────
+let truthy_count = 0
+if 1        { truthy_count += 1 }
+if "hello"  { truthy_count += 1 }
+if [1, 2]   { truthy_count += 1 }
+if true     { truthy_count += 1 }
+assert_eq(truthy_count, 4, "truthy values in conditions")
+
+let falsy_count = 0
+if 0        { falsy_count += 1 }
+if ""       { falsy_count += 1 }
+if false    { falsy_count += 1 }
+if null     { falsy_count += 1 }
+assert_eq(falsy_count, 0, "falsy values skip if body")
+
+# ── 10. Type preserved through assignment ─────────────────────────────────────
+let typed = 42
+assert_eq(typed is int, true, "int preserved")
+typed = "hello"
+assert_eq(typed is str, true, "changed to str")
+typed = 3.14
+assert_eq(typed is float, true, "changed to float")
+
+# ── 11. null arithmetic safety ───────────────────────────────────────────────
+# let bad = null + 1   # should raise a runtime error
+
+output("[PASS] edgecase/types")

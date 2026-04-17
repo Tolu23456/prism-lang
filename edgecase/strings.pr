@@ -1,0 +1,94 @@
+# edgecase/strings.pr
+# Edge cases for strings: indexing, slicing, methods, f-strings, empty strings
+
+# ── 1. Empty string ────────────────────────────────────────────────────────────
+let empty = ""
+assert_eq(len(empty), 0, "empty string len")
+assert_eq(empty.upper(), "", "empty upper")
+assert_eq(empty.lower(), "", "empty lower")
+
+# ── 2. Single character ────────────────────────────────────────────────────────
+let ch = "A"
+assert_eq(ch[0], "A", "single char index 0")
+assert_eq(ch[-1], "A", "single char index -1")
+assert_eq(len(ch), 1, "single char len")
+
+# ── 3. Negative indexing ───────────────────────────────────────────────────────
+let word = "Prism"
+assert_eq(word[-1], "m", "last char via -1")
+assert_eq(word[-5], "P", "first char via -len")
+
+# ── 4. Slicing ────────────────────────────────────────────────────────────────
+assert_eq(word[0:3], "Pri", "slice 0:3")
+assert_eq(word[1:4], "ris", "slice 1:4")
+assert_eq(word[0:5], "Prism", "slice full")
+
+# ── 5. String repetition ──────────────────────────────────────────────────────
+assert_eq("ab" * 3, "ababab", "string repeat 3")
+assert_eq("x" * 1, "x", "string repeat 1")
+assert_eq("y" * 0, "", "string repeat 0")
+
+# ── 6. String concatenation ────────────────────────────────────────────────────
+assert_eq("foo" + "bar", "foobar", "concat two strings")
+assert_eq("" + "abc", "abc", "concat with empty left")
+assert_eq("abc" + "", "abc", "concat with empty right")
+
+# ── 7. Membership in string ────────────────────────────────────────────────────
+assert_eq("ris" in "Prism", true,  "substring in")
+assert_eq("xyz" in "Prism", false, "substring not in")
+assert_eq("" in "Prism", true, "empty string always in")
+
+# ── 8. strip / lstrip / rstrip with different whitespace ──────────────────────
+let spaced = "   hello   "
+assert_eq(spaced.strip(),  "hello", "strip both")
+assert_eq(spaced.lstrip(), "hello   ", "lstrip")
+assert_eq(spaced.rstrip(), "   hello", "rstrip")
+
+# ── 9. split on different delimiters ─────────────────────────────────────────
+assert_eq("a,b,c".split(","), ["a", "b", "c"], "split comma")
+assert_eq("one".split(","),   ["one"],          "split no delimiter hit")
+assert_eq("".split(" "),      [""],             "split empty string")
+
+# ── 10. replace ───────────────────────────────────────────────────────────────
+assert_eq("aabbcc".replace("b", "X"), "aaXXcc", "replace all occurrences")
+assert_eq("hello".replace("z", "?"),  "hello",  "replace no match")
+
+# ── 11. find and index ────────────────────────────────────────────────────────
+assert_eq("hello".find("ll"),  2,  "find found")
+assert_eq("hello".find("zz"),  -1, "find not found")
+assert_eq("hello".index("e"),  1,  "index found")
+
+# ── 12. startswith / endswith ─────────────────────────────────────────────────
+assert_eq("Prism".startswith("Pri"), true,  "startswith true")
+assert_eq("Prism".startswith("ism"), false, "startswith false")
+assert_eq("Prism".endswith("ism"),   true,  "endswith true")
+assert_eq("Prism".endswith("Pri"),   false, "endswith false")
+assert_eq("hi".startswith(""),       true,  "startswith empty")
+assert_eq("hi".endswith(""),         true,  "endswith empty")
+
+# ── 13. isdigit / isalpha / isspace ──────────────────────────────────────────
+assert_eq("123".isdigit(),   true,  "isdigit true")
+assert_eq("12a".isdigit(),   false, "isdigit false")
+assert_eq("abc".isalpha(),   true,  "isalpha true")
+assert_eq("ab1".isalpha(),   false, "isalpha false")
+assert_eq("   ".isspace(),   true,  "isspace true")
+assert_eq("  x".isspace(),   false, "isspace false")
+
+# ── 14. f-string with expressions ─────────────────────────────────────────────
+let n = 7
+assert_eq(f"{n * 2}", "14",      "f-string expr")
+assert_eq(f"{'hi'.upper()}", "HI", "f-string method call")
+assert_eq(f"{n} squared is {n * n}", "7 squared is 49", "f-string multi-expr")
+
+# ── 15. Nested quotes inside f-string ─────────────────────────────────────────
+let greeting = f"Hello"
+assert_eq(greeting, "Hello", "simple f-string no interp")
+
+# ── 16. join with empty separator ─────────────────────────────────────────────
+assert_eq("".join(["a", "b", "c"]), "abc", "join empty sep")
+
+# ── 17. upper/lower on mixed ──────────────────────────────────────────────────
+assert_eq("Hello World 123".upper(), "HELLO WORLD 123", "upper mixed")
+assert_eq("Hello World 123".lower(), "hello world 123", "lower mixed")
+
+output("[PASS] edgecase/strings")

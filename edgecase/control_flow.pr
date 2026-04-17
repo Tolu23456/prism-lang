@@ -1,0 +1,135 @@
+# edgecase/control_flow.pr
+# Edge cases for if/elif/else, while, for, break, continue, nesting
+
+# ── 1. if / elif / else chaining ──────────────────────────────────────────────
+func grade(score) {
+    if score >= 90 { return "A" }
+    elif score >= 80 { return "B" }
+    elif score >= 70 { return "C" }
+    elif score >= 60 { return "D" }
+    else { return "F" }
+}
+assert_eq(grade(95), "A", "grade A")
+assert_eq(grade(85), "B", "grade B")
+assert_eq(grade(72), "C", "grade C")
+assert_eq(grade(61), "D", "grade D")
+assert_eq(grade(50), "F", "grade F")
+assert_eq(grade(90), "A", "grade boundary 90=A")
+assert_eq(grade(80), "B", "grade boundary 80=B")
+
+# ── 2. if with no else ────────────────────────────────────────────────────────
+let triggered = false
+if true { triggered = true }
+assert_eq(triggered, true, "if no-else taken")
+
+let skipped = false
+if false { skipped = true }
+assert_eq(skipped, false, "if no-else skipped")
+
+# ── 3. Nested if ──────────────────────────────────────────────────────────────
+let outer_val = 5
+let inner_val = 10
+let result = "none"
+if outer_val > 0 {
+    if inner_val > 5 {
+        result = "both"
+    } else {
+        result = "outer only"
+    }
+}
+assert_eq(result, "both", "nested if both true")
+
+# ── 4. while with break ───────────────────────────────────────────────────────
+let i = 0
+while true {
+    if i == 5 { break }
+    i += 1
+}
+assert_eq(i, 5, "while true break at 5")
+
+# ── 5. while with continue ────────────────────────────────────────────────────
+let odds = []
+let n = 0
+while n < 10 {
+    n += 1
+    if n % 2 == 0 { continue }
+    odds.add(n)
+}
+assert_eq(odds, [1, 3, 5, 7, 9], "while continue collects odds")
+
+# ── 6. while condition becomes false ──────────────────────────────────────────
+let count = 0
+while count < 3 { count += 1 }
+assert_eq(count, 3, "while natural exit")
+
+# ── 7. for over array ─────────────────────────────────────────────────────────
+let sum = 0
+for item in [1, 2, 3, 4, 5] { sum += item }
+assert_eq(sum, 15, "for array sum")
+
+# ── 8. for over string ────────────────────────────────────────────────────────
+let chars = []
+for ch in "abc" { chars.add(ch) }
+assert_eq(chars, ["a", "b", "c"], "for over string")
+
+# ── 9. for with break ─────────────────────────────────────────────────────────
+let found = -1
+for val in [10, 20, 30, 40, 50] {
+    if val == 30 { found = val; break }
+}
+assert_eq(found, 30, "for break")
+
+# ── 10. for with continue ────────────────────────────────────────────────────
+let evens = []
+for val in [1, 2, 3, 4, 5, 6] {
+    if val % 2 != 0 { continue }
+    evens.add(val)
+}
+assert_eq(evens, [2, 4, 6], "for continue evens")
+
+# ── 11. Nested for loops ──────────────────────────────────────────────────────
+let pairs = []
+for a in [1, 2] {
+    for b in [3, 4] {
+        pairs.add(a * 10 + b)
+    }
+}
+assert_eq(pairs, [13, 14, 23, 24], "nested for pairs")
+
+# ── 12. for with range ────────────────────────────────────────────────────────
+let range_sum = 0
+for i in 1..5 { range_sum += i }
+assert_eq(range_sum, 15, "for range sum 1..5")
+
+# ── 13. range with step ───────────────────────────────────────────────────────
+let stepped = []
+for i in 0..8 step 2 { stepped.add(i) }
+assert_eq(stepped, [0, 2, 4, 6, 8], "range step 2")
+
+# ── 14. Logical operators in conditions ───────────────────────────────────────
+assert_eq(true && true,   true,  "&& tt")
+assert_eq(true && false,  false, "&& tf")
+assert_eq(false || true,  true,  "|| ft")
+assert_eq(false || false, false, "|| ff")
+assert_eq(!true,  false, "! true")
+assert_eq(!false, true,  "! false")
+
+# ── 15. Short-circuit: && stops on first false ────────────────────────────────
+let side = 0
+func inc_side() { side += 1; return true }
+let sc = false && inc_side()
+assert_eq(side, 0, "short-circuit && no call on false left")
+
+# ── 16. Deeply nested break exits only innermost ─────────────────────────────
+let outer_i = 0
+let inner_j = 0
+for x in [1, 2, 3] {
+    outer_i += 1
+    for y in [1, 2, 3] {
+        inner_j += 1
+        if inner_j == 2 { break }
+    }
+}
+assert_eq(outer_i, 3, "outer loop ran all 3 iterations")
+
+output("[PASS] edgecase/control_flow")

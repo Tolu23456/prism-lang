@@ -1,0 +1,85 @@
+# edgecase/dicts.pr
+# Edge cases for dictionaries: access, mutation, missing keys, nesting, methods
+
+# ── 1. Empty dictionary ────────────────────────────────────────────────────────
+# Note: {} creates an empty set; use dict() for an empty dict
+let empty = dict()
+assert_eq(len(empty.keys()), 0, "empty dict has no keys")
+
+# ── 2. Basic access ───────────────────────────────────────────────────────────
+let d = {"name": "Alice", "age": 30}
+assert_eq(d["name"], "Alice", "bracket access string key")
+assert_eq(d["age"],  30,      "bracket access int value")
+
+# ── 3. Dot access for identifier keys ─────────────────────────────────────────
+assert_eq(d.name, "Alice", "dot access name")
+assert_eq(d.age,  30,      "dot access age")
+
+# ── 4. Mutation via bracket ───────────────────────────────────────────────────
+d["age"] = 31
+assert_eq(d["age"], 31, "bracket mutation")
+
+# ── 5. Mutation via dot ───────────────────────────────────────────────────────
+d.name = "Bob"
+assert_eq(d.name, "Bob", "dot mutation")
+
+# ── 6. Adding a new key ───────────────────────────────────────────────────────
+d["email"] = "bob@example.com"
+assert_eq(d["email"], "bob@example.com", "new key via bracket")
+
+# ── 7. keys / values / items ──────────────────────────────────────────────────
+let kv = {"a": 1, "b": 2, "c": 3}
+let ks = kv.keys()
+assert_eq(len(ks), 3, "keys length")
+assert_eq("a" in ks, true,  "key a in keys")
+assert_eq("z" in ks, false, "key z not in keys")
+
+let vs = kv.values()
+assert_eq(len(vs), 3, "values length")
+assert_eq(1 in vs, true, "value 1 in values")
+
+# ── 8. has ────────────────────────────────────────────────────────────────────
+assert_eq(kv.has("a"), true,  "has existing key")
+assert_eq(kv.has("z"), false, "has missing key")
+
+# ── 9. get with default ───────────────────────────────────────────────────────
+assert_eq(kv.get("a", 99), 1,  "get existing key")
+assert_eq(kv.get("z", 99), 99, "get missing key uses default")
+
+# ── 10. remove / erase ───────────────────────────────────────────────────────
+let rem = {"x": 10, "y": 20}
+rem.remove("x")
+assert_eq(rem.has("x"), false, "after remove key gone")
+assert_eq(len(rem.keys()), 1,  "after remove len is 1")
+
+# ── 11. Overwrite existing key ────────────────────────────────────────────────
+let ov = {"k": "first"}
+ov["k"] = "second"
+assert_eq(ov["k"], "second", "overwrite key")
+
+# ── 12. Nested dictionaries ───────────────────────────────────────────────────
+let nested = {"user": {"name": "Carol", "score": 100}}
+assert_eq(nested["user"]["name"],  "Carol", "nested bracket access")
+assert_eq(nested.user.score,       100,     "nested dot access")
+nested.user.score = 200
+assert_eq(nested.user.score, 200, "nested dot mutation")
+
+# ── 13. Dict with int keys ────────────────────────────────────────────────────
+let int_keys = {1: "one", 2: "two"}
+assert_eq(int_keys[1], "one", "int key access")
+assert_eq(int_keys[2], "two", "int key 2")
+
+# ── 14. clear ─────────────────────────────────────────────────────────────────
+let clearedDict = {"a": 1, "b": 2}
+clearedDict.clear()
+assert_eq(len(clearedDict.keys()), 0, "clear empties dict")
+
+# ── 15. items (key-value pairs) ───────────────────────────────────────────────
+let ab = {"a": 1, "b": 2}
+let its = ab.items()
+assert_eq(len(its), 2, "items length")
+
+# ── 16. Accessing missing key ─────────────────────────────────────────────────
+# let missing = d["does_not_exist"]  # expected: null or runtime error
+
+output("[PASS] edgecase/dicts")

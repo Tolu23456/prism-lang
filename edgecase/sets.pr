@@ -1,0 +1,83 @@
+# edgecase/sets.pr
+# Edge cases for sets: deduplication, operations, empty set, membership
+
+# ── 1. Set deduplicates values ────────────────────────────────────────────────
+let s = {1, 2, 2, 3, 3, 3}
+assert_eq(len(s), 3, "set deduplicates")
+
+# ── 2. Membership ─────────────────────────────────────────────────────────────
+assert_eq(1 in s, true,  "1 in set")
+assert_eq(9 in s, false, "9 not in set")
+assert_eq(9 not in s, true, "not in set")
+
+# ── 3. Union ──────────────────────────────────────────────────────────────────
+let a = {1, 2, 3}
+let b = {3, 4, 5}
+let u = a | b
+assert_eq(len(u), 5, "union len")
+assert_eq(1 in u, true, "union has 1")
+assert_eq(5 in u, true, "union has 5")
+assert_eq(6 in u, false, "union missing 6")
+
+# ── 4. Intersection ───────────────────────────────────────────────────────────
+let inter = a & b
+assert_eq(len(inter), 1, "intersection len")
+assert_eq(3 in inter, true,  "intersection has 3")
+assert_eq(1 in inter, false, "intersection missing 1")
+
+# ── 5. Difference ─────────────────────────────────────────────────────────────
+let diff = a - b
+assert_eq(len(diff), 2,    "difference len")
+assert_eq(1 in diff, true,  "difference has 1")
+assert_eq(3 in diff, false, "difference missing 3")
+
+# ── 6. Symmetric difference ───────────────────────────────────────────────────
+let sym = a ^ b
+assert_eq(len(sym), 4,     "sym diff len")
+assert_eq(3 in sym, false, "sym diff excludes common 3")
+assert_eq(1 in sym, true,  "sym diff has 1")
+assert_eq(5 in sym, true,  "sym diff has 5")
+
+# ── 7. add / discard / remove ─────────────────────────────────────────────────
+let mutable = {10, 20}
+mutable.add(30)
+assert_eq(30 in mutable, true,  "add new element")
+mutable.add(10)
+assert_eq(len(mutable), 3, "add duplicate no change")
+mutable.discard(20)
+assert_eq(20 in mutable, false, "discard removes")
+mutable.discard(99)
+assert_eq(len(mutable), 2, "discard missing is silent")
+
+# ── 8. Empty set operations ───────────────────────────────────────────────────
+let empty = set()
+assert_eq(len(empty), 0, "empty set len")
+let e_union = empty | {1, 2}
+assert_eq(len(e_union), 2, "empty union has other elements")
+let e_inter = empty & {1, 2}
+assert_eq(len(e_inter), 0, "empty intersection is empty")
+
+# ── 9. Set from array (deduplication) ────────────────────────────────────────
+let from_arr = set([1, 2, 2, 3, 1])
+assert_eq(len(from_arr), 3, "set from array deduplicates")
+
+# ── 10. clear ─────────────────────────────────────────────────────────────────
+# NOTE: set.clear() is not yet implemented in Prism
+# let cleared = {1, 2, 3}
+# cleared.clear()
+# assert_eq(len(cleared), 0, "clear empties set")
+
+# ── 11. Disjoint sets ─────────────────────────────────────────────────────────
+let x = {1, 2}
+let y = {3, 4}
+let xy_inter = x & y
+assert_eq(len(xy_inter), 0, "disjoint intersection is empty")
+
+# ── 12. Set equality ─────────────────────────────────────────────────────────
+let s1 = {1, 2, 3}
+let s2 = {3, 1, 2}
+assert_eq(s1 == s2, true, "sets equal regardless of insertion order")
+let s3 = {1, 2}
+assert_eq(s1 == s3, false, "sets with different elements not equal")
+
+output("[PASS] edgecase/sets")

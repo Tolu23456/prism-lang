@@ -1,0 +1,59 @@
+# edgecase/variables.pr
+# Edge cases for variable declarations, constants, scoping, and shadowing
+
+# ── 1. let with no initial value should default to null ──────────────────────
+let uninit
+assert_eq(uninit, null, "uninit let is null")
+
+# ── 2. let then assign ────────────────────────────────────────────────────────
+let x
+x = 42
+assert_eq(x, 42, "assign after bare let")
+
+# ── 3. const must not be reassignable ─────────────────────────────────────────
+const PI = 3.14159
+# PI = 9.99   # should raise: cannot assign to 'PI': it was declared as a constant
+
+# ── 4. const compound assign should also fail ─────────────────────────────────
+# PI += 1     # should raise the same const error
+
+# ── 5. let can change type freely ─────────────────────────────────────────────
+let dyn = 1
+dyn = "now a string"
+dyn = [1, 2, 3]
+dyn = true
+assert_eq(dyn, true, "let can change type")
+
+# ── 6. variable shadowing in inner block ──────────────────────────────────────
+let shadow = "outer"
+{
+    let shadow = "inner"
+    assert_eq(shadow, "inner", "inner shadow")
+}
+assert_eq(shadow, "outer", "outer survives shadowing")
+
+# ── 7. assign to undeclared variable ─────────────────────────────────────────
+# undeclared = 5   # should raise: variable 'undeclared' is not declared
+
+# ── 8. const shadows outer let ───────────────────────────────────────────────
+let mutable_val = 10
+{
+    const mutable_val = 99
+    assert_eq(mutable_val, 99, "const shadow of outer let")
+}
+assert_eq(mutable_val, 10, "outer let unchanged after const shadow")
+
+# ── 9. multiple declarations on separate lines ────────────────────────────────
+let a = 1
+let b = 2
+let c = a + b
+assert_eq(c, 3, "multi let sum")
+
+# ── 10. reassign through compound ops ────────────────────────────────────────
+let counter = 0
+counter += 5
+counter -= 2
+counter *= 3
+assert_eq(counter, 9, "compound assign chain")
+
+output("[PASS] edgecase/variables")

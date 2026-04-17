@@ -1,0 +1,61 @@
+# edgecase/tuples.pr
+# Edge cases for tuples: creation, indexing, immutability, methods
+
+# ── 1. Basic tuple creation ───────────────────────────────────────────────────
+let t = (10, 20, 30)
+assert_eq(len(t), 3, "tuple len")
+assert_eq(t[0], 10,  "tuple index 0")
+assert_eq(t[1], 20,  "tuple index 1")
+assert_eq(t[2], 30,  "tuple index 2")
+
+# ── 2. Negative indexing ──────────────────────────────────────────────────────
+assert_eq(t[-1], 30, "tuple last via -1")
+assert_eq(t[-3], 10, "tuple first via -len")
+
+# ── 3. Heterogeneous tuple ────────────────────────────────────────────────────
+let mixed = (1, "two", 3.0, true, null)
+assert_eq(mixed[0], 1,      "hetero int")
+assert_eq(mixed[1], "two",  "hetero string")
+assert_eq(mixed[3], true,   "hetero bool")
+assert_eq(mixed[4], null,   "hetero null")
+
+# ── 4. Single element tuple ───────────────────────────────────────────────────
+let single = (42,)
+assert_eq(len(single), 1,  "single elem tuple len")
+assert_eq(single[0], 42,   "single elem access")
+
+# ── 5. Nested tuples ──────────────────────────────────────────────────────────
+let nested = ((1, 2), (3, 4))
+assert_eq(nested[0][0], 1, "nested tuple [0][0]")
+assert_eq(nested[1][1], 4, "nested tuple [1][1]")
+
+# ── 6. Tuple count method ─────────────────────────────────────────────────────
+let repeated = (1, 2, 2, 3, 2)
+assert_eq(repeated.count(2), 3, "tuple count 2 appears 3 times")
+assert_eq(repeated.count(9), 0, "tuple count not present")
+
+# ── 7. Tuple index method ─────────────────────────────────────────────────────
+let positioned = (10, 20, 30, 40)
+assert_eq(positioned.index(20), 1, "tuple index of 20")
+assert_eq(positioned.index(10), 0, "tuple index of first")
+
+# ── 8. Membership in tuple ────────────────────────────────────────────────────
+let items = (1, 2, 3)
+assert_eq(2 in items, true,  "in tuple true")
+assert_eq(9 in items, false, "in tuple false")
+
+# ── 9. Tuple immutability ─────────────────────────────────────────────────────
+# t[0] = 99   # should raise: cannot index-assign a tuple (immutable)
+
+# ── 10. Empty tuple ───────────────────────────────────────────────────────────
+let empty = ()
+assert_eq(len(empty), 0, "empty tuple len")
+
+# ── 11. Tuple used as function argument ───────────────────────────────────────
+func first(tup) { return tup[0] }
+func second(tup) { return tup[1] }
+let pair = (100, 200)
+assert_eq(first(pair),  100, "tuple arg first")
+assert_eq(second(pair), 200, "tuple arg second")
+
+output("[PASS] edgecase/tuples")

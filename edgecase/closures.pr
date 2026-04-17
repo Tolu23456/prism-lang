@@ -1,0 +1,77 @@
+# edgecase/closures.pr
+# Edge cases for closures: captured variables, mutation, factory functions
+
+# ── 1. Basic closure captures outer variable ──────────────────────────────────
+let x = 10
+func get_x() { return x }
+assert_eq(get_x(), 10, "closure reads outer var")
+
+# ── 2. Closure sees updated outer variable ────────────────────────────────────
+let count = 0
+func get_count() { return count }
+count = 5
+assert_eq(get_count(), 5, "closure sees updated outer var")
+
+# ── 3. Closure mutates outer variable ────────────────────────────────────────
+let total = 0
+func add_to_total(n) { total += n }
+add_to_total(10)
+add_to_total(20)
+add_to_total(30)
+assert_eq(total, 60, "closure mutates outer var")
+
+# ── 4. Multiple closures share same outer variable ────────────────────────────
+let shared = 0
+func inc() { shared += 1 }
+func dec() { shared -= 1 }
+inc()
+inc()
+inc()
+dec()
+assert_eq(shared, 2, "multiple closures share outer var")
+
+# ── 5. Closure in loop captures loop variable ─────────────────────────────────
+let results = []
+let i = 0
+while i < 3 {
+    let captured = i
+    func make_val() { return captured }
+    results.add(make_val())
+    i += 1
+}
+assert_eq(results, [0, 1, 2], "closure captures loop variable")
+
+# ── 6. Nested function accessing grandparent scope ────────────────────────────
+let outer = 100
+func middle() {
+    let mid = 50
+    func inner() {
+        return outer + mid
+    }
+    return inner()
+}
+assert_eq(middle(), 150, "nested closure grandparent scope")
+
+# ── 7. Function factory pattern ───────────────────────────────────────────────
+# NOTE: Prism does not yet support true closures over returned function frames.
+# Local variables from an already-returned outer function are not retained by
+# the inner function. Factory patterns that rely on captured mutable locals
+# (e.g., make_adder, make_counter) are not supported yet.
+# func make_adder(n) {
+#     func adder(x) { return x + n }
+#     return adder
+# }
+# let add5  = make_adder(5)
+# assert_eq(add5(3), 8, "factory adder 5+3")
+
+# ── 8. Counter factory ────────────────────────────────────────────────────────
+# Also unsupported — returns inner func that mutates local of returned frame.
+# func make_counter() {
+#     let n = 0
+#     func next() { n += 1; return n }
+#     return next
+# }
+# let counter = make_counter()
+# assert_eq(counter(), 1, "counter call 1")
+
+output("[PASS] edgecase/closures")

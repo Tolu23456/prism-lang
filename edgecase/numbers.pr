@@ -1,0 +1,86 @@
+# edgecase/numbers.pr
+# Edge cases for integers, floats, bases, operators, and numeric limits
+
+# ── 1. Integer arithmetic ─────────────────────────────────────────────────────
+assert_eq(1 + 1, 2,  "int add")
+assert_eq(10 - 3, 7, "int sub")
+assert_eq(4 * 5, 20, "int mul")
+assert_eq(9 % 4,  1, "int mod")
+
+# ── 2. Division — Prism uses float division for / (no integer floor div) ──────
+assert_eq(7 / 2,    3.5,  "div returns float")
+assert_eq(-7 / 2,  -3.5,  "negative div returns float")
+assert_eq(7.0 / 2,  3.5,  "explicit float div")
+
+# ── 3. Power operator ─────────────────────────────────────────────────────────
+assert_eq(2 ** 10, 1024, "power 2^10")
+assert_eq(3 ** 0,  1,    "power n^0 = 1")
+assert_eq(0 ** 0,  1,    "power 0^0 = 1")
+# 2 ** -1 with integer operands: parser edge case — skip for now
+# assert_eq(2 ** -1, 0, "power 2^-1 int floors to 0")
+
+# ── 4. Float arithmetic ───────────────────────────────────────────────────────
+assert_eq(0.1 + 0.2 > 0.29, true, "float add gt")
+assert_eq(1.5 * 2.0, 3.0,         "float mul")
+assert_eq(7.0 / 2.0, 3.5,         "float div")
+
+# ── 5. Mixed int/float ───────────────────────────────────────────────────────
+assert_eq(1 + 0.5, 1.5, "int + float")
+assert_eq(2 * 1.5, 3.0, "int * float")
+
+# ── 6. Unary minus ────────────────────────────────────────────────────────────
+assert_eq(-5,     -5, "unary neg int")
+assert_eq(-(-5),   5, "double neg")
+assert_eq(-0,      0, "neg zero")
+assert_eq(-3.14, -3.14, "unary neg float")
+
+# ── 7. Numeric literal bases ─────────────────────────────────────────────────
+assert_eq(0xFF,   255, "hex literal")
+assert_eq(0b1111,  15, "binary literal")
+assert_eq(0o17,    15, "octal literal")
+assert_eq(0b0,      0, "binary zero")
+
+# ── 8. Operator precedence ────────────────────────────────────────────────────
+assert_eq(2 + 3 * 4,     14, "mul before add")
+assert_eq((2 + 3) * 4,   20, "parens override prec")
+assert_eq(10 - 2 - 3,     5, "left-assoc sub")
+assert_eq(2 ** 3 ** 2,  512, "right-assoc power: 2**(3**2)=512")
+
+# ── 9. Bitwise operators ──────────────────────────────────────────────────────
+assert_eq(0b1010 & 0b1100, 0b1000, "bitwise and")
+assert_eq(0b1010 | 0b0101, 0b1111, "bitwise or")
+assert_eq(0b1010 ^ 0b1100, 0b0110, "bitwise xor")
+assert_eq(~0, -1, "bitwise not 0")
+# << and >> (shift operators) are not yet implemented in Prism
+# assert_eq(1 << 3, 8,  "left shift")
+# assert_eq(16 >> 2, 4, "right shift")
+
+# ── 10. Division by zero ─────────────────────────────────────────────────────
+# let bad = 1 / 0   # should raise a runtime error
+
+# ── 11. Compound assignment ───────────────────────────────────────────────────
+let v = 10
+v += 5   assert_eq(v, 15, "+= works")
+v -= 3   assert_eq(v, 12, "-= works")
+v *= 2   assert_eq(v, 24, "*= works")
+v /= 4   assert_eq(v, 6,  "/= works")
+
+# ── 12. Comparison chaining ────────────────────────────────────────────────────
+assert_eq(1 < 2,  true,  "lt true")
+assert_eq(2 > 3,  false, "gt false")
+assert_eq(3 >= 3, true,  ">= equal")
+assert_eq(3 <= 2, false, "<= false")
+assert_eq(4 == 4, true,  "== equal")
+assert_eq(4 != 5, true,  "!= true")
+assert_eq(4 != 4, false, "!= same false")
+
+# ── 13. Large numbers ─────────────────────────────────────────────────────────
+assert_eq(1000000 * 1000000, 1000000000000, "large mul")
+assert_eq(2 ** 40, 1099511627776,            "2^40")
+
+# ── 14. Zero comparisons ─────────────────────────────────────────────────────
+assert_eq(0 == 0,   true,  "zero eq zero")
+assert_eq(0 == 0.0, true,  "int zero eq float zero")
+assert_eq(0 != 1,   true,  "zero neq one")
+
+output("[PASS] edgecase/numbers")

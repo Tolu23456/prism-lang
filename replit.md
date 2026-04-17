@@ -103,6 +103,32 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 - Update `todo.md` whenever the plan changes.
 - Keep both files current and consistent.
 
+## Bugs Fixed (Session Notes)
+
+- **`elif` in multi-line blocks**: Added `skip_newlines()` before `while (check(p, TOKEN_ELIF))` and after each `elif` body in `parse_if()` in `src/parser.c`. Previously `elif` only worked when on the same line as the closing `}`.
+- **`**` right-associativity**: Changed `parse_power()` right-hand side from `parse_unary(p)` to `parse_power(p)` in `src/parser.c`. Previously `2 ** 3 ** 2` was a parse error.
+- **Set equality**: Added `VAL_SET` case to `value_equals()` in `src/value.c`. Previously two sets with identical elements compared as unequal (fell through to pointer comparison).
+
+## Known Language Limitations (Documented in edgecase/)
+
+- **`arr` is a reserved keyword**: Cannot be used as a variable or parameter name. Use `lst`, `nums`, etc. The syntax `arr[a, b, c]` creates an array literal.
+- **`<<` / `>>` (shift operators)**: Lexed but not yet parsed or interpreted. Commented out in edge case files.
+- **`|>` (pipe operator)**: Lexed (`TOKEN_PIPE_ARROW`) but not yet handled in the parser. Commented out.
+- **True closures over returned frames**: Returning an inner function that captures locals from an outer function that has already returned causes a segfault. Closures over global/module-level variables work correctly.
+- **`set.clear()` method**: Not yet implemented. `array.clear()` and `dict.clear()` do exist.
+- **Empty dict literal**: `{}` creates an empty **set**, not a dict. Use `dict()` for an empty dict.
+- **`/` is float division**: `7 / 2` returns `3.5`, not `3`. There is no integer floor-division operator.
+- **`catch` error format**: Caught values are always strings in the form `"line N: VALUE"` regardless of the throw type.
+- **`dict()` equality**: Not yet implemented in `value_equals`; dicts fall through to pointer comparison.
+
+## Edge Case Test Files (edgecase/)
+
+14 `.pr` files exercising every major syntax feature. All 14 pass as of the current build. Run individually with `./prism edgecase/<file>.pr` or all at once:
+
+```bash
+for f in edgecase/*.pr; do echo -n "$(basename $f): "; ./prism "$f" 2>&1 | tail -1; done
+```
+
 ## Language Features
 
 - **Variables**: `let x = 10` / `const PI = 3.14` / walrus `x := 10`

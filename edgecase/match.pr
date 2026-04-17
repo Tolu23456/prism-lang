@@ -1,0 +1,96 @@
+# edgecase/match.pr
+# Edge cases for match / pattern matching expressions
+# Prism match syntax: match expr { when val { body } ... else { body } }
+
+# ── 1. Basic integer match ────────────────────────────────────────────────────
+func http_status(code) {
+    match code {
+        when 200 { return "OK" }
+        when 404 { return "Not Found" }
+        when 500 { return "Server Error" }
+        else     { return "Unknown" }
+    }
+}
+assert_eq(http_status(200), "OK",           "match 200")
+assert_eq(http_status(404), "Not Found",    "match 404")
+assert_eq(http_status(500), "Server Error", "match 500")
+assert_eq(http_status(999), "Unknown",      "match else fallthrough")
+
+# ── 2. Match on string values ─────────────────────────────────────────────────
+func day_type(day) {
+    match day {
+        when "Saturday" { return "weekend" }
+        when "Sunday"   { return "weekend" }
+        else            { return "weekday" }
+    }
+}
+assert_eq(day_type("Saturday"), "weekend", "match Saturday")
+assert_eq(day_type("Sunday"),   "weekend", "match Sunday")
+assert_eq(day_type("Monday"),   "weekday", "match weekday else")
+
+# ── 3. Match with no else — falls through ────────────────────────────────────
+func strict_match(x) {
+    match x {
+        when 1 { return "one" }
+        when 2 { return "two" }
+    }
+    return "no match"
+}
+assert_eq(strict_match(1), "one",      "strict match 1")
+assert_eq(strict_match(9), "no match", "strict match falls through")
+
+# ── 4. Match on boolean ───────────────────────────────────────────────────────
+func describe_bool(v) {
+    match v {
+        when true    { return "yes" }
+        when false   { return "no" }
+        when unknown { return "maybe" }
+        else         { return "other" }
+    }
+}
+assert_eq(describe_bool(true),    "yes",   "match true")
+assert_eq(describe_bool(false),   "no",    "match false")
+assert_eq(describe_bool(unknown), "maybe", "match unknown")
+
+# ── 5. Match on null ──────────────────────────────────────────────────────────
+func check_null(v) {
+    match v {
+        when null { return "nothing" }
+        else      { return "something" }
+    }
+}
+assert_eq(check_null(null), "nothing",   "match null")
+assert_eq(check_null(42),   "something", "match non-null else")
+
+# ── 6. Match used as statement with else block ────────────────────────────────
+let score = 85
+let grade = "?"
+match score {
+    when 100 { grade = "A+" }
+    else {
+        if score >= 90 { grade = "A" }
+        elif score >= 80 { grade = "B" }
+        else { grade = "C" }
+    }
+}
+assert_eq(grade, "B", "match else block logic")
+
+# ── 7. Nested match ───────────────────────────────────────────────────────────
+func nested_match(a, b) {
+    match a {
+        when 1 {
+            match b {
+                when 1 { return "1,1" }
+                when 2 { return "1,2" }
+                else   { return "1,?" }
+            }
+        }
+        else { return "?,?" }
+    }
+}
+assert_eq(nested_match(1, 1), "1,1", "nested match 1,1")
+assert_eq(nested_match(1, 2), "1,2", "nested match 1,2")
+assert_eq(nested_match(1, 9), "1,?", "nested match 1,?")
+assert_eq(nested_match(2, 1), "?,?", "nested match outer else")
+
+output("[PASS] edgecase/match")

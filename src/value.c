@@ -456,6 +456,12 @@ bool value_equals(Value *a, Value *b) {
                 if (!value_equals(aa->items[i], bb->items[i])) return false;
             return true;
         }
+        case VAL_SET: {
+            if (a->set.len != b->set.len) return false;
+            for (int i = 0; i < a->set.len; i++)
+                if (!value_set_has(b, a->set.items[i])) return false;
+            return true;
+        }
         default: return a == b;
     }
 }

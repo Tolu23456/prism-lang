@@ -1,0 +1,111 @@
+# edgecase/error_handling.pr
+# Edge cases for try/catch, throw, and error propagation
+
+# ── 1. Basic try/catch catches a throw ────────────────────────────────────────
+let caught = false
+try {
+    throw "something went wrong"
+} catch err {
+    caught = true
+}
+assert_eq(caught, true, "try/catch catches throw")
+
+# ── 2. catch receives the thrown message ─────────────────────────────────────
+# Note: Prism prefixes thrown values with location info ("line N: value")
+let err_msg = ""
+try {
+    throw "custom error"
+} catch err {
+    err_msg = err
+}
+assert_eq("custom error" in err_msg, true, "catch message contains thrown string")
+
+# ── 3. Code after throw in try block is NOT executed ─────────────────────────
+let ran_after = false
+try {
+    throw "stop"
+    ran_after = true
+} catch err {
+    # swallow
+}
+assert_eq(ran_after, false, "no code runs after throw in try")
+
+# ── 4. No throw means catch is skipped ────────────────────────────────────────
+let catch_ran = false
+try {
+    let x = 1 + 1
+} catch err {
+    catch_ran = true
+}
+assert_eq(catch_ran, false, "catch skipped when no error")
+
+# ── 5. try/catch allows continuation after handling ───────────────────────────
+let continued = false
+try {
+    throw "oops"
+} catch err {
+    # handled
+}
+continued = true
+assert_eq(continued, true, "execution continues after try/catch")
+
+# ── 6. Nested try/catch - inner handles its own error ────────────────────────
+let outer_caught = false
+let inner_caught = false
+try {
+    try {
+        throw "inner error"
+    } catch e {
+        inner_caught = true
+    }
+} catch e {
+    outer_caught = true
+}
+assert_eq(inner_caught, true,  "inner catch handles its error")
+assert_eq(outer_caught, false, "outer catch not triggered")
+
+# ── 7. Error in catch block propagates outward ────────────────────────────────
+let outer_got = false
+try {
+    try {
+        throw "first"
+    } catch e {
+        throw "second"
+    }
+} catch e {
+    outer_got = true
+}
+assert_eq(outer_got, true, "error in catch propagates to outer")
+
+# ── 8. Runtime error caught by try/catch ─────────────────────────────────────
+let div_caught = false
+try {
+    let bad = 1 / 0
+} catch err {
+    div_caught = true
+}
+assert_eq(div_caught, true, "division by zero caught")
+
+# ── 9. throw with non-string value ───────────────────────────────────────────
+# Note: thrown non-string values are converted to string with location prefix
+let num_err = null
+try {
+    throw 42
+} catch err {
+    num_err = err
+}
+assert_eq(type(num_err), "string", "caught value is always a string")
+assert_eq("42" in num_err, true, "catch contains thrown integer representation")
+
+# ── 10. try/catch inside a function ──────────────────────────────────────────
+func safe_div(a, b) {
+    try {
+        return a / b
+    } catch err {
+        return null
+    }
+}
+assert_eq(safe_div(10, 2), 5,    "safe_div normal")
+assert_eq(safe_div(10, 0), null, "safe_div by zero returns null")
+
+output("[PASS] edgecase/error_handling")

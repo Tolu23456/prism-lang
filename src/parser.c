@@ -587,7 +587,7 @@ static ASTNode *parse_power(Parser *p) {
     if (check(p, TOKEN_STARSTAR)) {
         int line = p->current->line;
         advance(p);
-        ASTNode *right = parse_unary(p);
+        ASTNode *right = parse_power(p);
         ASTNode *n = ast_node_new(NODE_BINOP, line);
         strncpy(n->binop.op, "**", 3);
         n->binop.left  = left;
@@ -973,6 +973,7 @@ static ASTNode *parse_if(Parser *p) {
     bodies[branch_count] = parse_block(p);
     branch_count++;
 
+    skip_newlines(p);
     while (check(p, TOKEN_ELIF)) {
         advance(p);
         if (branch_count >= cap) { cap *= 2; conds = realloc(conds, cap * sizeof(ASTNode *)); bodies = realloc(bodies, cap * sizeof(ASTNode *)); }
@@ -981,6 +982,7 @@ static ASTNode *parse_if(Parser *p) {
         skip_newlines(p);
         bodies[branch_count] = parse_block(p);
         branch_count++;
+        skip_newlines(p);
     }
 
     ASTNode *else_body = NULL;

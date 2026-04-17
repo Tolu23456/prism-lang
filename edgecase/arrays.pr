@@ -1,0 +1,100 @@
+# edgecase/arrays.pr
+# Edge cases for arrays: indexing, mutation, slicing, nesting, methods
+
+# ── 1. Empty array ────────────────────────────────────────────────────────────
+let empty = []
+assert_eq(len(empty), 0, "empty array len")
+
+# ── 2. Single element ─────────────────────────────────────────────────────────
+let solo = [42]
+assert_eq(solo[0],  42, "solo index 0")
+assert_eq(solo[-1], 42, "solo index -1")
+assert_eq(len(solo), 1, "solo len")
+
+# ── 3. Heterogeneous elements ─────────────────────────────────────────────────
+let mixed = [1, "two", 3.0, true, null]
+assert_eq(mixed[0], 1,      "mixed int")
+assert_eq(mixed[1], "two",  "mixed string")
+assert_eq(mixed[3], true,   "mixed bool")
+assert_eq(mixed[4], null,   "mixed null")
+
+# ── 4. Negative indexing ──────────────────────────────────────────────────────
+let nums = [10, 20, 30, 40, 50]
+assert_eq(nums[-1], 50, "last element")
+assert_eq(nums[-2], 40, "second to last")
+assert_eq(nums[-5], 10, "first via -len")
+
+# ── 5. Mutation via index ─────────────────────────────────────────────────────
+let mut_arr = [1, 2, 3]
+mut_arr[1] = 99
+assert_eq(mut_arr[1], 99, "index mutation")
+mut_arr[-1] = 0
+assert_eq(mut_arr[2], 0, "negative index mutation")
+
+# ── 6. add and remove ─────────────────────────────────────────────────────────
+let lst = [1, 2, 3]
+lst.add(4)
+assert_eq(len(lst), 4,  "add increases len")
+assert_eq(lst[-1], 4,   "added element at end")
+lst.remove(2)
+assert_eq(len(lst), 3,  "remove decreases len")
+assert_eq(lst[1], 3,    "element after remove")
+
+# ── 7. pop ────────────────────────────────────────────────────────────────────
+let p = [10, 20, 30]
+let popped = p.pop(0)
+assert_eq(popped, 10,   "pop index 0 returns value")
+assert_eq(len(p), 2,    "pop reduces len")
+assert_eq(p[0], 20,     "remaining after pop")
+
+# ── 8. Nested arrays ─────────────────────────────────────────────────────────
+let matrix = [[1, 2], [3, 4], [5, 6]]
+assert_eq(matrix[0][1], 2, "nested index [0][1]")
+assert_eq(matrix[2][0], 5, "nested index [2][0]")
+matrix[1][1] = 99
+assert_eq(matrix[1][1], 99, "nested mutation")
+
+# ── 9. contains / in operator ─────────────────────────────────────────────────
+let items = ["a", "b", "c"]
+assert_eq("b" in items,    true,  "in true")
+assert_eq("z" in items,    false, "in false")
+assert_eq("z" not in items, true, "not in true")
+
+# ── 10. sort ──────────────────────────────────────────────────────────────────
+let unsorted = [3, 1, 4, 1, 5, 9, 2, 6]
+unsorted.sort()
+assert_eq(unsorted[0], 1, "sort first")
+assert_eq(unsorted[-1], 9, "sort last")
+
+# ── 11. reverse ───────────────────────────────────────────────────────────────
+let rev = [1, 2, 3, 4]
+rev.reverse()
+assert_eq(rev[0], 4, "reverse first")
+assert_eq(rev[-1], 1, "reverse last")
+
+# ── 12. count ─────────────────────────────────────────────────────────────────
+let counted = [1, 2, 2, 3, 2, 4]
+assert_eq(counted.count(2), 3, "count 2 appears 3 times")
+assert_eq(counted.count(9), 0, "count not present")
+
+# ── 13. index (find position) ─────────────────────────────────────────────────
+let positioned = [10, 20, 30, 40]
+assert_eq(positioned.index(30), 2, "index of 30")
+assert_eq(positioned.index(10), 0, "index of first element")
+
+# ── 14. Concatenation via += ──────────────────────────────────────────────────
+let cat = [1, 2]
+cat += [3, 4]
+assert_eq(len(cat), 4, "concat len")
+assert_eq(cat[3], 4, "concat last")
+
+# ── 15. clear ────────────────────────────────────────────────────────────────
+let clearedArr = [1, 2, 3]
+clearedArr.clear()
+assert_eq(len(clearedArr), 0, "clear empties array")
+
+# ── 16. Out-of-bounds index ───────────────────────────────────────────────────
+# let oob = [1, 2, 3]
+# let bad = oob[10]   # should raise: array index out of range
+
+output("[PASS] edgecase/arrays")

@@ -1,0 +1,115 @@
+# edgecase/functions.pr
+# Edge cases for functions: defaults, recursion, closures, higher-order, scope
+
+# ── 1. Basic function and return ──────────────────────────────────────────────
+func add(a, b) { return a + b }
+assert_eq(add(3, 4), 7, "basic add")
+
+# ── 2. No-return function returns null ────────────────────────────────────────
+func no_ret() { let x = 1 }
+assert_eq(no_ret(), null, "no return is null")
+
+# ── 3. Default arguments ──────────────────────────────────────────────────────
+func greet(name, greeting) {
+    return f"{greeting}, {name}!"
+}
+assert_eq(greet("Alice", "Hello"), "Hello, Alice!", "positional args")
+
+# ── 4. Recursive: factorial ───────────────────────────────────────────────────
+func factorial(n) {
+    if n <= 1 { return 1 }
+    return n * factorial(n - 1)
+}
+assert_eq(factorial(0),  1,       "factorial 0")
+assert_eq(factorial(1),  1,       "factorial 1")
+assert_eq(factorial(5),  120,     "factorial 5")
+assert_eq(factorial(10), 3628800, "factorial 10")
+
+# ── 5. Recursive: fibonacci ───────────────────────────────────────────────────
+func fib(n) {
+    if n <= 0 { return 0 }
+    if n == 1 { return 1 }
+    return fib(n - 1) + fib(n - 2)
+}
+assert_eq(fib(0),  0,  "fib 0")
+assert_eq(fib(1),  1,  "fib 1")
+assert_eq(fib(10), 55, "fib 10")
+
+# ── 6. Function as value (higher-order) ───────────────────────────────────────
+func double(x) { return x * 2 }
+func apply(f, x) { return f(x) }
+assert_eq(apply(double, 5), 10, "function as argument")
+
+# ── 7. apply_twice ────────────────────────────────────────────────────────────
+func apply_twice(f, x) { return f(f(x)) }
+assert_eq(apply_twice(double, 3), 12, "apply_twice double 3")
+
+# ── 8. Function returning a result based on condition ─────────────────────────
+func abs_val(n) {
+    if n < 0 { return -n }
+    return n
+}
+assert_eq(abs_val(-7),  7, "abs negative")
+assert_eq(abs_val(0),   0, "abs zero")
+assert_eq(abs_val(5),   5, "abs positive")
+
+# ── 9. Mutual recursion ───────────────────────────────────────────────────────
+func is_even(n) {
+    if n == 0 { return true }
+    return is_odd(n - 1)
+}
+func is_odd(n) {
+    if n == 0 { return false }
+    return is_even(n - 1)
+}
+assert_eq(is_even(4), true,  "is_even 4")
+assert_eq(is_odd(3),  true,  "is_odd 3")
+assert_eq(is_even(7), false, "is_even 7")
+
+# ── 10. Closures capture outer variables ──────────────────────────────────────
+let base = 100
+func add_to_base(n) { return base + n }
+assert_eq(add_to_base(5),  105, "closure base+5")
+assert_eq(add_to_base(50), 150, "closure base+50")
+
+# ── 11. Accumulator pattern using outer scope ─────────────────────────────────
+let total = 0
+func accumulate(n) { total += n }
+accumulate(10)
+accumulate(20)
+accumulate(30)
+assert_eq(total, 60, "accumulator total")
+
+# ── 12. Multiple return points ────────────────────────────────────────────────
+func classify(n) {
+    if n < 0 { return "negative" }
+    if n == 0 { return "zero" }
+    return "positive"
+}
+assert_eq(classify(-3), "negative", "classify neg")
+assert_eq(classify(0),  "zero",     "classify zero")
+assert_eq(classify(7),  "positive", "classify pos")
+
+# ── 13. Function modifying an array (pass by reference semantics) ─────────────
+func push_val(lst, val) { lst.add(val) }
+let shared = [1, 2]
+push_val(shared, 3)
+assert_eq(shared[-1], 3, "array modified via function")
+assert_eq(len(shared), 3, "array len after func push")
+
+# ── 14. Nested function calls ─────────────────────────────────────────────────
+func square(x) { return x * x }
+func sum_of_squares(a, b) { return square(a) + square(b) }
+assert_eq(sum_of_squares(3, 4), 25, "3^2 + 4^2 = 25")
+
+# ── 15. Early return from loop ────────────────────────────────────────────────
+func first_even(lst) {
+    for item in lst {
+        if item % 2 == 0 { return item }
+    }
+    return -1
+}
+assert_eq(first_even([1, 3, 4, 7]), 4, "first even in list")
+assert_eq(first_even([1, 3, 5]),    -1, "no even returns -1")
+
+output("[PASS] edgecase/functions")
