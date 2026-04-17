@@ -1,0 +1,73 @@
+/* Error handling with try/catch/throw */
+
+/* Basic try/catch */
+try {
+    let x = 10 / 0
+    print("Should not reach here")
+} catch e {
+    print("Caught:", e)
+}
+
+/* Throwing custom errors */
+func divide(a, b) {
+    if b == 0 {
+        throw "Division by zero"
+    }
+    return a / b
+}
+
+try {
+    print(divide(10, 2))    /* 5 */
+    print(divide(10, 0))    /* throws */
+} catch e {
+    print("Error:", e)
+}
+
+/* Nested try/catch */
+func safe_parse_int(s) {
+    try {
+        return int(s)
+    } catch {
+        return null
+    }
+}
+
+print(safe_parse_int("42"))      /* 42 */
+print(safe_parse_int("hello"))   /* null */
+
+/* Error propagation */
+func validate_age(age) {
+    if 0 > age or age > 150 {
+        throw "Invalid age: " + str(age)
+    }
+    return age
+}
+
+func greet_person(name, age) {
+    let valid_age = validate_age(age)
+    return "Hello, " + name + "! You are " + str(valid_age) + " years old."
+}
+
+try {
+    print(greet_person("Alice", 30))
+    print(greet_person("Bob", -5))
+} catch e {
+    print("Validation error:", e)
+}
+
+/* Finally-style cleanup with multiple catches */
+func risky_operation(x) {
+    if x < 0 { throw "negative input" }
+    if x > 100 { throw "input too large" }
+    return sqrt(x)
+}
+
+let tests = [-1, 50, 200, 25]
+for val in tests {
+    try {
+        let result = risky_operation(val)
+        print("sqrt(" + str(val) + ") =", result)
+    } catch e {
+        print("Error for", val, ":", e)
+    }
+}

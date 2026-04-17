@@ -86,6 +86,9 @@ typedef enum {
     /* --- import --- */
     OP_IMPORT,         /* operand = path constant index */
 
+    /* --- type check --- */
+    OP_IS_TYPE,        /* pop value, check type against constants[operand] string, push bool */
+
     /* --- halt --- */
     OP_HALT,
 } Opcode;
@@ -103,6 +106,7 @@ static inline int opcode_has_operand(Opcode op) {
         case OP_GET_ATTR: case OP_SET_ATTR:
         case OP_POP_N: case OP_CALL: case OP_MAKE_FUNCTION:
         case OP_FOR_ITER: case OP_BUILD_FSTRING: case OP_IMPORT:
+        case OP_IS_TYPE:
             return 1;
         default:
             return 0;

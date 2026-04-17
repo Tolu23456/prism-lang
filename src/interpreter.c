@@ -8,6 +8,7 @@
 #include "interpreter.h"
 #include "parser.h"
 #include "value.h"
+#include "builtins.h"
 #ifdef HAVE_X11
 #include "xgui.h"
 #endif
@@ -1205,6 +1206,58 @@ static Value *bi_xgui_close(Value **args, int argc) {
     return value_null();
 }
 
+static Value *bi_xgui_title(Value **args, int argc) {
+    if (g_xgui && argc > 0 && args[0]->type == VAL_STRING)
+        xgui_title(g_xgui, args[0]->str_val);
+    return value_null();
+}
+static Value *bi_xgui_subtitle(Value **args, int argc) {
+    if (g_xgui && argc > 0 && args[0]->type == VAL_STRING)
+        xgui_subtitle(g_xgui, args[0]->str_val);
+    return value_null();
+}
+static Value *bi_xgui_separator(Value **args, int argc) {
+    (void)args; (void)argc;
+    if (g_xgui) xgui_separator(g_xgui);
+    return value_null();
+}
+static Value *bi_xgui_checkbox(Value **args, int argc) {
+    if (!g_xgui || argc < 2) return value_bool(0);
+    const char *id    = (args[0]->type == VAL_STRING) ? args[0]->str_val : "cb";
+    const char *label = (argc > 1 && args[1]->type == VAL_STRING) ? args[1]->str_val : "";
+    return value_bool(xgui_checkbox(g_xgui, id, label) ? 1 : 0);
+}
+static Value *bi_xgui_progress(Value **args, int argc) {
+    if (!g_xgui || argc < 2) return value_null();
+    int val = (args[0]->type == VAL_INT) ? (int)args[0]->int_val : (int)args[0]->float_val;
+    int mx  = (args[1]->type == VAL_INT) ? (int)args[1]->int_val : (int)args[1]->float_val;
+    xgui_progress(g_xgui, val, mx);
+    return value_null();
+}
+static Value *bi_xgui_slider(Value **args, int argc) {
+    if (!g_xgui || argc < 4) return value_float(0.0);
+    const char *id = (args[0]->type == VAL_STRING) ? args[0]->str_val : "sl";
+    double mn  = (args[1]->type == VAL_INT) ? (double)args[1]->int_val : args[1]->float_val;
+    double mx  = (args[2]->type == VAL_INT) ? (double)args[2]->int_val : args[2]->float_val;
+    double cur = (args[3]->type == VAL_INT) ? (double)args[3]->int_val : args[3]->float_val;
+    return value_float((double)xgui_slider(g_xgui, id, (float)mn, (float)mx, (float)cur));
+}
+static Value *bi_xgui_textarea(Value **args, int argc) {
+    if (!g_xgui) return value_string("");
+    const char *id = (argc > 0 && args[0]->type == VAL_STRING) ? args[0]->str_val : "ta";
+    const char *ph = (argc > 1 && args[1]->type == VAL_STRING) ? args[1]->str_val : "";
+    const char *val = xgui_textarea(g_xgui, id, ph);
+    return value_string(val ? val : "");
+}
+static Value *bi_xgui_badge(Value **args, int argc) {
+    if (!g_xgui || argc < 1) return value_null();
+    const char *text = (args[0]->type == VAL_STRING) ? args[0]->str_val : "";
+    uint32_t color = 0x4f8ef7;
+    if (argc > 1 && args[1]->type == VAL_INT) color = (uint32_t)args[1]->int_val;
+    xgui_badge(g_xgui, text, color);
+    return value_null();
+}
+
 #else /* !HAVE_X11 — graceful stubs */
 
 static Value *bi_xgui_no_x11(Value **args, int argc) {
@@ -1217,6 +1270,10 @@ static Value *bi_xgui_no_x11(Value **args, int argc) {
 #endif /* HAVE_X11 */
 
 static void register_builtins(Interpreter *interp) {
+    /* Register full shared stdlib first: math, string, array, dict + new builtins */
+    prism_register_stdlib(interp->globals);
+
+    /* Interpreter-specific overrides (with proper try/catch error signalling) */
     struct { const char *name; BuiltinFn fn; } builtins[] = {
         /* core I/O */
         {"output",      builtin_output},
@@ -1330,6 +1387,14 @@ static void register_builtins(Interpreter *interp) {
         {"xgui_row_begin", bi_xgui_row_begin},
         {"xgui_row_end",   bi_xgui_row_end},
         {"xgui_close",     bi_xgui_close},
+        {"xgui_title",     bi_xgui_title},
+        {"xgui_subtitle",  bi_xgui_subtitle},
+        {"xgui_separator", bi_xgui_separator},
+        {"xgui_checkbox",  bi_xgui_checkbox},
+        {"xgui_progress",  bi_xgui_progress},
+        {"xgui_slider",    bi_xgui_slider},
+        {"xgui_textarea",  bi_xgui_textarea},
+        {"xgui_badge",     bi_xgui_badge},
 #else
         {"xgui_init",      bi_xgui_no_x11},
         {"xgui_style",     bi_xgui_no_x11},
@@ -1343,6 +1408,14 @@ static void register_builtins(Interpreter *interp) {
         {"xgui_row_begin", bi_xgui_no_x11},
         {"xgui_row_end",   bi_xgui_no_x11},
         {"xgui_close",     bi_xgui_no_x11},
+        {"xgui_title",     bi_xgui_no_x11},
+        {"xgui_subtitle",  bi_xgui_no_x11},
+        {"xgui_separator", bi_xgui_no_x11},
+        {"xgui_checkbox",  bi_xgui_no_x11},
+        {"xgui_progress",  bi_xgui_no_x11},
+        {"xgui_slider",    bi_xgui_no_x11},
+        {"xgui_textarea",  bi_xgui_no_x11},
+        {"xgui_badge",     bi_xgui_no_x11},
 #endif
         {NULL, NULL}
     };
@@ -3443,6 +3516,43 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         if (interp->had_error) return value_null();
         env_set(env, node->walrus.name, val, false);
         return val; /* return without releasing so caller sees it */
+    }
+
+    /* ---- chain comparison: 1 < x < 10 ---- */
+    case NODE_CHAIN_CMP: {
+        int pairs = node->chain_cmp.count - 1;
+        Value *prev = eval_node(interp, node->chain_cmp.exprs[0], env);
+        if (interp->had_error) { value_release(prev); return value_null(); }
+
+        for (int i = 0; i < pairs; i++) {
+            Value *next = eval_node(interp, node->chain_cmp.exprs[i + 1], env);
+            if (interp->had_error) {
+                value_release(prev); value_release(next);
+                return value_null();
+            }
+            const char *op = node->chain_cmp.ops[i];
+            int cmp = value_compare(prev, next);
+            bool result;
+            if      (strcmp(op, "<")  == 0) result = cmp < 0;
+            else if (strcmp(op, ">")  == 0) result = cmp > 0;
+            else if (strcmp(op, "<=") == 0) result = cmp <= 0;
+            else                             result = cmp >= 0;
+            value_release(prev);
+            prev = next;
+            if (!result) { value_release(prev); return value_bool(0); }
+        }
+        value_release(prev);
+        return value_bool(1);
+    }
+
+    /* ---- link statement: load PSS stylesheet(s) ---- */
+    case NODE_LINK_STMT: {
+#ifdef HAVE_X11
+        for (int i = 0; i < node->link_stmt.path_count; i++) {
+            if (g_xgui) xgui_load_style(g_xgui, node->link_stmt.paths[i]);
+        }
+#endif
+        return value_null();
     }
 
     default: {

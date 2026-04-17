@@ -1,0 +1,73 @@
+/* Prism stdlib demo — showcasing built-in functions */
+
+/* ── Collections ─────────────────────────────────────────── */
+let nums = [3, 1, 4, 1, 5, 9, 2, 6, 5, 3, 5]
+print("Original:", nums)
+print("Sorted:", sorted(nums))
+print("Unique:", unique(nums))
+print("Sum:", sum(nums))
+print("Min:", min(nums))
+print("Max:", max(nums))
+print("All > 0:", all(nums))
+print("Any > 8:", any(map(func(x) { return x > 8 }, nums)))
+
+/* ── Range and iteration ─────────────────────────────────── */
+print("\nRange(5):", range(5))
+print("Range(2,8):", range(2, 8))
+print("Range(0,10,2):", range(0, 10, 2))
+
+/* Enumerate */
+let fruits = ["apple", "banana", "cherry"]
+print("\nEnumerated:")
+for pair in enumerate(fruits) {
+    print(pair[0], "->", pair[1])
+}
+
+/* Zip */
+let a = [1, 2, 3]
+let b = ["x", "y", "z"]
+print("\nZipped:", zip(a, b))
+
+/* ── String builtins ─────────────────────────────────────── */
+let s = "  Hello, World!  "
+print("\nString ops:")
+print("trim:", trim(s))
+print("upper:", upper(s))
+print("lower:", lower(s))
+print("replace:", replace("Hello World", "World", "Prism"))
+print("split:", split("a,b,c", ","))
+print("contains:", contains("Hello World", "World"))
+print("startsWith:", startsWith("Hello", "He"))
+print("endsWith:", endsWith("Hello", "lo"))
+print("padLeft:", padLeft("42", 6, "0"))
+print("padRight:", padRight("hi", 6, "."))
+print("repeat:", repeat("ab", 3))
+
+/* ── Math builtins ──────────────────────────────────────── */
+print("\nMath ops:")
+print("abs(-5):", abs(-5))
+print("chr(65):", chr(65))
+print("ord('A'):", ord("A"))
+print("hex(255):", hex(255))
+print("bin(10):", bin(10))
+print("oct(8):", oct(8))
+print("sqrt(16):", sqrt(16))
+print("floor(3.7):", floor(3.7))
+print("ceil(3.2):", ceil(3.2))
+print("round(3.567, 2):", round(3.567, 2))
+
+/* ── Dict operations ─────────────────────────────────────── */
+let d = {"a": 1, "b": 2, "c": 3}
+print("\nDict ops:")
+print("keys:", keys(d))
+print("values:", values(d))
+print("merge:", merge(d, {"d": 4, "e": 5}))
+
+/* ── Type checking ──────────────────────────────────────── */
+print("\nType checks:")
+print(42 is int)
+print(3.14 is float)
+print("hello" is str)
+print([1,2] is arr)
+print({"a":1} is dict)
+print(true is bool)

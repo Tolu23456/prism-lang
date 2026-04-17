@@ -41,7 +41,7 @@ static bool opt_jit           = false;
 static bool opt_jit_verbose   = false;
 static bool opt_emit_c        = false;
 static bool opt_emit_llvm     = false;
-static bool opt_use_vm        = false; /* --vm: use bytecode VM instead of tree-walker */
+static bool opt_use_tree      = false; /* --tree: force tree-walker instead of VM */
 
 static void bytecode_path_for_source(const char *filename, char *out, size_t out_len) {
     snprintf(out, out_len, "%s", filename ? filename : "out.pr");
@@ -338,7 +338,9 @@ static const char *configure_gc_from_args(int argc, char **argv) {
         } else if (strcmp(argv[i], "--emit-llvm") == 0) {
             opt_emit_llvm = true;
         } else if (strcmp(argv[i], "--vm") == 0) {
-            opt_use_vm = true;
+            opt_use_tree = false;  /* --vm is now the default; kept for compat */
+        } else if (strcmp(argv[i], "--tree") == 0) {
+            opt_use_tree = true;
         } else if (!path) {
             path = argv[i];
         }
@@ -419,10 +421,10 @@ int main(int argc, char **argv) {
         } else {
             /* script workload: use adaptive policy */
             gc_set_workload(gc_global(), GC_WORKLOAD_SCRIPT);
-            /* default: tree-walker; use --vm for bytecode VM */
-            code = opt_bench   ? run_benchmark(src, path)  :
-                   opt_use_vm  ? run_source_vm(src, path)  :
-                                 run_source_tree(src, path);
+            /* default: bytecode VM; use --tree to force tree-walker */
+            code = opt_bench     ? run_benchmark(src, path)   :
+                   opt_use_tree  ? run_source_tree(src, path) :
+                                   run_source_vm(src, path);
         }
 
         free(src);

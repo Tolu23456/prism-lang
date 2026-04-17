@@ -1,0 +1,39 @@
+/* Fibonacci — iterative and recursive */
+
+func fib_iter(n) {
+    if n <= 1 { return n }
+    let a = 0
+    let b = 1
+    let i = 2
+    while i <= n {
+        let tmp = a + b
+        a = b
+        b = tmp
+        i += 1
+    }
+    return b
+}
+
+func fib_rec(n) {
+    if n <= 1 { return n }
+    return fib_rec(n - 1) + fib_rec(n - 2)
+}
+
+print("First 15 Fibonacci numbers:")
+for i in range(15) {
+    print("fib(" + str(i) + ") =", fib_iter(i))
+}
+
+print("\nRecursive fib(10) =", fib_rec(10))
+
+/* Memoised version using a dict */
+let memo = {}
+func fib_memo(n) {
+    if n <= 1 { return n }
+    if contains(keys(memo), str(n)) { return memo[str(n)] }
+    let result = fib_memo(n-1) + fib_memo(n-2)
+    memo[str(n)] = result
+    return result
+}
+
+print("Memoised fib(30) =", fib_memo(30))

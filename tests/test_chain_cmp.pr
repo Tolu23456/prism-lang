@@ -1,0 +1,33 @@
+/* Test chain comparisons */
+import "testing"
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if got == expected {
+        print("PASS:", label)
+        pass += 1
+    } else {
+        print("FAIL:", label, "  got:", got, "expected:", expected)
+        fail += 1
+    }
+}
+
+let x = 5
+
+assert("1 < x < 10",   1 < x < 10,  true)
+assert("1 < x < 4",    1 < x < 4,   false)
+assert("0 <= x <= 5",  0 <= x <= 5, true)
+assert("5 < x < 100",  5 < x < 100, false)
+assert("x >= 5 >= 3",  x >= 5 >= 3, true)
+assert("x >= 6 >= 3",  x >= 6 >= 3, false)
+assert("5 <= x <= 5",  5 <= x <= 5, true)
+assert("5 < x < 6",    5 < x < 6,   false)
+
+/* Edge cases */
+assert("chain with float", 1.0 < 2.5 < 10.0, true)
+assert("tight chain false", 1 < 2 < 2, false)
+assert("equality boundary", 0 <= 0 <= 0, true)
+
+print("\nResults:", pass, "passed,", fail, "failed")

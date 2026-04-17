@@ -33,6 +33,7 @@ typedef enum {
     TOKEN_BREAK,
     TOKEN_CONTINUE,
     TOKEN_IMPORT,
+    TOKEN_LINK,         /* link — PSS stylesheet linking */
 
     /* New keywords */
     TOKEN_REPEAT,

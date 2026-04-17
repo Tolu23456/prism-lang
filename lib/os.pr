@@ -1,0 +1,69 @@
+/* Prism Standard Library — os module
+   Operating system interface built on native builtins.
+   Import with: import "os"
+*/
+
+/* Get environment variable, with optional default */
+func os_env(key, default_val) {
+    return getenv(key, default_val)
+}
+
+/* Current working directory */
+func os_cwd() {
+    return getcwd()
+}
+
+/* List directory entries */
+func os_ls(path) {
+    return listdir(path)
+}
+
+/* Run a shell command, return stdout as string */
+func os_run(cmd) {
+    return shell(cmd)
+}
+
+/* Sleep for given seconds (float allowed) */
+func os_sleep(secs) {
+    return sleep(secs)
+}
+
+/* OS/platform name (e.g. "Linux", "Darwin") */
+func os_platform() {
+    return shell("uname -s")
+}
+
+/* Machine hostname */
+func os_hostname() {
+    return shell("hostname")
+}
+
+/* Current logged-in username */
+func os_username() {
+    return shell("whoami")
+}
+
+/* Number of CPU cores */
+func os_cpu_count() {
+    return int(shell("nproc"))
+}
+
+/* Check if a program is available on PATH */
+func os_which(prog) {
+    return shell("which " + prog + " 2>/dev/null")
+}
+
+/* Get OS version string */
+func os_version() {
+    return shell("uname -r")
+}
+
+/* List running processes (first N lines) */
+func os_processes(n) {
+    return shell("ps aux 2>/dev/null | head -" + str(n))
+}
+
+/* Get absolute path */
+func os_abspath(path) {
+    return shell("realpath '" + path + "' 2>/dev/null")
+}

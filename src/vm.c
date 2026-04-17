@@ -9,6 +9,7 @@
 #include "chunk.h"
 #include "value.h"
 #include "interpreter.h"
+#include "builtins.h"
 #include "jit.h"
 #ifdef HAVE_X11
 #include "xgui.h"
@@ -22,17 +23,34 @@ static void vm_error(VM *vm, const char *msg, int line) {
     snprintf(vm->error_msg, sizeof(vm->error_msg), "line %d: %s", line, msg);
 }
 
+/* Free a single scope env without recursing into the parent chain.
+ * Used by vm_close_frame_env when manually walking up the env chain to avoid
+ * double-frees while also correctly releasing scope-local values. */
+static void env_free_scope_only(Env *env) {
+    if (!env) return;
+    /* For root envs (no parent), refcount is not managed here. */
+    if (!env->parent) return;
+    if (--env->refcount > 0) return; /* still referenced by a closure */
+    /* Free slot values and the memory for this env only. */
+    for (int i = 0; i < env->cap; i++)
+        if (env->slots[i].key) value_release(env->slots[i].val);
+    free(env->slots);
+    /* Release the reference we took on parent via env_new, without freeing it
+     * (the caller will walk up to it next). */
+    env_free(env->parent);
+    free(env);
+}
+
 static void vm_close_frame_env(CallFrame *frame) {
+    /* Walk up any inner scopes pushed by OP_PUSH_SCOPE that weren't closed. */
     while (frame->env && frame->env != frame->root_env) {
         Env *old = frame->env;
-        frame->env = old->parent;
-        old->parent = NULL;
-        env_free(old);
+        frame->env = old->parent; /* advance before freeing */
+        env_free_scope_only(old);
     }
+    /* Release the function's root call env (preserving parent for closures). */
     if (frame->owns_env && frame->root_env) {
-        Env *old = frame->root_env;
-        old->parent = NULL;
-        env_free(old);
+        env_free(frame->root_env); /* correct refcount decrement, no parent nulling */
     }
     frame->env = NULL;
     frame->root_env = NULL;
@@ -521,6 +539,58 @@ static Value *vm_bi_xgui_close(Value **args, int argc) {
     return value_null();
 }
 
+static Value *vm_bi_xgui_title(Value **args, int argc) {
+    if (g_vm_xgui && argc > 0 && args[0]->type == VAL_STRING)
+        xgui_title(g_vm_xgui, args[0]->str_val);
+    return value_null();
+}
+static Value *vm_bi_xgui_subtitle(Value **args, int argc) {
+    if (g_vm_xgui && argc > 0 && args[0]->type == VAL_STRING)
+        xgui_subtitle(g_vm_xgui, args[0]->str_val);
+    return value_null();
+}
+static Value *vm_bi_xgui_separator(Value **args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) xgui_separator(g_vm_xgui);
+    return value_null();
+}
+static Value *vm_bi_xgui_checkbox(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 2) return value_bool(0);
+    const char *id    = (args[0]->type == VAL_STRING) ? args[0]->str_val : "cb";
+    const char *label = (argc > 1 && args[1]->type == VAL_STRING) ? args[1]->str_val : "";
+    return value_bool(xgui_checkbox(g_vm_xgui, id, label) ? 1 : 0);
+}
+static Value *vm_bi_xgui_progress(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 2) return value_null();
+    int val = (args[0]->type == VAL_INT) ? (int)args[0]->int_val : (int)args[0]->float_val;
+    int mx  = (args[1]->type == VAL_INT) ? (int)args[1]->int_val : (int)args[1]->float_val;
+    xgui_progress(g_vm_xgui, val, mx);
+    return value_null();
+}
+static Value *vm_bi_xgui_slider(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 4) return value_float(0.0);
+    const char *id = (args[0]->type == VAL_STRING) ? args[0]->str_val : "sl";
+    double mn  = (args[1]->type == VAL_INT) ? (double)args[1]->int_val : args[1]->float_val;
+    double mx  = (args[2]->type == VAL_INT) ? (double)args[2]->int_val : args[2]->float_val;
+    double cur = (args[3]->type == VAL_INT) ? (double)args[3]->int_val : args[3]->float_val;
+    return value_float((double)xgui_slider(g_vm_xgui, id, (float)mn, (float)mx, (float)cur));
+}
+static Value *vm_bi_xgui_textarea(Value **args, int argc) {
+    if (!g_vm_xgui) return value_string("");
+    const char *id = (argc > 0 && args[0]->type == VAL_STRING) ? args[0]->str_val : "ta";
+    const char *ph = (argc > 1 && args[1]->type == VAL_STRING) ? args[1]->str_val : "";
+    const char *val = xgui_textarea(g_vm_xgui, id, ph);
+    return value_string(val ? val : "");
+}
+static Value *vm_bi_xgui_badge(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_null();
+    const char *text = (args[0]->type == VAL_STRING) ? args[0]->str_val : "";
+    uint32_t color = 0x4f8ef7;
+    if (argc > 1 && args[1]->type == VAL_INT) color = (uint32_t)args[1]->int_val;
+    xgui_badge(g_vm_xgui, text, color);
+    return value_null();
+}
+
 #else /* !HAVE_X11 — graceful stubs */
 
 static Value *vm_bi_xgui_no_x11(Value **args, int argc) {
@@ -535,6 +605,10 @@ static Value *vm_bi_xgui_no_x11(Value **args, int argc) {
 /* ================================================================== register */
 
 void vm_register_builtins(VM *vm) {
+    /* Register complete shared stdlib first (math, string, array, dict, etc.) */
+    prism_register_stdlib(vm->globals);
+
+    /* VM-specific overrides and additions */
     struct { const char *name; BuiltinFn fn; } bi[] = {
         {"output",     vm_builtin_output},
         {"input",      vm_builtin_input},
@@ -569,6 +643,14 @@ void vm_register_builtins(VM *vm) {
         {"xgui_row_begin", vm_bi_xgui_row_begin},
         {"xgui_row_end",   vm_bi_xgui_row_end},
         {"xgui_close",     vm_bi_xgui_close},
+        {"xgui_title",     vm_bi_xgui_title},
+        {"xgui_subtitle",  vm_bi_xgui_subtitle},
+        {"xgui_separator", vm_bi_xgui_separator},
+        {"xgui_checkbox",  vm_bi_xgui_checkbox},
+        {"xgui_progress",  vm_bi_xgui_progress},
+        {"xgui_slider",    vm_bi_xgui_slider},
+        {"xgui_textarea",  vm_bi_xgui_textarea},
+        {"xgui_badge",     vm_bi_xgui_badge},
 #else
         {"xgui_init",      vm_bi_xgui_no_x11},
         {"xgui_style",     vm_bi_xgui_no_x11},
@@ -582,6 +664,14 @@ void vm_register_builtins(VM *vm) {
         {"xgui_row_begin", vm_bi_xgui_no_x11},
         {"xgui_row_end",   vm_bi_xgui_no_x11},
         {"xgui_close",     vm_bi_xgui_no_x11},
+        {"xgui_title",     vm_bi_xgui_no_x11},
+        {"xgui_subtitle",  vm_bi_xgui_no_x11},
+        {"xgui_separator", vm_bi_xgui_no_x11},
+        {"xgui_checkbox",  vm_bi_xgui_no_x11},
+        {"xgui_progress",  vm_bi_xgui_no_x11},
+        {"xgui_slider",    vm_bi_xgui_no_x11},
+        {"xgui_textarea",  vm_bi_xgui_no_x11},
+        {"xgui_badge",     vm_bi_xgui_no_x11},
 #endif
         {NULL, NULL}
     };
@@ -1967,6 +2057,31 @@ int vm_run(VM *vm, Chunk *chunk) {
             imp->globals = NULL; /* don't free shared env */
             free(imp);
             ast_node_free(prog);
+            break;
+        }
+
+        case OP_IS_TYPE: {
+            uint16_t idx = READ_U16();
+            const char *tname = CONST(idx)->str_val;
+            Value *val = vm_pop(vm);
+            bool match_ok = false;
+            if      (strcmp(tname, "int")    == 0) match_ok = (val->type == VAL_INT);
+            else if (strcmp(tname, "float")  == 0) match_ok = (val->type == VAL_FLOAT);
+            else if (strcmp(tname, "str")    == 0) match_ok = (val->type == VAL_STRING);
+            else if (strcmp(tname, "bool")   == 0) match_ok = (val->type == VAL_BOOL);
+            else if (strcmp(tname, "null")   == 0) match_ok = (val->type == VAL_NULL);
+            else if (strcmp(tname, "array")  == 0) match_ok = (val->type == VAL_ARRAY);
+            else if (strcmp(tname, "dict")   == 0) match_ok = (val->type == VAL_DICT);
+            else if (strcmp(tname, "set")    == 0) match_ok = (val->type == VAL_SET);
+            else if (strcmp(tname, "tuple")  == 0) match_ok = (val->type == VAL_TUPLE);
+            else if (strcmp(tname, "func")   == 0) match_ok = (val->type == VAL_FUNCTION || val->type == VAL_BUILTIN);
+            else if (strcmp(tname, "unknown") == 0) match_ok = (val->type == VAL_BOOL && val->bool_val == -1);
+            else {
+                const char *actual = value_type_name(val->type);
+                match_ok = (strcmp(actual, tname) == 0);
+            }
+            value_release(val);
+            vm_push(vm, value_bool(match_ok ? 1 : 0));
             break;
         }
 

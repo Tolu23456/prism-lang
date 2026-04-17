@@ -23,6 +23,7 @@ SRCS = \
 	src/parser.c \
 	src/value.c \
 	src/gc.c \
+	src/builtins.c \
 	src/interpreter.c \
 	src/chunk.c \
 	src/compiler.c \

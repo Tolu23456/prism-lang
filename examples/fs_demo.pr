@@ -1,0 +1,42 @@
+/* Filesystem operations demo */
+import "fs"
+
+let path = "/tmp/prism_test.txt"
+
+/* Write */
+let ok = write_file(path, "Hello from Prism!\nLine 2\nLine 3\n")
+print("Wrote:", ok)
+
+/* Read */
+let content = read_file(path)
+print("Content:", content)
+
+/* Check existence */
+print("Exists:", file_exists(path))
+print("Is file:", is_file(path))
+print("Is dir:", is_dir(path))
+print("Size:", file_size(path), "bytes")
+
+/* Append */
+append_file(path, "Appended line\n")
+let lines = split(read_file(path), "\n")
+print("Lines:", len(lines))
+for line in lines {
+    if len(line) > 0 {
+        print(" -", line)
+    }
+}
+
+/* List current directory */
+print("\nFiles in .:")
+let files = listdir(".")
+for f in sorted(files) {
+    print(" ", f)
+}
+
+/* CWD */
+print("\nCWD:", getcwd())
+
+/* Cleanup */
+delete_file(path)
+print("Deleted:", not file_exists(path))

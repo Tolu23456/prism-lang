@@ -547,6 +547,245 @@ void xgui_row_end(XGui *g) {
     g->row_max_h = 0;
 }
 
+/* ------------------------------------------------------------------ new widgets */
+
+void xgui_title(XGui *g, const char *text) {
+    if (!g || !text) return;
+    XftFont *font = open_font(g, g->theme.label.font, g->theme.label.font_size + 8);
+    if (!font) return;
+    int tw, th;
+    text_size(g, font, text, &tw, &th);
+    draw_text(g, font, text, g->cx, g->cy + font->ascent, g->theme.label.color);
+    if (g->in_row) {
+        g->cx += tw + WIDGET_GAP;
+        if (th > g->row_max_h) g->row_max_h = th;
+    } else {
+        g->cy += th + WIDGET_GAP;
+    }
+    XftFontClose(g->dpy, font);
+}
+
+void xgui_subtitle(XGui *g, const char *text) {
+    if (!g || !text) return;
+    XftFont *font = open_font(g, g->theme.label.font, g->theme.label.font_size + 3);
+    if (!font) return;
+    int tw, th;
+    text_size(g, font, text, &tw, &th);
+    draw_text(g, font, text, g->cx, g->cy + font->ascent, 0x666666);
+    if (g->in_row) {
+        g->cx += tw + WIDGET_GAP;
+        if (th > g->row_max_h) g->row_max_h = th;
+    } else {
+        g->cy += th + WIDGET_GAP;
+    }
+    XftFontClose(g->dpy, font);
+}
+
+void xgui_separator(XGui *g) {
+    if (!g) return;
+    int usable = g->width - 2 * g->margin;
+    fill_rect(g, g->cx, g->cy + 4, usable, 1, 0xdddddd);
+    g->cy += 10 + WIDGET_GAP;
+}
+
+bool xgui_checkbox(XGui *g, const char *id, const char *label) {
+    if (!g || !id || !label) return false;
+    InputState *inp = find_or_create_input(g, id);
+    /* state: buf[0]='1' means checked */
+    bool checked = (inp->buf[0] == '1');
+
+    int box = 18;
+    int x = g->cx, y = g->cy;
+
+    bool hovered = (g->mx >= x && g->mx < x + box &&
+                    g->my >= y && g->my < y + box);
+    if (hovered && g->mouse_released) {
+        checked     = !checked;
+        inp->buf[0] = checked ? '1' : '0';
+        inp->buf[1] = '\0';
+    }
+
+    fill_rounded_rect(g, x, y, box, box, 3, checked ? 0x4a90e2 : 0xffffff);
+    draw_rounded_outline(g, x, y, box, box, 3, 1, 0xaaaaaa);
+    if (checked) {
+        /* draw a simple check mark */
+        XSetForeground(g->dpy, g->gc, alloc_x11_color(g, 0xffffff));
+        XDrawLine(g->dpy, g->backbuf, g->gc, x+3, y+9, x+7, y+13);
+        XDrawLine(g->dpy, g->backbuf, g->gc, x+7, y+13, x+15, y+5);
+    }
+
+    XftFont *font = open_font(g, g->theme.label.font, g->theme.label.font_size);
+    if (font) {
+        int tw, th; text_size(g, font, label, &tw, &th);
+        draw_text(g, font, label, x + box + 6, y + font->ascent, g->theme.label.color);
+        int total_h = box > th ? box : th;
+        if (g->in_row) {
+            g->cx += box + 6 + tw + WIDGET_GAP;
+            if (total_h > g->row_max_h) g->row_max_h = total_h;
+        } else {
+            g->cy += total_h + WIDGET_GAP;
+        }
+        XftFontClose(g->dpy, font);
+    } else {
+        if (g->in_row) g->cx += box + WIDGET_GAP;
+        else           g->cy += box + WIDGET_GAP;
+    }
+    return checked;
+}
+
+void xgui_progress(XGui *g, int value, int max_val) {
+    if (!g || max_val <= 0) return;
+    int usable = g->width - 2 * g->margin;
+    int bh = 16;
+    int x = g->cx, y = g->cy;
+
+    fill_rounded_rect(g, x, y, usable, bh, 4, 0xe0e0e0);
+
+    int filled = (int)((long long)value * usable / max_val);
+    if (filled > usable) filled = usable;
+    if (filled > 0)
+        fill_rounded_rect(g, x, y, filled, bh, 4, 0x4a90e2);
+
+    if (g->in_row) {
+        g->cx += usable + WIDGET_GAP;
+        if (bh > g->row_max_h) g->row_max_h = bh;
+    } else {
+        g->cy += bh + WIDGET_GAP;
+    }
+}
+
+float xgui_slider(XGui *g, const char *id, float min_v, float max_v, float current) {
+    if (!g || !id) return current;
+    InputState *inp = find_or_create_input(g, id);
+
+    float val = current;
+    if (inp->buf[0] != '\0') {
+        val = (float)atof(inp->buf);
+    } else {
+        snprintf(inp->buf, sizeof(inp->buf), "%f", current);
+    }
+
+    int usable = g->width - 2 * g->margin;
+    int track_h = 6;
+    int thumb_r = 9;
+    int x = g->cx, y = g->cy;
+    int track_y = y + thumb_r - track_h / 2;
+
+    fill_rounded_rect(g, x, track_y, usable, track_h, 3, 0xe0e0e0);
+
+    float range = max_v - min_v;
+    float t = (range > 0) ? (val - min_v) / range : 0.0f;
+    if (t < 0) t = 0; if (t > 1) t = 1;
+    int thumb_x = x + (int)(t * (usable - 2 * thumb_r)) + thumb_r;
+    int thumb_y = y + thumb_r;
+
+    /* drag */
+    bool hovered = (g->mx >= x && g->mx < x + usable &&
+                    g->my >= y && g->my < y + 2 * thumb_r);
+    if (hovered && g->mouse_down) {
+        t = (float)(g->mx - x) / (float)(usable - 2 * thumb_r);
+        if (t < 0) t = 0; if (t > 1) t = 1;
+        val = min_v + t * range;
+        thumb_x = x + (int)(t * (usable - 2 * thumb_r)) + thumb_r;
+        snprintf(inp->buf, sizeof(inp->buf), "%f", val);
+    }
+
+    fill_rounded_rect(g, x, track_y, thumb_x - x, track_h, 3, 0x4a90e2);
+
+    XSetForeground(g->dpy, g->gc, alloc_x11_color(g, hovered ? 0x2970c2 : 0x4a90e2));
+    XFillArc(g->dpy, g->backbuf, g->gc,
+             thumb_x - thumb_r, thumb_y - thumb_r,
+             2 * thumb_r, 2 * thumb_r, 0, 360 * 64);
+    XSetForeground(g->dpy, g->gc, alloc_x11_color(g, 0xffffff));
+    XFillArc(g->dpy, g->backbuf, g->gc,
+             thumb_x - thumb_r + 3, thumb_y - thumb_r + 3,
+             2 * (thumb_r - 3), 2 * (thumb_r - 3), 0, 360 * 64);
+
+    int total_h = 2 * thumb_r;
+    if (g->in_row) {
+        g->cx += usable + WIDGET_GAP;
+        if (total_h > g->row_max_h) g->row_max_h = total_h;
+    } else {
+        g->cy += total_h + WIDGET_GAP;
+    }
+    return val;
+}
+
+const char *xgui_textarea(XGui *g, const char *id, const char *placeholder) {
+    if (!g || !id) return "";
+    InputState *inp = find_or_create_input(g, id);
+
+    bool focused = (strcmp(g->focused_id, id) == 0);
+    PssStyle *s  = focused ? &g->theme.input_focus : &g->theme.input;
+    int usable   = g->width - 2 * g->margin;
+    int bh       = 80;
+    int x = g->cx, y = g->cy;
+
+    if (g->mouse_released &&
+        g->mx >= x && g->mx < x + usable &&
+        g->my >= y && g->my < y + bh) {
+        snprintf(g->focused_id, sizeof(g->focused_id), "%s", id);
+        focused = true;
+        s = &g->theme.input_focus;
+    }
+
+    fill_rounded_rect(g, x, y, usable, bh, s->border_radius, s->background);
+    draw_rounded_outline(g, x, y, usable, bh, s->border_radius, s->border_width, s->border_color);
+
+    XftFont *font = open_font(g, s->font, s->font_size);
+    if (font) {
+        const char *display = inp->buf[0] ? inp->buf : placeholder;
+        uint32_t    text_col = inp->buf[0] ? s->color : 0x999999;
+        draw_text(g, font, display, x + s->padding_x, y + s->padding_y + font->ascent, text_col);
+        XftFontClose(g->dpy, font);
+    }
+
+    /* Handle key input same as regular input when focused */
+    if (focused) {
+        int len = (int)strlen(inp->buf);
+        if (g->key_backspace && len > 0) inp->buf[--len] = '\0';
+        if (g->key_enter && len < INPUT_BUF - 2) {
+            inp->buf[len]   = '\n';
+            inp->buf[len+1] = '\0';
+        }
+        for (int i = 0; i < g->key_count && len < INPUT_BUF - 1; i++) {
+            inp->buf[len++] = g->key_chars[i];
+            inp->buf[len]   = '\0';
+        }
+    }
+
+    if (g->in_row) {
+        g->cx += usable + WIDGET_GAP;
+        if (bh > g->row_max_h) g->row_max_h = bh;
+    } else {
+        g->cy += bh + WIDGET_GAP;
+    }
+    return inp->buf;
+}
+
+void xgui_badge(XGui *g, const char *text, uint32_t bg_color) {
+    if (!g || !text) return;
+    XftFont *font = open_font(g, g->theme.label.font, g->theme.label.font_size - 2);
+    if (!font) return;
+    int tw, th;
+    text_size(g, font, text, &tw, &th);
+    int pad_x = 8, pad_y = 3;
+    int bw = tw + 2 * pad_x;
+    int bh = th + 2 * pad_y;
+    int x = g->cx, y = g->cy;
+
+    fill_rounded_rect(g, x, y, bw, bh, bh / 2, bg_color);
+    draw_text(g, font, text, x + pad_x, y + pad_y + font->ascent, 0xffffff);
+
+    if (g->in_row) {
+        g->cx += bw + WIDGET_GAP;
+        if (bh > g->row_max_h) g->row_max_h = bh;
+    } else {
+        g->cy += bh + WIDGET_GAP;
+    }
+    XftFontClose(g->dpy, font);
+}
+
 #else /* !HAVE_X11 */
 
 #include "xgui.h"
@@ -570,5 +809,17 @@ const char *xgui_input(XGui *g, const char *i,
 void        xgui_spacer(XGui *g, int h)                { (void)g;(void)h; }
 void        xgui_row_begin(XGui *g)                    { (void)g; }
 void        xgui_row_end(XGui *g)                      { (void)g; }
+void        xgui_title(XGui *g, const char *t)         { (void)g;(void)t; }
+void        xgui_subtitle(XGui *g, const char *t)      { (void)g;(void)t; }
+void        xgui_separator(XGui *g)                    { (void)g; }
+bool        xgui_checkbox(XGui *g, const char *i,
+                           const char *l)               { (void)g;(void)i;(void)l; return false; }
+void        xgui_progress(XGui *g, int v, int m)       { (void)g;(void)v;(void)m; }
+float       xgui_slider(XGui *g, const char *i,
+                         float mn, float mx, float c)   { (void)g;(void)i;(void)mn;(void)mx; return c; }
+const char *xgui_textarea(XGui *g, const char *i,
+                            const char *p)              { (void)g;(void)i;(void)p; return ""; }
+void        xgui_badge(XGui *g, const char *t,
+                        uint32_t bg)                    { (void)g;(void)t;(void)bg; }
 
 #endif

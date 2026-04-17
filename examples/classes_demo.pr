@@ -1,0 +1,86 @@
+/* OOP demo — classes, inheritance, polymorphism */
+
+class Shape {
+    func init(color) {
+        self.color = color
+    }
+
+    func area() {
+        return 0
+    }
+
+    func describe() {
+        print(self.type_name() + " [" + self.color + "] area=" + str(self.area()))
+    }
+
+    func type_name() {
+        return "Shape"
+    }
+}
+
+class Circle : Shape {
+    func init(color, radius) {
+        self.color  = color
+        self.radius = radius
+    }
+    func area() {
+        return PI * self.radius * self.radius
+    }
+    func type_name() {
+        return "Circle"
+    }
+}
+
+class Rectangle : Shape {
+    func init(color, w, h) {
+        self.color = color
+        self.w = w
+        self.h = h
+    }
+    func area() {
+        return self.w * self.h
+    }
+    func type_name() {
+        return "Rectangle"
+    }
+}
+
+class Triangle : Shape {
+    func init(color, base, height) {
+        self.color  = color
+        self.base   = base
+        self.height = height
+    }
+    func area() {
+        return 0.5 * self.base * self.height
+    }
+    func type_name() {
+        return "Triangle"
+    }
+}
+
+let shapes = [
+    new Circle("red", 5),
+    new Rectangle("blue", 4, 6),
+    new Triangle("green", 3, 8),
+    new Circle("purple", 2),
+]
+
+print("Shapes:")
+for s in shapes {
+    s.describe()
+}
+
+let total = 0
+for s in shapes {
+    total = total + s.area()
+}
+print("\nTotal area:", round(total, 2))
+
+let biggest = shapes[0]
+for s in shapes {
+    if s.area() > biggest.area() {
+        biggest = s
+    }
+}
+print("Biggest:", biggest.type_name(), "with area", round(biggest.area(), 2))

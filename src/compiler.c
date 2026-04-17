@@ -188,10 +188,19 @@ static void compile_node(Compiler *c, ASTNode *node) {
     }
 
     /* ---- expression statement ---- */
-    case NODE_EXPR_STMT:
-        compile_expr(c, node->expr_stmt.expr);
-        emit1(c, OP_POP, ln);
+    case NODE_EXPR_STMT: {
+        ASTNode *inner = node->expr_stmt.expr;
+        /* Assignments are statements, not expressions — route to compile_node */
+        if (inner && (inner->type == NODE_ASSIGN ||
+                      inner->type == NODE_COMPOUND_ASSIGN ||
+                      inner->type == NODE_VAR_DECL)) {
+            compile_node(c, inner);
+        } else {
+            compile_expr(c, inner);
+            emit1(c, OP_POP, ln);
+        }
         break;
+    }
 
     /* ---- return ---- */
     case NODE_RETURN:
@@ -323,6 +332,21 @@ static void compile_node(Compiler *c, ASTNode *node) {
             patch_jump(c, loop.break_patches[i]);
 
         c->loop = loop.outer;
+        break;
+    }
+
+    /* ---- link statement: load xgui_load_style and call it for each path ---- */
+    case NODE_LINK_STMT: {
+        uint16_t fn_idx = name_const(c, "xgui_load_style");
+        for (int i = 0; i < node->link_stmt.path_count; i++) {
+            emit3(c, OP_LOAD_NAME, fn_idx, ln);
+            Value *pv = value_string(node->link_stmt.paths[i]);
+            uint16_t pi = (uint16_t)chunk_add_const(c->chunk, pv);
+            value_release(pv);
+            emit3(c, OP_PUSH_CONST, pi, ln);
+            emit3(c, OP_CALL, 1, ln);
+            emit1(c, OP_POP, ln);
+        }
         break;
     }
 
@@ -476,6 +500,32 @@ static void compile_expr(Compiler *c, ASTNode *node) {
         break;
     }
 
+    /* ---- chain comparison: a < b <= c ---- */
+    case NODE_CHAIN_CMP: {
+        int pairs = node->chain_cmp.count - 1;
+        int *false_exits = malloc((size_t)pairs * sizeof(int));
+        int  fe_count    = 0;
+
+        for (int i = 0; i < pairs; i++) {
+            compile_expr(c, node->chain_cmp.exprs[i]);
+            compile_expr(c, node->chain_cmp.exprs[i + 1]);
+            const char *op = node->chain_cmp.ops[i];
+            if      (strcmp(op, "<")  == 0) emit1(c, OP_LT, ln);
+            else if (strcmp(op, ">")  == 0) emit1(c, OP_GT, ln);
+            else if (strcmp(op, "<=") == 0) emit1(c, OP_LE, ln);
+            else                             emit1(c, OP_GE, ln);
+
+            if (i < pairs - 1) {
+                false_exits[fe_count++] = emit_jump(c, OP_JUMP_IF_FALSE_PEEK, ln);
+                emit1(c, OP_POP, ln);
+            }
+        }
+        for (int i = 0; i < fe_count; i++)
+            patch_jump(c, false_exits[i]);
+        free(false_exits);
+        break;
+    }
+
     /* ---- unary ops ---- */
     case NODE_UNOP: {
         compile_expr(c, node->unop.operand);
@@ -593,6 +643,46 @@ static void compile_expr(Compiler *c, ASTNode *node) {
             compile_expr(c, node->func_call.args[i]);
         emit3(c, OP_CALL, (uint16_t)node->func_call.arg_count, ln);
         break;
+
+    /* ---- anonymous function expression (fn or func without name) ---- */
+    case NODE_FN_EXPR: {
+        Chunk *fn_chunk = compile_function_chunk(c, node->fn_expr.body);
+        if (!fn_chunk) break;
+        Value *fn = value_function(
+            "<lambda>",
+            node->fn_expr.params,
+            node->fn_expr.param_count,
+            node->fn_expr.body,
+            NULL
+        );
+        fn->func.chunk = fn_chunk;
+        fn->func.owns_chunk = true;
+        int idx = chunk_add_const(c->chunk, fn);
+        value_release(fn);
+        emit3(c, OP_MAKE_FUNCTION, (uint16_t)idx, ln);
+        break;
+    }
+
+    /* ---- is / is not type check ---- */
+    case NODE_IS_EXPR: {
+        compile_expr(c, node->is_expr.obj);
+        uint16_t tidx = (uint16_t)chunk_add_const_str(c->chunk, node->is_expr.type_name);
+        emit3(c, OP_IS_TYPE, tidx, ln);
+        if (node->is_expr.negate) emit1(c, OP_NOT, ln);
+        break;
+    }
+
+    /* ---- nullish coalescing (left ?? right) ---- */
+    case NODE_NULLCOAL: {
+        compile_expr(c, node->nullcoal.left);
+        /* If left is NOT null/falsy, skip right (keep left) */
+        int patch = c->chunk->count;
+        emit3(c, OP_JUMP_IF_TRUE_PEEK, 0, ln);
+        emit1(c, OP_POP, ln);  /* pop null */
+        compile_expr(c, node->nullcoal.right);
+        chunk_patch16(c->chunk, patch + 1, (uint16_t)(c->chunk->count - (patch + 3)));
+        break;
+    }
 
     /* ---- statement nodes used as expressions (shouldn't appear, but safe) ---- */
     case NODE_VAR_DECL:

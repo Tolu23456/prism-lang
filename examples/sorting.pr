@@ -1,0 +1,68 @@
+/* Sorting algorithms in Prism */
+
+func bubble_sort(arr) {
+    let n = len(arr)
+    let i = 0
+    while i < n {
+        let j = 0
+        while j < n - i - 1 {
+            if arr[j] > arr[j+1] {
+                let tmp = arr[j]
+                arr[j] = arr[j+1]
+                arr[j+1] = tmp
+            }
+            j += 1
+        }
+        i += 1
+    }
+    return arr
+}
+
+func insertion_sort(arr) {
+    let n = len(arr)
+    let i = 1
+    while i < n {
+        let key = arr[i]
+        let j = i - 1
+        while j >= 0 and arr[j] > key {
+            arr[j+1] = arr[j]
+            j -= 1
+        }
+        arr[j+1] = key
+        i += 1
+    }
+    return arr
+}
+
+func merge_sort(arr) {
+    if len(arr) <= 1 { return arr }
+    let mid = len(arr) / 2
+    let left  = merge_sort(slice(arr, 0, mid))
+    let right = merge_sort(slice(arr, mid))
+    return merge_arrays(left, right)
+}
+
+func merge_arrays(a, b) {
+    let result = []
+    let i = 0
+    let j = 0
+    while i < len(a) and j < len(b) {
+        if a[i] <= b[j] {
+            push(result, a[i])
+            i += 1
+        } else {
+            push(result, b[j])
+            j += 1
+        }
+    }
+    while i < len(a) { push(result, a[i]); i += 1 }
+    while j < len(b) { push(result, b[j]); j += 1 }
+    return result
+}
+
+let data = [64, 34, 25, 12, 22, 11, 90, 1, 55, 42]
+print("Original:", data)
+print("Bubble sort:", bubble_sort(copy(data)))
+print("Insertion sort:", insertion_sort(copy(data)))
+print("Merge sort:", merge_sort(copy(data)))
+print("Built-in sorted:", sorted(data))

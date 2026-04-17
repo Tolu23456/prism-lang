@@ -161,12 +161,13 @@ static ASTNode *parse_brace_literal(Parser *p, int line) {
     /* opening '{' already consumed */
     skip_newlines(p);
 
-    /* empty set literal {} */
+    /* empty braces {} — treat as empty dict (consistent with Python) */
     if (check(p, TOKEN_RBRACE)) {
         advance(p);
-        ASTNode *n = ast_node_new(NODE_SET_LIT, line);
-        n->list_lit.items = malloc(1 * sizeof(ASTNode *));
-        n->list_lit.count = 0;
+        ASTNode *n = ast_node_new(NODE_DICT_LIT, line);
+        n->dict_lit.keys  = malloc(sizeof(ASTNode *));
+        n->dict_lit.vals  = malloc(sizeof(ASTNode *));
+        n->dict_lit.count = 0;
         return n;
     }
 
@@ -461,6 +462,27 @@ static ASTNode *parse_primary(Parser *p) {
         n->fn_expr.param_count = param_count;
         n->fn_expr.body        = body;
         n->fn_expr.is_arrow    = is_arrow;
+        return n;
+    }
+
+    /* func(params) { body } — anonymous function expression */
+    if (check(p, TOKEN_FUNC) && check_peek(p, TOKEN_LPAREN)) {
+        advance(p); /* consume 'func' */
+        advance(p); /* consume '(' */
+        int param_count = 0;
+        Param *params = parse_param_list(p, &param_count);
+        if (p->had_error) { free_params(params, param_count); return ast_node_new(NODE_NULL_LIT, line); }
+        expect(p, TOKEN_RPAREN, "expected ')' after func parameters");
+        if (p->had_error) { free_params(params, param_count); return ast_node_new(NODE_NULL_LIT, line); }
+        if (check(p, TOKEN_ARROW)) { advance(p); if (check(p, TOKEN_IDENT)) advance(p); }
+        skip_newlines(p);
+        ASTNode *body = parse_block(p);
+        if (p->had_error) { free_params(params, param_count); ast_node_free(body); return ast_node_new(NODE_NULL_LIT, line); }
+        ASTNode *n = ast_node_new(NODE_FN_EXPR, line);
+        n->fn_expr.params      = params;
+        n->fn_expr.param_count = param_count;
+        n->fn_expr.body        = body;
+        n->fn_expr.is_arrow    = false;
         return n;
     }
 
@@ -790,18 +812,49 @@ static ASTNode *parse_compare(Parser *p) {
         return n;
     }
 
-    while (check(p, TOKEN_LT) || check(p, TOKEN_GT) || check(p, TOKEN_LE) || check(p, TOKEN_GE)) {
-        int line = p->current->line;
-        char op[4]; strncpy(op, p->current->value, 3); op[3] = '\0';
-        advance(p); skip_newlines(p);
-        ASTNode *right = parse_membership(p);
+    if (!check(p, TOKEN_LT) && !check(p, TOKEN_GT) &&
+        !check(p, TOKEN_LE) && !check(p, TOKEN_GE))
+        return left;
+
+    /* first comparison */
+    int line = p->current->line;
+    char first_op[4]; strncpy(first_op, p->current->value, 3); first_op[3] = '\0';
+    advance(p); skip_newlines(p);
+    ASTNode *right = parse_membership(p);
+
+    /* peek for chain: another comparison op follows */
+    if (!check(p, TOKEN_LT) && !check(p, TOKEN_GT) &&
+        !check(p, TOKEN_LE) && !check(p, TOKEN_GE)) {
+        /* simple binary comparison */
         ASTNode *n = ast_node_new(NODE_BINOP, line);
-        strncpy(n->binop.op, op, 3);
+        strncpy(n->binop.op, first_op, 3);
         n->binop.left  = left;
         n->binop.right = right;
-        left = n;
+        return n;
     }
-    return left;
+
+    /* chain comparison: collect all operands */
+    ASTNode **exprs = malloc(32 * sizeof(ASTNode *));
+    char    **ops   = malloc(31 * sizeof(char *));
+    int       count = 0;
+    exprs[count++] = left;
+    exprs[count++] = right;
+    ops[0]         = strdup(first_op);
+
+    while (count < 31 &&
+           (check(p, TOKEN_LT) || check(p, TOKEN_GT) ||
+            check(p, TOKEN_LE) || check(p, TOKEN_GE))) {
+        char op[4]; strncpy(op, p->current->value, 3); op[3] = '\0';
+        advance(p); skip_newlines(p);
+        ops[count - 1]  = strdup(op);
+        exprs[count++]  = parse_membership(p);
+    }
+
+    ASTNode *n = ast_node_new(NODE_CHAIN_CMP, line);
+    n->chain_cmp.exprs = exprs;
+    n->chain_cmp.ops   = ops;
+    n->chain_cmp.count = count;
+    return n;
 }
 
 /* ---- equality ---- */
@@ -1660,6 +1713,27 @@ static ASTNode *parse_stmt(Parser *p) {
     }
     if (check(p, TOKEN_IMPORT) || check(p, TOKEN_FROM))
         return parse_import_stmt(p);
+
+    /* link [style] "file.pss" [, "file2.pss"] */
+    if (check(p, TOKEN_LINK)) {
+        int line2 = p->current->line;
+        advance(p);
+        /* optional 'style' modifier */
+        if (check(p, TOKEN_IDENT) && strcmp(p->current->value, "style") == 0)
+            advance(p);
+        char **paths    = malloc(16 * sizeof(char *));
+        int    path_cnt = 0;
+        while (path_cnt < 16 && check(p, TOKEN_STRING_LIT)) {
+            paths[path_cnt++] = strdup(p->current->value);
+            advance(p);
+            if (!check(p, TOKEN_COMMA)) break;
+            advance(p); skip_newlines(p);
+        }
+        ASTNode *ln_node = ast_node_new(NODE_LINK_STMT, line2);
+        ln_node->link_stmt.paths      = paths;
+        ln_node->link_stmt.path_count = path_cnt;
+        return ln_node;
+    }
     if (check(p, TOKEN_REPEAT))
         return parse_repeat(p);
     if (check(p, TOKEN_TRY))

@@ -81,6 +81,7 @@ static const KW KEYWORDS[] = {
     {"break",    TOKEN_BREAK},
     {"continue", TOKEN_CONTINUE},
     {"import",   TOKEN_IMPORT},
+    {"link",     TOKEN_LINK},
     {"repeat",   TOKEN_REPEAT},
     {"until",    TOKEN_UNTIL},
     {"step",     TOKEN_STEP},
@@ -104,7 +105,6 @@ static const KW KEYWORDS[] = {
     {"float",    TOKEN_FLOAT_KW},
     {"str",      TOKEN_STR_KW},
     {"set",      TOKEN_SET_KW},
-    {"arr",      TOKEN_ARR_KW},
     {"type",     TOKEN_TYPE_KW},
     {"dict",     TOKEN_DICT_KW},
     {NULL, 0}
@@ -474,6 +474,7 @@ const char *token_type_name(TokenType t) {
         case TOKEN_BREAK:      return "break";
         case TOKEN_CONTINUE:   return "continue";
         case TOKEN_IMPORT:     return "import";
+        case TOKEN_LINK:       return "link";
         case TOKEN_REPEAT:     return "repeat";
         case TOKEN_UNTIL:      return "until";
         case TOKEN_STEP:       return "step";

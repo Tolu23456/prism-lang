@@ -256,6 +256,22 @@ void ast_node_free(ASTNode *n) {
             ast_node_free(n->ternary.else_val);
             break;
 
+        case NODE_CHAIN_CMP: {
+            for (int i = 0; i < n->chain_cmp.count; i++)
+                ast_node_free(n->chain_cmp.exprs[i]);
+            free(n->chain_cmp.exprs);
+            for (int i = 0; i < n->chain_cmp.count - 1; i++)
+                free(n->chain_cmp.ops[i]);
+            free(n->chain_cmp.ops);
+            break;
+        }
+
+        case NODE_LINK_STMT:
+            for (int i = 0; i < n->link_stmt.path_count; i++)
+                free(n->link_stmt.paths[i]);
+            free(n->link_stmt.paths);
+            break;
+
         default:
             break;
     }

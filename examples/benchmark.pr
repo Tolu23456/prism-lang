@@ -1,0 +1,89 @@
+/* Prism performance benchmark */
+
+func bench(name, f) {
+    let t0 = clock()
+    let result = f()
+    let t1 = clock()
+    let ms = round((t1 - t0) * 1000, 2)
+    print(name + ": " + str(ms) + " ms  (result=" + str(result) + ")")
+}
+
+/* 1. Fibonacci (recursive) */
+func fib(n) {
+    if n <= 1 { return n }
+    return fib(n-1) + fib(n-2)
+}
+
+bench("fib(30) recursive", func() { return fib(30) })
+
+/* 2. Sum 1..N */
+bench("sum(1..1000000)", func() {
+    let s = 0
+    let i = 1
+    while i <= 1000000 {
+        s += i
+        i += 1
+    }
+    return s
+})
+
+/* 3. String building */
+bench("string concat x1000", func() {
+    let s = ""
+    let i = 0
+    while i < 1000 {
+        s = s + "x"
+        i += 1
+    }
+    return len(s)
+})
+
+/* 4. Array operations */
+bench("array push x100000", func() {
+    let arr = []
+    let i = 0
+    while i < 100000 {
+        push(arr, i)
+        i += 1
+    }
+    return len(arr)
+})
+
+/* 5. Sieve of Eratosthenes */
+bench("sieve(10000)", func() {
+    let n = 10000
+    let sieve = []
+    let i = 0
+    while i <= n { push(sieve, true); i += 1 }
+    sieve[0] = false
+    sieve[1] = false
+    let p = 2
+    while p * p <= n {
+        if sieve[p] {
+            let j = p * p
+            while j <= n {
+                sieve[j] = false
+                j += p
+            }
+        }
+        p += 1
+    }
+    let count = 0
+    for v in sieve {
+        if v { count += 1 }
+    }
+    return count
+})
+
+/* 6. Dict operations */
+bench("dict set/get x10000", func() {
+    let d = {}
+    let i = 0
+    while i < 10000 {
+        d[str(i)] = i * i
+        i += 1
+    }
+    return d["9999"]
+})
+
+print("\nBenchmark complete.")

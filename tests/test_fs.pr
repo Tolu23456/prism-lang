@@ -1,0 +1,64 @@
+/* Test fs native builtins */
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if got == expected {
+        print("PASS:", label)
+        pass += 1
+    } else {
+        print("FAIL:", label, "  got:", got, "expected:", expected)
+        fail += 1
+    }
+}
+
+let tmp = "/tmp/prism_fs_test_" + str(int(clock() * 1000)) + ".txt"
+
+/* write_file */
+let w = write_file(tmp, "Hello\nWorld\n")
+assert("write_file", w, true)
+
+/* file_exists */
+assert("file_exists true",  file_exists(tmp), true)
+assert("file_exists false", file_exists("/tmp/no_such_prism_file_xyz"), false)
+
+/* is_file */
+assert("is_file true",  is_file(tmp), true)
+assert("is_dir false",  is_dir(tmp), false)
+assert("is_dir /tmp",   is_dir("/tmp"), true)
+
+/* read_file */
+let content = read_file(tmp)
+assert("read_file", content, "Hello\nWorld\n")
+
+/* file_size */
+let sz = file_size(tmp)
+assert("file_size > 0", sz > 0, true)
+
+/* append_file */
+append_file(tmp, "Appended\n")
+let c2 = read_file(tmp)
+assert("append_file", c2, "Hello\nWorld\nAppended\n")
+
+/* listdir */
+let entries = listdir("/tmp")
+assert("listdir is array", entries is arr, true)
+assert("listdir non-empty", len(entries) > 0, true)
+
+/* getcwd */
+let cwd = getcwd()
+assert("getcwd non-empty", len(cwd) > 0, true)
+
+/* getenv */
+let home = getenv("HOME", "/unknown")
+assert("getenv HOME non-empty", len(home) > 0, true)
+let fake = getenv("PRISM_FAKE_VAR_XYZ", "default")
+assert("getenv default", fake, "default")
+
+/* delete_file */
+let d = delete_file(tmp)
+assert("delete_file", d, true)
+assert("file gone after delete", file_exists(tmp), false)
+
+print("\nResults:", pass, "passed,", fail, "failed")

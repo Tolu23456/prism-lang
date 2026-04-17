@@ -1,0 +1,72 @@
+/* Prism Standard Library — net module
+   HTTP networking via system curl.
+*/
+
+/* Perform an HTTP GET request, return response body as string.
+   Returns null on failure. */
+func get(url) {
+    let cmd = "curl -sS --max-time 30 " + url + " 2>/dev/null"
+    return shell(cmd)
+}
+
+/* Perform an HTTP GET with custom headers (dict of key→value). */
+func get_with_headers(url, headers) {
+    let h = ""
+    for k in keys(headers) {
+        h = h + " -H '" + k + ": " + headers[k] + "'"
+    }
+    let cmd = "curl -sS --max-time 30" + h + " " + url + " 2>/dev/null"
+    return shell(cmd)
+}
+
+/* Perform an HTTP POST with a JSON body. */
+func post_json(url, body) {
+    let cmd = "curl -sS -X POST --max-time 30 -H 'Content-Type: application/json' -d '" + body + "' " + url + " 2>/dev/null"
+    return shell(cmd)
+}
+
+/* Perform an HTTP POST with form data (dict of key→value). */
+func post_form(url, data) {
+    let parts = []
+    for k in keys(data) {
+        push(parts, k + "=" + str(data[k]))
+    }
+    let form = join("&", parts)
+    let cmd = "curl -sS -X POST --max-time 30 -d '" + form + "' " + url + " 2>/dev/null"
+    return shell(cmd)
+}
+
+/* Download a URL to a file. Returns true on success. */
+func download(url, path) {
+    let cmd = "curl -sS --max-time 60 -o '" + path + "' '" + url + "' 2>/dev/null"
+    shell(cmd)
+    return file_exists(path)
+}
+
+/* Fetch HTTP status code for a URL. */
+func status_code(url) {
+    let cmd = "curl -sS -o /dev/null -w '%{http_code}' --max-time 10 " + url + " 2>/dev/null"
+    return int(shell(cmd))
+}
+
+/* Simple DNS lookup. */
+func lookup(hostname) {
+    let cmd = "getent hosts " + hostname + " 2>/dev/null | awk '{print $1}'"
+    return shell(cmd)
+}
+
+/* Check if a host:port is reachable (TCP). */
+func is_reachable(host, port) {
+    let cmd = "bash -c 'echo > /dev/tcp/" + host + "/" + str(port) + "' 2>/dev/null && echo ok || echo fail"
+    return shell(cmd) == "ok"
+}
+
+/* Return your external IP address. */
+func my_ip() {
+    return get("https://api.ipify.org")
+}
+
+/* URL-encode a string (simple implementation). */
+func urlencode(s) {
+    return shell("python3 -c \"import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1]))\" " + s)
+}

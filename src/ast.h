@@ -79,6 +79,12 @@ typedef enum {
 
     /* Walrus in expression context */
     NODE_WALRUS_EXPR,
+
+    /* Chain comparisons: 1 < x < 10 */
+    NODE_CHAIN_CMP,
+
+    /* PSS stylesheet link: link style "file.pss" */
+    NODE_LINK_STMT,
 } NodeType;
 
 typedef struct ASTNode ASTNode;
@@ -290,6 +296,19 @@ struct ASTNode {
 
         /* NODE_TERNARY */
         struct { ASTNode *cond; ASTNode *then_val; ASTNode *else_val; } ternary;
+
+        /* NODE_CHAIN_CMP: a < b <= c  (count exprs, count-1 ops) */
+        struct {
+            ASTNode **exprs;
+            char    **ops;
+            int       count;
+        } chain_cmp;
+
+        /* NODE_LINK_STMT: link style "a.pss", "b.pss" */
+        struct {
+            char **paths;
+            int    path_count;
+        } link_stmt;
     };
 };
 

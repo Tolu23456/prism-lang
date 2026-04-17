@@ -1,0 +1,113 @@
+/* Prism Standard Library — fs module
+   File system operations built on native builtins.
+   Import with: import "fs"
+*/
+
+/* Read entire file, returns string or null */
+func fs_read(path) {
+    return read_file(path)
+}
+
+/* Write string to file, returns true on success */
+func fs_write(path, content) {
+    return write_file(path, content)
+}
+
+/* Append string to file, returns true on success */
+func fs_append(path, content) {
+    return append_file(path, content)
+}
+
+/* Check if path exists */
+func fs_exists(path) {
+    return file_exists(path)
+}
+
+/* Delete a file, returns true on success */
+func fs_remove(path) {
+    return delete_file(path)
+}
+
+/* Return file size in bytes, or -1 */
+func fs_size(path) {
+    return file_size(path)
+}
+
+/* Return true if path is a regular file */
+func fs_is_file(path) {
+    return is_file(path)
+}
+
+/* Return true if path is a directory */
+func fs_is_dir(path) {
+    return is_dir(path)
+}
+
+/* List entries in directory */
+func fs_ls(path) {
+    return listdir(path)
+}
+
+/* Current working directory */
+func fs_cwd() {
+    return getcwd()
+}
+
+/* Create a directory */
+func fs_mkdir(path) {
+    return mkdir(path)
+}
+
+/* Read file as array of lines */
+func fs_read_lines(path) {
+    let content = read_file(path)
+    if content == null { return [] }
+    let lines = split(content, "\n")
+    /* Remove trailing empty entry from trailing newline */
+    if len(lines) > 0 and lines[len(lines)-1] == "" {
+        lines = slice(lines, 0, len(lines) - 1)
+    }
+    return lines
+}
+
+/* Write array of lines to file */
+func fs_write_lines(path, lines) {
+    let content = join("\n", lines) + "\n"
+    return write_file(path, content)
+}
+
+/* Copy src file to dst */
+func fs_copy(src, dst) {
+    let content = read_file(src)
+    if content == null { return false }
+    return write_file(dst, content)
+}
+
+/* Get file extension including dot, e.g. ".txt" */
+func fs_ext(path) {
+    let parts = split(path, ".")
+    if len(parts) <= 1 { return "" }
+    return "." + parts[len(parts) - 1]
+}
+
+/* Get filename without directory */
+func fs_basename(path) {
+    let parts = split(path, "/")
+    return parts[len(parts) - 1]
+}
+
+/* Get directory portion of path */
+func fs_dirname(path) {
+    let parts = split(path, "/")
+    if len(parts) <= 1 { return "." }
+    parts = slice(parts, 0, len(parts) - 1)
+    return join("/", parts)
+}
+
+/* Join two path components */
+func fs_join(a, b) {
+    if len(a) > 0 and slice(a, len(a)-1) == "/" {
+        return a + b
+    }
+    return a + "/" + b
+}
