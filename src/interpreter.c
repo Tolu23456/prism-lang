@@ -1410,9 +1410,15 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         if (target->type == NODE_IDENT) {
             if (!env_assign(env, target->ident.name, val)) {
                 char msg[256];
-                snprintf(msg, sizeof(msg),
-                    "variable '%s' is not declared; use 'let %s = ...' to declare it",
-                    target->ident.name, target->ident.name);
+                if (env_is_const(env, target->ident.name)) {
+                    snprintf(msg, sizeof(msg),
+                        "cannot assign to '%s': it was declared as a constant",
+                        target->ident.name);
+                } else {
+                    snprintf(msg, sizeof(msg),
+                        "variable '%s' is not declared; use 'let %s = ...' to declare it",
+                        target->ident.name, target->ident.name);
+                }
                 runtime_error(interp, msg, node->line);
             }
         } else if (target->type == NODE_INDEX) {
@@ -1470,9 +1476,15 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         if (target->type == NODE_IDENT) {
             if (!env_assign(env, target->ident.name, result)) {
                 char msg[256];
-                snprintf(msg, sizeof(msg),
-                    "variable '%s' is not declared; use 'let %s = ...' to declare it",
-                    target->ident.name, target->ident.name);
+                if (env_is_const(env, target->ident.name)) {
+                    snprintf(msg, sizeof(msg),
+                        "cannot assign to '%s': it was declared as a constant",
+                        target->ident.name);
+                } else {
+                    snprintf(msg, sizeof(msg),
+                        "variable '%s' is not declared; use 'let %s = ...' to declare it",
+                        target->ident.name, target->ident.name);
+                }
                 runtime_error(interp, msg, node->line);
             }
         }
