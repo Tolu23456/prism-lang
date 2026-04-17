@@ -1,4 +1,4 @@
-modules = ["bash", "nix"]
+modules = ["bash", "nix", "python-base-3.13"]
 [agent]
 expertMode = true
 
