@@ -1,181 +1,965 @@
-How the language should look
-Variables can be created using
+# How Prism Should Look
 
-let a = value; or
-const b = value
+Prism should be a flexible, dynamic, beginner-friendly language that feels easier than Python while still being powerful enough to grow into a serious scripting language.
 
-This should work also
-let a (without a value)
+The goal is not to copy Python exactly. Prism should feel like this:
 
-but if
-const a (without value should raise an error)
+- Easy to read
+- Easy to write
+- Dynamic by default
+- Forgiving where it helps beginners
+- Strict where it prevents confusing bugs
+- Fast enough to become much faster than Python later
+- Flexible enough to support several natural coding styles
 
-INPUT and OUTPUT
-the keyword for input is input() and for output is output()
+Prism source files should use the `.pr` extension.
 
-DATATYPES
-It should support this various datatypes
-Integers
-Float
-String
-Boolean
-Complex
-Array
-Dictionary
-Sets
-Tuple
+Example:
 
-The datatypes can be decleared like so
-INT
-let a = 120 
-or
-let b 
+```pr
+let name = input("What is your name? ")
+output "Hello, {name}!"
+```
+
+The language should allow both simple beginner syntax and more structured advanced syntax.
+
+---
+
+# Core Philosophy
+
+Prism should be designed around these ideas:
+
+1. Simple things should be simple.
+2. Beginners should not fight the syntax.
+3. Dynamic typing should be the default.
+4. Types should be optional, not required everywhere.
+5. Common operations should have short, readable syntax.
+6. The same task should usually have more than one clear way to write it.
+7. Error messages should explain what happened in plain language.
+8. Prism should feel friendly in scripts, REPL, games, automation, and small apps.
+
+---
+
+# Variables
+
+Variables can be created with `let`.
+
+```pr
+let name = "Alex"
+let age = 20
+let active = true
+```
+
+Variables can also be declared without a value. The default value should be `null`.
+
+```pr
+let username
+username = "Nova"
+```
+
+Constants use `const` and must always have a value.
+
+```pr
+const pi = 3.14159
+```
+
+This should raise an error:
+
+```pr
+const pi
+```
+
+Prism should also support optional type hints.
+
+```pr
+let int age = 20
+let str name = "Alex"
+let bool ready = true
+```
+
+But the easier dynamic style should be preferred:
+
+```pr
+let age = 20
+let name = "Alex"
+let ready = true
+```
+
+Possible future flexible shortcut:
+
+```pr
+name := "Alex"
+age := 20
+```
+
+This could mean the same as `let name = "Alex"`.
+
+---
+
+# Input and Output
+
+The core functions are:
+
+```pr
+input()
+output()
+```
+
+Prism should allow normal function-call style:
+
+```pr
+output("Hello")
+let name = input("Name: ")
+```
+
+Prism should also allow beginner-friendly output without parentheses:
+
+```pr
+output "Hello"
+output "Name: {name}"
+```
+
+String interpolation should be easy:
+
+```pr
+let name = "Alex"
+output "Hello, {name}!"
+```
+
+This should work the same as:
+
+```pr
+output(f"Hello, {name}!")
+```
+
+---
+
+# Data Types
+
+Prism should support:
+
+- int
+- float
+- string
+- bool
+- unknown
+- complex
+- array
+- dictionary
+- set
+- tuple
+- null
+- function
+- object/class later
+
+Prism should be dynamically typed by default.
+
+```pr
+let x = 10
+x = "now I am text"
+x = [1, 2, 3]
+```
+
+Optional strict mode can be added later for users who want stronger checking.
+
+```pr
+strict on
+let int age = 20
+age = "twenty"  # error in strict mode
+```
+
+---
+
+# Numbers
+
+Integers:
+
+```pr
+let a = 120
+let b
 b = 20
+```
 
-FLOAT
-et a = 1.20 
-or
-let b 
-b = 2.0
+Floats:
 
-BOOLEAN
-let a = true
-or
-let b = false
-or
-let c = unknown
-It doesn't support declearing a variable first then add the value, it can also be define or decleared like this
-let a = bool(0) or let a = bool(false)
-let b = bool(1) or let b = bool(true)
-let c = bool(-1) or let b = bool(unknown)
+```pr
+let price = 1.20
+let tax = 2.0
+```
 
-COMPLEX
+Other number literals:
+
+```pr
+let hex_value = 0xFF       # 255
+let bin_value = 0b1010     # 10
+let oct_value = 0o17       # 15
+```
+
+Readable numeric separators should be allowed:
+
+```pr
+let money = 1_000_000
+let rate = 3.141_592
+```
+
+Complex numbers:
+
+```pr
 let a = 12j
-or 
 let b = 3.5j
+let c = complex(2, 5)
+```
 
-Other literals
-let h = 0xFF             # hex  → 255
-let o = 0b1010           # bin  → 10
+---
 
-STRING
-should support both single, double and triple quotes
+# Booleans and Unknown
+
+Prism should support three truth states:
+
+```pr
+let yes = true
+let no = false
+let maybe = unknown
+```
+
+Conversions:
+
+```pr
+bool(1)        # true
+bool(0)        # false
+bool(-1)       # unknown
+bool(true)     # true
+bool(false)    # false
+bool(unknown)  # unknown
+```
+
+This makes Prism useful for real-world cases where a value may be yes, no, or not known yet.
+
+---
+
+# Null
+
+`null` means no value.
+
+```pr
+let user = null
+```
+
+A variable declared without a value should start as `null`.
+
+```pr
+let result
+output(result)  # null
+```
+
+---
+
+# Strings
+
+Strings should support single, double, and triple quotes.
+
+```pr
 let a = "Hello"
 let b = 'Hello'
-let c = """Hello"""
-The Triple quotes is used to write multiline strings unline the single and double quotes which are single line
-Characteristic
-1. Immutability: Once a string is created, its characters cannot be changed or updated individually. Any modification creates a entirely new string.
-2. Indexing: You can access individual characters using zero-based indexing (e.g., s[0] for the first character) or negative indexing (e.g., s[-1] for the last).
-3. Slicing: Extracts a substring using the [start:end:step] syntax. The start is inclusive, while the end is exclusive.
-4. Verbatim Literals: Prefixed with @ (e.g., @"C:\path"), these interpret backslashes literally and allow for multi-line text.
-5. Concatenation: Using the + operator to join two strings (e.g., "Hi " + "there").
-6. Repetition: Using the * operator to repeat a string multiple times (e.g., "abc" * 3).
-7. Membership: The in and not in keywords check if a substring exists within a string.
-8. Length: The len() function returns the total number of characters. 
-Methods
-must support the following method
-1. Case Modification: .upper(), .lower(), .capitalize(), and .title()
-2. Trimming: .strip(), .lstrip(), and .rstrip() remove leading/trailing whitespace or specific characters.
-3. Search and Replace: .find() and .index() locate substrings, while .replace() substitutes text.
-4. Splitting and Joining: .split() breaks a string into a list, and .join() merges a list into a single string with a specified delimiter.
-5. Boolean Checks: .isdigit(), .isalpha(), .isspace(), .startswith(), and .endswith() validate string content.
+let c = """Hello
+from multiple lines"""
+```
 
-ARRAY
-arrays should support the following characteristics
-Characteristics
-1. Zero Based Index
-2. Must be mutable
-3. Must be hetrogenous meaning it must support any datatypes including itself making a 1D, 2D and so
-4. Must allow duplicates
-5. Must be Contiguous Memory mean Elements are stored in adjacent memory locations, allowing for high-performance access.
-It doesn't support declearing a variable first then add the value, so it must be decleared like this
-let array_1 = []
-or 
-let array_2 = arr[]
-or with value like this
-let array_1 = [1, "A", 3.4, true, [19]]
-or 
-let array_2 = arr[0xFF, {}, (), set()]
-items in the list can be accessed like so
-array_1[index_value]
-and using
-index_value of -1 returns the last item in the list
-methods
-must have the following methods
-1. .add(item): Adds an element to the end.
-2. .insert(index, item): Adds an element at a specific position.
-3. .remove(item): Removes the first occurrence of a specific value.
-4. .pop(index): Removes and returns the item at a given index (defaults to the last item).
-5. .sort(): Arranges items in ascending order in-place.
-6. .extend(iterable): Appends elements from another collection to the end of the list. 
-7. Slicing: Extract a portion of a list using [start:stop:step]
+Triple quotes are for multiline strings.
 
-DICTIONARY
-let dict_1 = {"key": "value"}
-it is a key value pair data types
-dictionaries should support the following characteristics
-Characteristics
-1. Must be flexible meaning it can grow, it doesn't have a fixed size
-2. must be ordered meaning it maintained the insertion order of items
-3. Performance: It is implemented as a hash table, providing fast lookups with an average time complexity of O(1).
-4. Flexible Values: Values can be of any data type, including lists, other dictionaries, or even custom objects.
-5. Mutable: You can add, remove, or change items after the dictionary is created
-6. Uniqueness: Every key must be unique and cannot be null. However, values can be duplicated or null (if the type is a reference type).
-7. Must support nested dictionaries
+Verbatim strings should use `@` and keep backslashes literally.
 
-methods
-.keys()	Returns a view object of all keys in the dictionary.
-.values()	Returns a view object of all values.
-.items()	Returns a view of key-value pairs as tuples, ideal for looping.
-.erase()	Erases all items from the dictionary.
+```pr
+let path = @"C:\Users\Name\file.txt"
+```
 
-SETS
-It doesn't support declearing a variable first then add the value, so it must be decleared like this
-let set_1 = {}
-to create an empty set or like this with value
-let set_2 = {1, 2, 4, 5}
-empty set must be like this
-let empty_set = set()
-see also
-let empty_set_2 = set([1, 2, 3, 4])
-characteristice
-1. Unique Elements: Sets automatically remove any duplicate values. If you add the same item twice, Python only keeps one instance.
-2. Mutable Collection: You can add or remove items after the set is created.
-3. Immutable Elements: While the set itself is mutable, the individual elements must be hashable (immutable), such as strings, numbers, or tuples.
-4. Must be an unordered collection based on a hash table. It provides average time complexity for addition, removal, and lookups
-methods
-must support the following methods
-1. Operations: Supports mathematical operations like Union (|), Intersection (&), Difference (-), and Symmetric Difference (^).
-2. Methods: Key methods include .add(), .update(), .remove()/.discard(), and .pop() for managing elements.
+String interpolation should be first-class.
 
-TUPLE
-single tuple must include a tailing comma or prism will interprete it as standard variable
-let tuple_1 = 1,
-or 
-let tuple_2 = (1, 2, 3, 4)
-characteristics
-1.Ordered: Items have a defined order that will not change.
-Immutable: You cannot modify, add, or delete elements after the tuple is defined.
-2. Allow Duplicates: Since items are indexed, a tuple can contain multiple instances of the same value.
-3. Heterogeneous: A single tuple can store various data types, such as integers, strings, and even other tuples or lists.
-4. Packing: You can create a tuple without parentheses by just separating values with commas: let packed = 1, 2, 3 while unpacking works like so let a, b, c = (1, 2, 3)
-methods
-1. Accessing Items: Use square brackets and index numbers (starting at 0). For example, my_tuple[0] returns the first item.
-2. Slicing: Extract a subset of a tuple using my_tuple[start:stop:step].
-3. Built-in Methods: Tuples only have two primary methods due to their immutability:
-4. .count(value): Returns how many times a value appears.
-5. .index(value): Returns the first index where a value is found. 
+```pr
+let name = "Alex"
+let age = 20
+output "{name} is {age} years old"
+```
 
-FUNTION
-function in prism are decleared using the func keyword followed by the function name. Here is a syntax
-func greet_user(){
-	output("Hello User")
+Strings should support:
+
+1. Immutability
+2. Indexing
+3. Negative indexing
+4. Slicing
+5. Concatenation
+6. Repetition
+7. Membership checks
+8. Length with `len()`
+
+Examples:
+
+```pr
+let text = "Prism"
+output text[0]       # P
+output text[-1]      # m
+output text[0:3]     # Pri
+output "ha" * 3      # hahaha
+output "is" in text  # true
+output len(text)     # 5
+```
+
+String methods should include:
+
+```pr
+.upper()
+.lower()
+.capitalize()
+.title()
+.strip()
+.lstrip()
+.rstrip()
+.find()
+.index()
+.replace()
+.split()
+.join()
+.isdigit()
+.isalpha()
+.isspace()
+.startswith()
+.endswith()
+```
+
+Extra beginner-friendly string helpers should be considered:
+
+```pr
+text.contains("abc")
+text.before("-")
+text.after("-")
+text.reverse()
+text.words()
+text.lines()
+```
+
+---
+
+# Arrays
+
+Arrays should be mutable, ordered, zero-based, heterogeneous, and allow duplicates.
+
+```pr
+let nums = [1, 2, 3]
+let mixed = [1, "A", 3.4, true, [19]]
+let empty = []
+let also_empty = arr[]
+```
+
+Arrays should support negative indexing and slicing.
+
+```pr
+output mixed[0]
+output mixed[-1]
+output mixed[1:4]
+```
+
+Methods:
+
+```pr
+.add(item)
+.insert(index, item)
+.remove(item)
+.pop(index)
+.sort()
+.extend(iterable)
+.clear()
+.contains(item)
+.index(item)
+.count(item)
+.reverse()
+```
+
+Flexible array operations should be easy:
+
+```pr
+let nums = [1, 2, 3]
+nums.add(4)
+nums += [5, 6]
+output nums
+```
+
+Map/filter style should be added later:
+
+```pr
+let doubled = nums.map(x => x * 2)
+let evens = nums.filter(x => x % 2 == 0)
+```
+
+---
+
+# Dictionaries
+
+Dictionaries are ordered key-value collections.
+
+```pr
+let user = {
+    "name": "Alex",
+    "age": 20,
+    "active": true
 }
-the above function returns null by default since it didn't return anything, it was created with arguements
-func get_user_info(str name, int age, bool is_adult){
-	return f"Name: {name}, Age: {age}, Is Adult: {is_adult}")
+```
+
+Characteristics:
+
+1. Flexible size
+2. Ordered by insertion
+3. Fast average lookup
+4. Values can be any type
+5. Mutable
+6. Keys must be unique
+7. Nested dictionaries should work
+
+Access:
+
+```pr
+output user["name"]
+user["age"] = 21
+```
+
+Friendly dot access should be considered for string keys that are valid identifiers:
+
+```pr
+output user.name
+user.age = 21
+```
+
+Methods:
+
+```pr
+.keys()
+.values()
+.items()
+.erase()
+.clear()
+.get(key, default)
+.has(key)
+.remove(key)
+```
+
+Example:
+
+```pr
+if user.has("email") {
+    output user.email
+} else {
+    output "No email yet"
 }
-this function will return a value
-function can also return 0,1, -1 for false, true or unknown respectively
-like so return 0, return 1, return -1 is vaild
+```
+
+---
+
+# Sets
+
+Sets store unique values.
+
+```pr
+let numbers = {1, 2, 3, 4}
+let empty = set()
+let from_array = set([1, 2, 2, 3])
+```
+
+Important rule:
+
+- `{}` currently creates an empty set.
+- If Prism later wants empty dictionary syntax, use `dict()` for empty dict or decide one clear rule.
+
+Set operations:
+
+```pr
+let a = {1, 2, 3}
+let b = {3, 4, 5}
+
+output a | b   # union
+output a & b   # intersection
+output a - b   # difference
+output a ^ b   # symmetric difference
+```
+
+Methods:
+
+```pr
+.add()
+.update()
+.remove()
+.discard()
+.pop()
+.contains()
+.clear()
+```
+
+---
+
+# Tuples
+
+Tuples are immutable ordered collections.
+
+```pr
+let single = 1,
+let point = (10, 20)
+let packed = 1, 2, 3
+```
+
+Unpacking:
+
+```pr
+let a, b, c = (1, 2, 3)
+```
+
+Characteristics:
+
+1. Ordered
+2. Immutable
+3. Allows duplicates
+4. Heterogeneous
+5. Supports indexing and slicing
+
+Methods:
+
+```pr
+.count(value)
+.index(value)
+```
+
+---
+
+# Functions
+
+Functions use `func`.
+
+```pr
+func greet_user() {
+    output "Hello User"
+}
+```
+
+If a function does not return anything, it returns `null`.
+
+```pr
+func add(a, b) {
+    return a + b
+}
+```
+
+Optional type hints should work:
+
+```pr
+func get_user_info(str name, int age, bool is_adult) {
+    return "Name: {name}, Age: {age}, Adult: {is_adult}"
+}
+```
+
+Dynamic style should also work:
+
+```pr
+func get_user_info(name, age, is_adult) {
+    return "Name: {name}, Age: {age}, Adult: {is_adult}"
+}
+```
+
+Functions should support default arguments:
+
+```pr
+func greet(name = "friend") {
+    output "Hello, {name}"
+}
+```
+
+Named arguments should be supported later:
+
+```pr
+greet(name: "Alex")
+```
+
+Short lambda functions should be supported later:
+
+```pr
+let double = x => x * 2
+output double(10)
+```
+
+---
+
+# Control Flow
+
+If/elif/else:
+
+```pr
+if age >= 18 {
+    output "adult"
+} elif age > 12 {
+    output "teen"
+} else {
+    output "child"
+}
+```
+
+While loops:
+
+```pr
+let i = 0
+while i < 5 {
+    output i
+    i += 1
+}
+```
+
+For loops:
+
+```pr
+for item in ["apple", "banana", "cherry"] {
+    output item
+}
+```
+
+Range loops should be built in:
+
+```pr
+for i in range(1, 10) {
+    output i
+}
+```
+
+Beginner-friendly repeat loops should be considered:
+
+```pr
+repeat 5 {
+    output "hello"
+}
+```
+
+Loop controls:
+
+```pr
+break
+continue
+```
+
+---
+
+# Flexible Syntax Ideas
+
+Prism should allow clear optional shortcuts where they make the language easier.
+
+## Output without parentheses
+
+```pr
+output "Hello"
+```
+
+## Optional semicolons
+
+Both should be valid:
+
+```pr
+let x = 10
+let y = 20;
+```
+
+## Simple variable shortcut
+
+Possible future syntax:
+
+```pr
+x := 10
+name := "Alex"
+```
+
+## Natural membership
+
+```pr
+if "a" in name {
+    output "contains a"
+}
+
+if user not in banned_users {
+    output "allowed"
+}
+```
+
+## Safe access
+
+Prism should make missing values easy to handle:
+
+```pr
+let city = user?.address?.city ?? "Unknown"
+```
+
+Meaning:
+
+- `?.` safely accesses nested values
+- `??` gives a default if the left side is null or missing
+
+## Easy try/default expression
+
+```pr
+let age = int(input("Age: ")) else 0
+```
+
+If conversion fails, age becomes `0`.
+
+---
+
+# Error Handling
+
+Prism should support simple try/catch.
+
+```pr
+try {
+    let age = int(input("Age: "))
+    output age
+} catch err {
+    output "That was not a valid age"
+}
+```
+
+It should also support simple error throwing:
+
+```pr
+throw "Something went wrong"
+```
+
+Errors should be readable:
+
+```text
+Runtime Error: Cannot divide by zero
+File: main.pr, line 4
+
+4 | let x = 10 / 0
+              ^
+Suggestion: Check that the second number is not zero before dividing.
+```
+
+---
+
+# Classes and Objects Later
+
+Prism should eventually support classes, but keep them simple.
+
+```pr
+class User {
+    func init(name, age) {
+        self.name = name
+        self.age = age
+    }
+
+    func greet() {
+        output "Hello, I am {self.name}"
+    }
+}
+
+let user = User("Alex", 20)
+user.greet()
+```
+
+Object literals should also be easy:
+
+```pr
+let user = object {
+    name: "Alex",
+    age: 20,
+    greet: func() {
+        output "Hello"
+    }
+}
+```
+
+---
+
+# Modules and Imports
+
+Prism should support simple imports.
+
+```pr
+import math
+import fs
+import "utils.pr"
+```
+
+Specific imports:
+
+```pr
+from math import sqrt, pow
+```
+
+Aliases:
+
+```pr
+import long_module_name as short
+```
+
+---
+
+# Standard Library Direction
+
+Prism should have useful built-in modules implemented natively in Prism/C core.
+
+Important modules:
+
+```pr
+math
+fs
+os
+json
+time
+random
+net
+http
+regex
+```
+
+Examples:
+
+```pr
+let data = fs.read("users.json")
+let users = json.parse(data)
+
+for user in users {
+    output user.name
+}
+```
+
+---
+
+# Pipe Operator
+
+To make Prism easier than Python for data flow, add a pipe operator later.
+
+```pr
+let result = text
+    |> lower
+    |> split(" ")
+    |> sort
+    |> join("-")
+```
+
+This means the output of one step becomes the input of the next.
+
+Alternative method-chain style should also work:
+
+```pr
+let result = text.lower().split(" ").sort().join("-")
+```
+
+---
+
+# Pattern Matching Later
+
+Prism should eventually support match expressions.
+
+```pr
+match status {
+    "success" => output "Done"
+    "error" => output "Failed"
+    unknown => output "Not sure"
+    else => output "Other"
+}
+```
+
+This should be easier than long if/elif chains.
+
+---
+
+# Beginner-Friendly Examples
+
+## Hello user
+
+```pr
+let name = input("Name: ")
+output "Hello, {name}!"
+```
+
+## Guess age
+
+```pr
+let age = int(input("Age: ")) else 0
+
+if age >= 18 {
+    output "You are an adult"
+} else {
+    output "You are young"
+}
+```
+
+## List names
+
+```pr
+let names = ["Alex", "Maya", "Sam"]
+
+for name in names {
+    output "Hello {name}"
+}
+```
+
+## Dictionary user
+
+```pr
+let user = {
+    "name": "Alex",
+    "age": 20
+}
+
+output "{user.name} is {user.age} years old"
+```
+
+## Flexible function
+
+```pr
+func say(message, times = 1) {
+    repeat times {
+        output message
+    }
+}
+
+say("Hi", 3)
+```
+
+---
+
+# What Makes Prism Easier Than Python
+
+Prism should aim to be easier than Python in these ways:
+
+1. Output can be written as `output "hello"`.
+2. String interpolation should work naturally in normal strings.
+3. Variables can be dynamic without type pressure.
+4. Optional type hints can be added only when wanted.
+5. `unknown` gives a built-in third truth state.
+6. Safe access with `?.` prevents common null crashes.
+7. Default fallback with `??` makes missing values easy.
+8. `repeat 5 {}` is easier for beginners than `for i in range(5)`.
+9. Pipe syntax makes data transformation easier to read.
+10. Error messages should explain the fix, not just the failure.
+
+---
+
+# Final Vision
+
+Prism should feel like a language where a beginner can write:
+
+```pr
+name := input("Name: ")
+output "Welcome, {name}!"
+
+repeat 3 {
+    output "Prism is easy"
+}
+```
+
+But an advanced user can grow into:
+
+```pr
+let users = fs.read("users.json")
+    |> json.parse
+    |> filter(user => user.active)
+    |> map(user => user.name)
+    |> sort
+
+output users.join("\n")
+```
+
+That is the direction: simple at the start, powerful later, dynamic by default, and easier to read than Python.
