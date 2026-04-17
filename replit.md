@@ -17,7 +17,7 @@ src/
   compiler.h / compiler.c — AST → bytecode compiler
   jit.h / jit.c           — Trace-based JIT compiler (x86-64 + ARM64 codegen, LLVM IR emitter)
   transpiler.h / transpiler.c — AST → standalone C transpiler (--emit-c)
-  pss.h / pss.c           — PSS stylesheet parser (CSS-like)
+  pss.h / pss.c           — PSS stylesheet parser (CSS-like); v2: 40+ widget types, :root vars, var(), rgb(), shadow, opacity, margin, font-weight, text-decoration, cursor, per-side borders
   xgui.h / xgui.c         — Native X11 GUI engine (Xlib + Xft)
   gui_native.h / gui_native.c — PGUI GTK-style toolkit (legacy)
   formatter.h / formatter.c — Built-in Prism source formatter
@@ -42,16 +42,16 @@ tests/
   run_tests.sh            — Shell test runner (used by `make test`)
 
 benchmarks/
-  fib_recursive.pm        — Fibonacci(32) via tree recursion (~7.9 M calls)
-  fib_iterative.pm        — Fibonacci via 2,000,000 loop iterations
-  loop_count.pm           — Tight while-loop: 5,000,000 iterations
-  sieve.pm                — Sieve of Eratosthenes up to 500,000
-  bubble_sort.pm          — Bubble sort 800 elements (worst case)
-  dict_ops.pm             — 10,000 dict inserts + 10,000 dict lookups
-  string_ops.pm           — 50,000 × (join/split/upper/startswith)
-  recursive_sum.pm        — rsum(200) × 5,000 = 1 M recursive calls
-  ackermann.pm            — ack(3,5) × 100 = ~1.03 M recursive calls
-  array_ops.pm            — 100,000 array add + read + slice
+  fib_recursive.pr        — Fibonacci(32) via tree recursion (~7.9 M calls)
+  fib_iterative.pr        — Fibonacci via 2,000,000 loop iterations
+  loop_count.pr           — Tight while-loop: 5,000,000 iterations
+  sieve.pr                — Sieve of Eratosthenes up to 500,000
+  bubble_sort.pr          — Bubble sort 800 elements (worst case)
+  dict_ops.pr             — 10,000 dict inserts + 10,000 dict lookups
+  string_ops.pr           — 50,000 × (join/split/upper/startswith)
+  recursive_sum.pr        — rsum(200) × 5,000 = 1 M recursive calls
+  ackermann.pr            — ack(3,5) × 100 = ~1.03 M recursive calls
+  array_ops.pr            — 100,000 array add + read + slice
   RESULTS.md              — Timing results table (wall-clock, debug build)
 
 Makefile                  — Build system (gcc, pkg-config auto-detects X11)

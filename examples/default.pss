@@ -1,51 +1,408 @@
-/* Prism Style Sheet — default dark theme */
+/* Prism Style Sheet — Catppuccin Mocha dark theme
+   Supports: // line comments, /* block comments, rgb(), var(), :root variables
+   New in v2: title, subtitle, text, button states, textarea, checkbox,
+              progressbar, scrollbar, header, sidebar, panel, card, separator,
+              overlay, dialog, list, menu, tab, link, tooltip, badge widgets.
+*/
 
+// ── CSS custom properties (variables) ────────────────────────────────────────
+:root {
+    --bg:         #1e1e2e;
+    --surface:    #313244;
+    --surface-hi: #45475a;
+    --overlay:    #6c7086;
+    --muted:      #7f849c;
+    --text:       #cdd6f4;
+    --subtext:    #a6adc8;
+    --blue:       #89b4fa;
+    --mauve:      #cba6f7;
+    --red:        #f38ba8;
+    --peach:      #fab387;
+    --yellow:     #f9e2af;
+    --green:      #a6e3a1;
+    --teal:       #94e2d5;
+    --sky:        #89dceb;
+    --pink:       #f5c2e7;
+    --rosewater:  #f5e0dc;
+}
+
+// ── Window ────────────────────────────────────────────────────────────────────
 window {
-    background: #1e1e2e;
-    color: #cdd6f4;
+    background: var(--bg);
+    color: var(--text);
     padding: 20 24;
     font-size: 13;
     font: sans;
 }
 
+// ── Typography ────────────────────────────────────────────────────────────────
+title {
+    color: var(--text);
+    font-size: 24;
+    font-weight: bold;
+    padding: 8 0;
+    letter-spacing: 1;
+}
+
+subtitle {
+    color: var(--subtext);
+    font-size: 16;
+    font-weight: 600;
+    padding: 4 0;
+}
+
+text {
+    color: var(--text);
+    font-size: 13;
+    padding: 2 0;
+    line-height: 20;
+}
+
 label {
-    color: #cdd6f4;
+    color: var(--text);
     font-size: 13;
     font: sans;
     padding: 2 0;
 }
 
+// ── Button ────────────────────────────────────────────────────────────────────
 button {
-    background: #89b4fa;
-    color: #1e1e2e;
+    background: var(--blue);
+    color: var(--bg);
     border-radius: 6;
     padding: 9 22;
     font-size: 13;
     font: sans;
+    font-weight: bold;
+    cursor: pointer;
 }
 
 button:hover {
     background: #b4d0fb;
+    color: var(--bg);
     border-radius: 6;
     padding: 9 22;
     font-size: 13;
+    cursor: pointer;
 }
 
+button:active {
+    background: #6fa8e8;
+    color: var(--bg);
+    border-radius: 6;
+    padding: 9 22;
+    font-size: 13;
+    cursor: pointer;
+}
+
+button:disabled {
+    background: var(--surface-hi);
+    color: var(--muted);
+    border-radius: 6;
+    padding: 9 22;
+    font-size: 13;
+    cursor: not-allowed;
+    opacity: 60;
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────────
 input {
-    background: #313244;
-    color: #cdd6f4;
+    background: var(--surface);
+    color: var(--text);
     border: 1 #585b70;
     border-radius: 5;
     padding: 7 12;
     font-size: 13;
     font: sans;
+    cursor: text;
 }
 
 input:focus {
-    background: #313244;
-    color: #cdd6f4;
-    border: 2 #89b4fa;
+    background: var(--surface);
+    color: var(--text);
+    border: 2 var(--blue);
     border-radius: 5;
     padding: 7 12;
     font-size: 13;
+    cursor: text;
+}
+
+input:disabled {
+    background: var(--bg);
+    color: var(--muted);
+    border: 1 var(--surface-hi);
+    border-radius: 5;
+    padding: 7 12;
+    font-size: 13;
+    cursor: not-allowed;
+    opacity: 60;
+}
+
+// ── Textarea ──────────────────────────────────────────────────────────────────
+textarea {
+    background: var(--surface);
+    color: var(--text);
+    border: 1 #585b70;
+    border-radius: 5;
+    padding: 8 12;
+    font-size: 13;
+    font: monospace;
+    line-height: 20;
+    cursor: text;
+}
+
+textarea:focus {
+    background: var(--surface);
+    color: var(--text);
+    border: 2 var(--blue);
+    border-radius: 5;
+    padding: 8 12;
+    font-size: 13;
+    line-height: 20;
+    cursor: text;
+}
+
+// ── Checkbox ──────────────────────────────────────────────────────────────────
+checkbox {
+    background: var(--surface);
+    border: 1 #585b70;
+    border-radius: 3;
+    padding: 2 2;
+    cursor: pointer;
+}
+
+checkbox:checked {
+    background: var(--blue);
+    border: 1 var(--blue);
+    border-radius: 3;
+    accent: var(--bg);
+    cursor: pointer;
+}
+
+checkbox:disabled {
+    background: var(--surface-hi);
+    border: 1 #45475a;
+    border-radius: 3;
+    opacity: 50;
+    cursor: not-allowed;
+}
+
+// ── Progressbar ───────────────────────────────────────────────────────────────
+progressbar {
+    background: var(--surface);
+    border-radius: 4;
+    min-height: 8;
+}
+
+progressbar:fill {
+    background: var(--blue);
+    border-radius: 4;
+}
+
+// ── Scrollbar ─────────────────────────────────────────────────────────────────
+scrollbar {
+    background: var(--bg);
+    min-width: 12;
+}
+
+scrollbar:thumb {
+    background: var(--surface-hi);
+    border-radius: 6;
+}
+
+scrollbar:hover {
+    background: var(--overlay);
+    border-radius: 6;
+}
+
+// ── Header ────────────────────────────────────────────────────────────────────
+header {
+    background: var(--surface);
+    color: var(--text);
+    padding: 12 24;
+    font-size: 14;
+    font-weight: bold;
+    border-bottom: 1;
+    border-color: #585b70;
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+sidebar {
+    background: var(--surface);
+    color: var(--text);
+    padding: 8 8;
+    min-width: 220;
+    border-right: 1;
+    border-color: #585b70;
+}
+
+// ── Panel ─────────────────────────────────────────────────────────────────────
+panel {
+    background: var(--surface);
+    color: var(--text);
+    border: 1 #45475a;
+    border-radius: 8;
+    padding: 16 16;
+}
+
+// ── Card ──────────────────────────────────────────────────────────────────────
+card {
+    background: var(--surface);
+    color: var(--text);
+    border-radius: 10;
+    padding: 20 20;
+    border: 1 #45475a;
+    shadow: 0 4 12 #000000;
+}
+
+// ── Separator ─────────────────────────────────────────────────────────────────
+separator {
+    background: #45475a;
+    min-height: 1;
+    margin: 8 0;
+}
+
+// ── Overlay & Dialog ──────────────────────────────────────────────────────────
+overlay {
+    background: #000000;
+    opacity: 55;
+}
+
+dialog {
+    background: var(--surface);
+    color: var(--text);
+    border: 1 #45475a;
+    border-radius: 10;
+    padding: 28 32;
+    shadow: 0 8 32 #000000;
+}
+
+// ── List ──────────────────────────────────────────────────────────────────────
+list {
+    background: var(--surface);
+    color: var(--text);
+    border: 1 #45475a;
+    border-radius: 6;
+}
+
+list-item {
+    background: var(--surface);
+    color: var(--text);
+    padding: 10 16;
+    cursor: pointer;
+}
+
+list-item:hover {
+    background: var(--surface-hi);
+    color: var(--text);
+    padding: 10 16;
+}
+
+list-item:selected {
+    background: var(--blue);
+    color: var(--bg);
+    padding: 10 16;
+    font-weight: bold;
+}
+
+// ── Menu ──────────────────────────────────────────────────────────────────────
+menu {
+    background: var(--surface);
+    color: var(--text);
+    border: 1 #585b70;
+    border-radius: 6;
+    shadow: 0 4 16 #000000;
+}
+
+menu-item {
+    background: var(--surface);
+    color: var(--text);
+    padding: 9 18;
+    cursor: pointer;
+    font-size: 13;
+}
+
+menu-item:hover {
+    background: var(--surface-hi);
+    color: var(--blue);
+    padding: 9 18;
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+tab {
+    background: var(--surface);
+    color: var(--subtext);
+    padding: 10 20;
+    border-radius: 4;
+    cursor: pointer;
+    font-size: 13;
+}
+
+tab:active {
+    background: var(--bg);
+    color: var(--blue);
+    padding: 10 20;
+    font-weight: bold;
+    border-bottom: 2;
+    border-color: var(--blue);
+}
+
+tab:hover {
+    background: var(--surface-hi);
+    color: var(--text);
+    padding: 10 20;
+}
+
+// ── Link ──────────────────────────────────────────────────────────────────────
+link {
+    color: var(--blue);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+link:hover {
+    color: var(--sky);
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+link:visited {
+    color: var(--mauve);
+    text-decoration: underline;
+}
+
+// ── Tooltip ───────────────────────────────────────────────────────────────────
+tooltip {
+    background: var(--surface-hi);
+    color: var(--text);
+    border-radius: 4;
+    padding: 5 10;
+    font-size: 11;
+    border: 1 #585b70;
+    shadow: 0 2 8 #000000;
+}
+
+// ── Badge ─────────────────────────────────────────────────────────────────────
+badge {
+    background: var(--overlay);
+    color: var(--bg);
+    border-radius: 10;
+    padding: 2 8;
+    font-size: 11;
+    font-weight: bold;
+}
+
+badge:success {
+    background: var(--green);
+    color: var(--bg);
+}
+
+badge:warning {
+    background: var(--yellow);
+    color: var(--bg);
+}
+
+badge:error {
+    background: var(--red);
+    color: var(--bg);
 }

@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.6.0 — PSS Expansion + Dict Equality + Import Resolver
+
+### Added
+- **PSS v2 (`src/pss.h`, `src/pss.c`)**: massively expanded Prism StyleSheet system.
+  - **`PssStyle` new fields**: `margin_x/y`, `opacity` (0–100), `text_align` (left/center/right), `min/max_width/height`, `font_weight`, `font_italic`, `line_height`, `letter_spacing`, `text_decoration` (none/underline/line-through), `outline_color`, `outline_width`, `shadow_color/blur/offset_x/y`, `accent_color`, `cursor`, `border_top/right/bottom/left`.
+  - **40+ widget types in `PssTheme`**: `title`, `subtitle`, `text`, `button_active`, `button_disabled`, `input_disabled`, `textarea`, `textarea_focus`, `checkbox`, `checkbox_checked`, `checkbox_disabled`, `progressbar`, `progressbar_fill`, `scrollbar`, `scrollbar_thumb`, `scrollbar_thumb_hover`, `header`, `sidebar`, `panel`, `card`, `separator`, `overlay`, `dialog`, `list`, `list_item`, `list_item_hover`, `list_item_selected`, `menu`, `menu_item`, `menu_item_hover`, `tab`, `tab_active`, `tab_hover`, `link`, `link_hover`, `link_visited`, `tooltip`, `badge`, `badge_success`, `badge_warning`, `badge_error`.
+  - **CSS custom properties**: `:root { --name: value; }` variable declarations; `var(--name)` references resolve in all color properties.
+  - **New color syntaxes**: `rgb(r, g, b)`, `rgba(r, g, b, a)`, 70+ named colors (CSS-compatible).
+  - **New property parsers**: `margin`, `padding` (shorthand), `border-top/right/bottom/left`, `outline`, `shadow` (shorthand: x y blur color), `font-weight`, `font-style`, `line-height`, `letter-spacing`, `text-align`, `text-decoration`, `opacity`, `min/max-width/height`, `accent`, `cursor`.
+  - **Comments**: `//` single-line and `/* */` block comments in `.pss` files.
+- **Dict equality (`src/value.c`)**: added `VAL_DICT` case to `value_equals()` — two dicts are equal when they have the same number of keys and every key in `a` maps to the same value in `b`. Previously dict equality fell through to pointer comparison.
+- **Smart import resolver (`src/interpreter.c`, `src/vm.c`)**: `import "mod"` now tries four paths in order: path as-is, `<path>.pr`, `lib/<path>`, `lib/<path>.pr`. Enables `import "lib/math"`, `import "math"`, and `import "math.pr"` to all work without a full path.
+- **`//` and `/* */` comments in `.pr` source files (`src/lexer.c`)**: Prism now accepts C-style `//` single-line and `/* … */` block comments in addition to the existing `#` style. This allows `lib/*.pr` modules (which use block comment headers) to be imported without parse errors.
+- **`examples/default.pss`**: full Catppuccin Mocha dark theme rewritten for all 40+ widget types using `:root` variables, `var()` references, `//` comments, `shadow`, `margin`, `opacity`, `font-weight`, `text-decoration`, per-side border, and `cursor` properties.
+
+### Changed
+- **Source extension**: all `lib/`, `benchmarks/`, `examples/`, `Makefile`, `src/chunk.h`, `src/transpiler.h`, `README.md`, `benchmarks/RESULTS.md` updated from `.pm` to `.pr`. Bytecode cache extension `.pmc` is unchanged.
+- **`RULES.txt`**: added COMMENTS section documenting `#`, `//`, and `/* */` syntax.
+- **`todo.md`**: marked `.pm` → `.pr` extension rename as `[x]`.
+
 ## v0.5.0 — Zero Memory Leaks + Parser Bug Fixes
 
 ### Fixed

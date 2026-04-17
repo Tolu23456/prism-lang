@@ -10,6 +10,13 @@ let a (without a value)
 but if
 const a (without value should raise an error)
 
+COMMENTS
+Three comment styles are supported:
+  # this is a hash comment (original style)
+  // this is a line comment (C/JavaScript style)
+  /* this is a block comment
+     spanning multiple lines */
+
 INPUT and OUTPUT
 the keyword for input is input() and for output is output()
 
@@ -125,10 +132,10 @@ Characteristics
 7. Must support nested dictionaries
 
 methods
-.keys()	Returns a view object of all keys in the dictionary.
-.values()	Returns a view object of all values.
-.items()	Returns a view of key-value pairs as tuples, ideal for looping.
-.erase()	Erases all items from the dictionary.
+.keys() Returns a view object of all keys in the dictionary.
+.values()       Returns a view object of all values.
+.items()        Returns a view of key-value pairs as tuples, ideal for looping.
+.erase()        Erases all items from the dictionary.
 
 SETS
 It doesn't support declearing a variable first then add the value, so it must be decleared like this

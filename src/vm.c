@@ -1916,7 +1916,25 @@ int vm_run(VM *vm, Chunk *chunk) {
         case OP_IMPORT: {
             uint16_t idx = READ_U16();
             const char *path = CONST(idx)->str_val;
-            FILE *f = fopen(path, "r");
+            /* Resolve import: try as-is, +.pr, lib/<path>, lib/<path>.pr */
+            FILE *f = NULL;
+            char probe[512];
+            if ((f = fopen(path, "r")) != NULL) {
+                /* as-is */
+            } else {
+                snprintf(probe, sizeof(probe), "%s.pr", path);
+                if ((f = fopen(probe, "r")) != NULL) {
+                    /* with .pr */
+                } else {
+                    snprintf(probe, sizeof(probe), "lib/%s", path);
+                    if ((f = fopen(probe, "r")) != NULL) {
+                        /* lib/<path> */
+                    } else {
+                        snprintf(probe, sizeof(probe), "lib/%s.pr", path);
+                        f = fopen(probe, "r");
+                    }
+                }
+            }
             if (!f) {
                 char msg[256];
                 snprintf(msg, sizeof(msg), "cannot import '%s': file not found", path);

@@ -12,16 +12,16 @@
 
 | # | Benchmark | File | Workload | Result | Time (real) |
 |---|-----------|------|----------|--------|-------------|
-| 1 | **Fibonacci — recursive** | `fib_recursive.pm` | `fib(32)` — ~7.9 M recursive calls | 2,178,309 | **2.60 s** |
-| 2 | **Fibonacci — iterative** | `fib_iterative.pm` | 2,000,000 loop iterations | (large int) | **1.06 s** |
-| 3 | **Tight loop counter** | `loop_count.pm` | 5,000,000 `while` iterations | 5,000,000 | **1.26 s** |
-| 4 | **Sieve of Eratosthenes** | `sieve.pm` | Primes ≤ 500,000 | 41,538 primes | **0.68 s** |
-| 5 | **Bubble sort** | `bubble_sort.pm` | 800 elements, worst-case (reversed) | sorted 1…800 | **0.34 s** |
-| 6 | **Dictionary operations** | `dict_ops.pm` | 10,000 inserts + 10,000 lookups | 99,990,000 | **0.97 s** |
-| 7 | **String operations** | `string_ops.pm` | 50,000 × (join + split + upper + startswith) | 50,000 | **0.19 s** |
-| 8 | **Recursive sum** | `recursive_sum.pm` | `rsum(200)` × 5,000 — 1 M recursive calls | 100,500,000 | **0.28 s** |
-| 9 | **Ackermann** | `ackermann.pm` | `ack(3,5)` × 100 — ~1.03 M recursive calls | 25,300 | **1.30 s** |
-| 10 | **Array operations** | `array_ops.pm` | 100,000 `add` + 100,000 index reads + slice | 4,999,950,000 | **0.11 s** |
+| 1 | **Fibonacci — recursive** | `fib_recursive.pr` | `fib(32)` — ~7.9 M recursive calls | 2,178,309 | **2.60 s** |
+| 2 | **Fibonacci — iterative** | `fib_iterative.pr` | 2,000,000 loop iterations | (large int) | **1.06 s** |
+| 3 | **Tight loop counter** | `loop_count.pr` | 5,000,000 `while` iterations | 5,000,000 | **1.26 s** |
+| 4 | **Sieve of Eratosthenes** | `sieve.pr` | Primes ≤ 500,000 | 41,538 primes | **0.68 s** |
+| 5 | **Bubble sort** | `bubble_sort.pr` | 800 elements, worst-case (reversed) | sorted 1…800 | **0.34 s** |
+| 6 | **Dictionary operations** | `dict_ops.pr` | 10,000 inserts + 10,000 lookups | 99,990,000 | **0.97 s** |
+| 7 | **String operations** | `string_ops.pr` | 50,000 × (join + split + upper + startswith) | 50,000 | **0.19 s** |
+| 8 | **Recursive sum** | `recursive_sum.pr` | `rsum(200)` × 5,000 — 1 M recursive calls | 100,500,000 | **0.28 s** |
+| 9 | **Ackermann** | `ackermann.pr` | `ack(3,5)` × 100 — ~1.03 M recursive calls | 25,300 | **1.30 s** |
+| 10 | **Array operations** | `array_ops.pr` | 100,000 `add` + 100,000 index reads + slice | 4,999,950,000 | **0.11 s** |
 
 ---
 

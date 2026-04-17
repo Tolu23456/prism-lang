@@ -1537,7 +1537,31 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
     /* ---- import ---- */
     case NODE_IMPORT: {
         const char *path = node->import_stmt.path;
-        FILE *f = fopen(path, "r");
+        /* Resolve import: try as-is, +.pr, lib/<path>, lib/<path>.pr */
+        FILE *f = NULL;
+        char resolved[512];
+        char probe[512];
+        snprintf(resolved, sizeof(resolved), "%s", path);
+        if ((f = fopen(path, "r")) != NULL) {
+            /* as-is */
+        } else {
+            /* with .pr extension */
+            snprintf(probe, sizeof(probe), "%s.pr", path);
+            if ((f = fopen(probe, "r")) != NULL) {
+                snprintf(resolved, sizeof(resolved), "%s", probe);
+            } else {
+                /* lib/<path> */
+                snprintf(probe, sizeof(probe), "lib/%s", path);
+                if ((f = fopen(probe, "r")) != NULL) {
+                    snprintf(resolved, sizeof(resolved), "%s", probe);
+                } else {
+                    /* lib/<path>.pr */
+                    snprintf(probe, sizeof(probe), "lib/%s.pr", path);
+                    if ((f = fopen(probe, "r")) != NULL)
+                        snprintf(resolved, sizeof(resolved), "%s", probe);
+                }
+            }
+        }
         if (!f) {
             char msg[256];
             snprintf(msg, sizeof(msg), "cannot import '%s': file not found", path);

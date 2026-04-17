@@ -195,9 +195,26 @@ Token *lexer_next(Lexer *l) {
 
     if (l->pos >= l->len) return make_token(l, TOKEN_EOF, "");
 
-    /* comment */
+    /* # line comment */
     if (cur(l) == '#') {
         while (l->pos < l->len && cur(l) != '\n') advance(l);
+        return lexer_next(l);
+    }
+
+    /* // line comment */
+    if (cur(l) == '/' && peek1(l) == '/') {
+        while (l->pos < l->len && cur(l) != '\n') advance(l);
+        return lexer_next(l);
+    }
+
+    /* block comment: slash-star ... star-slash */
+    if (cur(l) == '/' && peek1(l) == '*') {
+        advance(l); advance(l); /* skip slash-star */
+        while (l->pos < l->len && !(cur(l) == '*' && peek1(l) == '/')) {
+            if (cur(l) == '\n') l->line++;
+            advance(l);
+        }
+        if (l->pos < l->len) { advance(l); advance(l); } /* skip star-slash */
         return lexer_next(l);
     }
 

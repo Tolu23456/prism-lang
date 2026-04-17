@@ -462,6 +462,15 @@ bool value_equals(Value *a, Value *b) {
                 if (!value_set_has(b, a->set.items[i])) return false;
             return true;
         }
+        case VAL_DICT: {
+            if (a->dict.len != b->dict.len) return false;
+            for (int i = 0; i < a->dict.len; i++) {
+                Value *bval = value_dict_get(b, a->dict.entries[i].key);
+                if (!bval) return false;
+                if (!value_equals(a->dict.entries[i].val, bval)) return false;
+            }
+            return true;
+        }
         default: return a == b;
     }
 }

@@ -1,22 +1,25 @@
 # Prism
 
 Prism is a general-purpose programming language built in C.
-It uses the `.pm` extension and currently runs as an interpreted language.
+It uses the `.pr` extension and currently runs as an interpreted language.
 
 ## Highlights
 
 - C implementation
-- `.pm` source files
+- `.pr` source files
 - Tree-walking interpreter and stack-based VM
 - Bytecode cache output with `.pmc` files
 - PGUI native GTK-style GUI helpers built into the C core
+- PSS (Prism StyleSheet) theming with 40+ widget types
+- Standard library modules in `lib/`
 - Sublime Text syntax support
 
 ## Project Files
 
 - `src/` - Lexer, parser, AST, values, interpreter, and entry point
-- `examples/hello.pm` - Feature demo
-- `examples/pgui_demo.pm` - PGUI native GUI demo
+- `lib/` - Standard library modules (math, string, array, json, …)
+- `examples/hello.pr` - Feature demo
+- `examples/default.pss` - Catppuccin Mocha dark theme
 - `RULES.txt` - Language specification
 - `todo.md` - Next development tasks
 - `CHANGELOG.md` - Project history
@@ -31,7 +34,15 @@ make
 ## Run
 
 ```bash
-./prism examples/hello.pm
-./prism --emit-bytecode examples/hello.pm
-./prism --bench examples/hello.pm
+./prism examples/hello.pr
+./prism --emit-bytecode examples/hello.pr
+./prism --bench examples/hello.pr
+```
+
+## Importing modules
+
+```prism
+import "lib/math"          // resolves lib/math.pr automatically
+import "lib/string.pr"     // explicit extension also works
+import "mymodule"          // tries: mymodule, mymodule.pr, lib/mymodule, lib/mymodule.pr
 ```

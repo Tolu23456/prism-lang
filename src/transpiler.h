@@ -8,7 +8,7 @@
  * C transpiler: translate a Prism AST to a standalone C source file.
  *
  * Usage:
- *   transpile_to_c(program_ast, "my_program.pm", stdout);
+ *   transpile_to_c(program_ast, "my_program.pr", stdout);
  *
  * The generated C file can be compiled with:
  *   cc -O2 -lm output.c -o output
