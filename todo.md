@@ -99,14 +99,19 @@ Interpretation overhead is the fundamental ceiling. These items describe the roa
 - [x] **Inline hot function calls in JIT traces**: if a called function is small and always returns the same type, inline it into the current trace. Eliminates call frame setup and return overhead for short functions called in tight loops.
 - [x] **LLVM IR backend (AOT path)**: alternative to hand-written JIT — translate Prism bytecode or AST to LLVM IR text (`.ll`). No LLVM library required at runtime; emit via `--emit-llvm`. This is how Crystal, Nim, and Zig achieve near-C speed.
 - [x] **C transpiler (simpler AOT path)**: translate Prism source to a self-contained `.c` file and compile it with GCC or Clang. Emit via `--emit-c`. Implemented entirely in the interpreter core (`src/transpiler.c`) as a C-emit backend alongside the bytecode backend.
+- [ ] **Strengthen JIT for simple integer loops first**: make hot loops with integer locals, arithmetic, comparisons, and back-edges compile reliably to native code so Prism can outperform Python on numeric loop benchmarks.
 
 ## Next Steps — VM Performance
+- [ ] **Add release build mode with aggressive optimisation**: add a `make release` target using `-O3 -DNDEBUG` so Prism can be benchmarked without debug-build overhead.
+- [ ] **Make VM/bytecode execution the default path for normal source runs**: avoid tree-walking AST execution for production-style runs; parse/compile once, then execute bytecode.
 - [ ] **Computed-goto dispatch** (`goto *dispatch_table[opcode]`): replaces the central `switch` with per-opcode direct branch targets. Each opcode jumps straight to the next without bouncing through a shared switch point. Guard with `#ifdef __GNUC__` so it falls back to `switch` on MSVC. Expected gain: **10–25%** on most workloads.
 - [ ] **Direct `uint8_t *ip` pointer**: replace the integer index `frame->ip` with a raw pointer into `chunk->code`. Eliminates a base-pointer add on every instruction fetch. Expected gain: **2–5%**.
 - [ ] **Strip push/pop bounds checks in release builds**: wrap `vm_push`/`vm_pop` overflow/underflow checks in `#ifndef NDEBUG` so they compile away when building with `-DNDEBUG`. Expected gain: **2–5%** on stack-heavy code.
 - [ ] **Local variable slots** (flat `Value *locals[]` per call frame): the compiler already knows which names are local to a function — emit `OP_LOAD_LOCAL n` / `OP_STORE_LOCAL n` that index a flat array instead of calling `env_get` (hash lookup + `strcmp` chain). Expected gain: **20–40%** for function-heavy code.
+- [ ] **Compact call frames for faster function calls**: avoid allocating heavyweight environments for every call when locals can live in indexed VM slots; optimize recursion-heavy workloads like `fib(32)`.
 - [ ] **Merge slow/cached method dispatch paths**: `vm_dispatch_method_slow` runs a full second `strcmp` chain even after a cache miss. Unify both paths so every method call goes through `vm_resolve_method_id` → `vm_dispatch_method_cached`, with the slow path only for truly unknown methods on class instances.
 - [ ] **NaN-boxing for scalar values**: encode integers, floats, bools, and null directly into a 64-bit `uint64_t` — no `malloc` for scalars at all. Trades code complexity for a **30–60%** speedup on arithmetic-heavy programs.
+- [ ] **Specialized integer bytecode instructions**: add hot opcodes such as `ADD_INT`, `LT_INT`, `INC_LOCAL_INT`, and integer-specific conditional jumps so tight loops avoid repeated dynamic type checks.
 
 ## Next Steps — Compiler
 - [ ] **Switch Prism source extension from `.pm` to `.pr`**: update file loading, examples, docs, syntax files, bytecode/cache naming, and tests so Prism no longer conflicts with Perl module files.
