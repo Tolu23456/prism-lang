@@ -1,0 +1,23 @@
+# Test new import syntax
+
+# 1. import math — bare name, resolves to lib/math.pr
+import math
+output(math.clamp(5, 0, 3))          # 3
+output(math.lerp(0, 10, 0.5))        # 5
+output(math.factorial(5))            # 120
+output(math.isPrime(13))             # true
+output(math.TAU)                     # 6.283...
+
+# 2. import math as mh — alias
+import math as mh
+output(mh.gcdOf(12, 8))              # 4
+output(mh.fibonacci(10))             # 55
+
+# 3. from math import clamp — single symbol
+from math import clamp
+output(clamp(-1, 0, 10))             # 0
+output(clamp(15, 0, 10))             # 10
+
+# 4. from math import lerp as mix — single symbol with alias
+from math import lerp as mix
+output(mix(0, 100, 0.25))            # 25

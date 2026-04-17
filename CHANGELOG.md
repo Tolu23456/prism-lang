@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.8.0 — Redesigned Import System with Namespacing
+
+### Added
+- **`import math` (bare-name import)**: module path may now be a bare identifier as well as a string literal. The resolver probes the following locations in order: `path`, `path.pm`, `path.pr`, `lib/path`, `lib/path.pm`, `lib/path.pr`. Writing `import math` automatically finds `lib/math.pr`.
+- **Namespace isolation**: `import X` now runs the module in a fresh child environment (parent = globals) so module-level definitions do not pollute the caller's scope. All bindings are collected into a `dict` and bound under the module name: `math.clamp(5, 0, 3)`, `math.TAU`, etc.
+- **`import X as alias`**: binds the module dict under a user-chosen name — `import math as mh` → `mh.lerp(...)`.
+- **`from X import Y`**: extracts a single name from a module and binds it directly in the caller's scope — `from math import clamp` → `clamp(5, 0, 3)` works without a namespace prefix.
+- **`from X import Y as Z`**: same as above with an alias — `from math import lerp as mix` → `mix(0, 100, 0.25)`.
+- **Module dict call dispatch** (`src/interpreter.c`): `NODE_METHOD_CALL` on a plain (non-class) dict now first checks whether the method name is a key holding a callable value. If so, the callable is invoked without `self` injection. This is what makes `math.clamp(...)` work naturally as a dot-call on the module namespace dict.
+
+### Fixed
+- Module functions that call sibling functions (e.g. `easeInBounce` calling `easeOutBounce`, `distance2d` calling `hypot2d`) work correctly — the module environment is kept alive by the functions' `env_retain` closures so the sibling lookup in the env chain always succeeds.
+- Module AST is no longer freed after import: `value_function` stores direct pointers into the parsed AST (`body`, `params`); calling `ast_node_free` while those functions are live caused use-after-free crashes. The module AST is now intentionally retained for the program lifetime (bounded, startup-time allocation).
+
+### Changed
+- `src/parser.c`: error message updated from "expected string path after 'import'" to "expected module name or path after 'import'" since bare identifiers are now the idiomatic form.
+- `todo.md`: `math` module item marked complete.
+
 ## v0.7.0 — Closures, Varargs, Arrow Functions, Spread, Release Build, Docs
 
 ### Added

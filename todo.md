@@ -146,7 +146,7 @@ Interpretation overhead is the fundamental ceiling. These items describe the roa
 - [x] Build PGUI as Prism's native GTK3-style GUI layer without external GTK3 or bindings
 
 ## Standard Library
-- [ ] `math` module: sin, cos, sqrt, log, pow, etc.
+- [x] `math` module: fully accessible via `import math` namespace
 - [ ] `fs` module: read_file, write_file, path operations
 - [ ] `os` module: env vars, exit, args
 - [ ] `net` module: basic HTTP requests

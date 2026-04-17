@@ -218,6 +218,7 @@ static void runtime_error(Interpreter *interp, const char *msg, int line) {
     snprintf(interp->error_msg, sizeof(interp->error_msg), "line %d: %s", line, msg);
 }
 
+
 /* Global interpreter pointer set during builtin dispatch so builtins can
    signal catchable errors without needing the interp in their signature. */
 static Interpreter *g_current_interp = NULL;
@@ -2239,57 +2240,115 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
 
     /* ---- import ---- */
     case NODE_IMPORT: {
-        const char *path = node->import_stmt.path;
-        /* Resolve import: try as-is, +.pr, lib/<path>, lib/<path>.pr */
+        const char *raw_path = node->import_stmt.path;
+
+        /* Probe order: as-is, .pm, .pr, lib/<name>, lib/<name>.pm, lib/<name>.pr
+         * This lets users write `import math` and have it resolve to lib/math.pr. */
+        static const char *im_exts[]    = { "", ".pm", ".pr", NULL };
+        static const char *im_prefixes[] = { "", "lib/", NULL };
+
         FILE *f = NULL;
-        char resolved[512];
-        char probe[512];
-        snprintf(resolved, sizeof(resolved), "%s", path);
-        if ((f = fopen(path, "r")) != NULL) {
-            /* as-is */
-        } else {
-            /* with .pr extension */
-            snprintf(probe, sizeof(probe), "%s.pr", path);
-            if ((f = fopen(probe, "r")) != NULL) {
-                snprintf(resolved, sizeof(resolved), "%s", probe);
-            } else {
-                /* lib/<path> */
-                snprintf(probe, sizeof(probe), "lib/%s", path);
-                if ((f = fopen(probe, "r")) != NULL) {
-                    snprintf(resolved, sizeof(resolved), "%s", probe);
-                } else {
-                    /* lib/<path>.pr */
-                    snprintf(probe, sizeof(probe), "lib/%s.pr", path);
-                    if ((f = fopen(probe, "r")) != NULL)
-                        snprintf(resolved, sizeof(resolved), "%s", probe);
-                }
+        char resolved[512] = {0};
+        for (int pi = 0; im_prefixes[pi] && !f; pi++) {
+            for (int ei = 0; im_exts[ei] != NULL && !f; ei++) {
+                snprintf(resolved, sizeof(resolved), "%s%s%s",
+                         im_prefixes[pi], raw_path, im_exts[ei]);
+                f = fopen(resolved, "r");
             }
         }
         if (!f) {
             char msg[256];
-            snprintf(msg, sizeof(msg), "cannot import '%s': file not found", path);
-            interp->had_error = 1;
-            snprintf(interp->error_msg, sizeof(interp->error_msg), "%s", msg);
+            snprintf(msg, sizeof(msg), "cannot import '%s': file not found", raw_path);
+            runtime_error(interp, msg, node->line);
             return value_null();
         }
+
+        /* Read source */
         fseek(f, 0, SEEK_END);
         long sz = ftell(f); rewind(f);
-        char *src = malloc(sz + 1);
+        char *src = malloc((size_t)sz + 1);
         { size_t _nr = fread(src, 1, (size_t)sz, f); (void)_nr; }
         src[sz] = '\0'; fclose(f);
 
+        /* Parse */
         char errbuf[512] = {0};
         ASTNode *prog = parser_parse_source(src, errbuf, sizeof(errbuf));
         free(src);
         if (!prog) {
-            interp->had_error = 1;
-            snprintf(interp->error_msg, sizeof(interp->error_msg),
-                     "import '%s': %s", path, errbuf);
+            char msg[512];
+            snprintf(msg, sizeof(msg), "import '%s': %s", raw_path, errbuf);
+            runtime_error(interp, msg, node->line);
             return value_null();
         }
-        Value *r = eval_node(interp, prog, env);
-        ast_node_free(prog);
-        value_release(r);
+
+        /* Execute in an isolated module environment whose parent is globals.
+         * This gives module code access to all builtins without inheriting the
+         * caller's local variables.  Functions defined here capture mod_env as
+         * their closure; env_clear_slots + env_free below break the cycle once
+         * we've extracted what we need. */
+        Env *mod_env = env_new(interp->globals);
+        Value *run_result = eval_node(interp, prog, mod_env);
+        /* NOTE: prog is intentionally NOT freed here.  Function values created
+         * during module execution store direct pointers into the AST (body,
+         * params).  Freeing the AST while those functions are alive would leave
+         * dangling pointers.  The module AST is a bounded allocation that lives
+         * for the duration of the program — it is freed implicitly by the OS
+         * when the process exits.  This is acceptable because import is a
+         * one-time, program-startup operation. */
+        value_release(run_result);
+
+        if (interp->had_error) {
+            env_free(mod_env);
+            return value_null();
+        }
+
+        const char *symbol = node->import_stmt.symbol;
+        const char *alias  = node->import_stmt.alias;
+
+        if (symbol) {
+            /* from X import Y [as Z] — bind a single name into the caller's env */
+            Value *val = env_get(mod_env, symbol);
+            if (!val) {
+                char msg[256];
+                snprintf(msg, sizeof(msg),
+                         "cannot import '%s' from '%s': name not found",
+                         symbol, raw_path);
+                runtime_error(interp, msg, node->line);
+                env_free(mod_env);
+                return value_null();
+            }
+            const char *bind_name = alias ? alias : symbol;
+            env_set(env, bind_name, val, false);
+        } else {
+            /* import X [as alias] — wrap all module bindings in a dict namespace.
+             * Functions in the dict retain mod_env as their closure so that they
+             * can still call sibling functions defined in the same module. */
+            Value *mod_dict = value_dict_new();
+            for (int i = 0; i < mod_env->cap; i++) {
+                if (!mod_env->slots[i].key) continue;
+                Value *k = value_string(mod_env->slots[i].key);
+                value_dict_set(mod_dict, k, mod_env->slots[i].val);
+                value_release(k);
+            }
+
+            /* Derive binding name from the last path component, stripped of
+             * any extension: "lib/math.pr" → "math", "utils" → "utils" */
+            char mod_name[256];
+            const char *base = strrchr(resolved, '/');
+            base = base ? base + 1 : resolved;
+            snprintf(mod_name, sizeof(mod_name), "%s", base);
+            char *dot = strrchr(mod_name, '.');
+            if (dot) *dot = '\0';
+
+            const char *bind_name = alias ? alias : mod_name;
+            env_set(env, bind_name, mod_dict, false);
+            value_release(mod_dict);
+        }
+
+        /* Drop our initial reference to mod_env.  Module functions keep it alive
+         * via their own env_retain (captured closure), so this is safe.  The env
+         * will be freed when all functions referencing it are released. */
+        env_free(mod_env);
         return value_null();
     }
 
@@ -2580,9 +2639,65 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
                 }
                 env_free(call_env);
             } else {
-                /* fall through to regular dict method or builtin lookup */
-                result = dict_method(interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line);
-                if (result == NULL) result = value_null();
+                /* Not a class instance.
+                 * First check whether the dict has a user-defined function stored
+                 * at this key — this is the module-namespace pattern where
+                 *   import math  →  math is a dict  →  math.clamp(5,0,3)
+                 * If the key holds a callable, invoke it without self injection.
+                 * Otherwise fall through to built-in dict method dispatch. */
+                Value *ns_mk  = value_string(node->method_call.method);
+                Value *ns_fn  = value_dict_get(obj, ns_mk);
+                value_release(ns_mk);
+
+                if (ns_fn && ns_fn->type == VAL_BUILTIN) {
+                    g_current_interp = interp;
+                    result = ns_fn->builtin.fn(args, node->method_call.arg_count);
+                    g_current_interp = NULL;
+                    if (!result) result = value_null();
+                } else if (ns_fn && ns_fn->type == VAL_FUNCTION) {
+                    Env *ns_env = env_new(ns_fn->func.closure);
+                    for (int pi = 0; pi < ns_fn->func.param_count; pi++) {
+                        const char *pname = ns_fn->func.params[pi].name;
+                        if (pname[0] == '.' && pname[1] == '.' && pname[2] == '.') {
+                            const char *real_name = pname + 3;
+                            Value *va = value_array_new();
+                            for (int j = pi; j < node->method_call.arg_count; j++)
+                                value_array_push(va, value_retain(args[j]));
+                            env_set(ns_env, real_name, va, false);
+                            value_release(va);
+                            break;
+                        }
+                        Value *av;
+                        if (pi < node->method_call.arg_count) {
+                            av = value_retain(args[pi]);
+                        } else if (ns_fn->func.params[pi].default_val) {
+                            av = eval_node(interp, ns_fn->func.params[pi].default_val,
+                                           ns_fn->func.closure);
+                            if (interp->had_error) { env_free(ns_env); result = value_null(); goto method_cleanup; }
+                        } else {
+                            av = value_null();
+                        }
+                        env_set(ns_env, pname, av, false);
+                        value_release(av);
+                    }
+                    bool prev_ret2 = interp->returning;
+                    interp->returning = false;
+                    value_release(eval_node(interp, ns_fn->func.body, ns_env));
+                    result = value_null();
+                    if (interp->returning) {
+                        value_release(result);
+                        result = interp->return_val ? interp->return_val : value_null();
+                        interp->return_val = NULL;
+                        interp->returning  = false;
+                    }
+                    interp->returning = prev_ret2 && !interp->returning ? false
+                                                                        : interp->returning;
+                    env_free(ns_env);
+                } else {
+                    /* Built-in dict methods: keys(), values(), has(), etc. */
+                    result = dict_method(interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line);
+                    if (result == NULL) result = value_null();
+                }
             }
         } else {
             switch (obj->type) {
@@ -2598,6 +2713,7 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
             }
         }
 
+    method_cleanup:
         for (int i = 0; i < node->method_call.arg_count; i++) value_release(args[i]);
         free(args);
         value_release(obj);

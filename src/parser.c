@@ -1605,10 +1605,10 @@ static ASTNode *parse_import_stmt(Parser *p) {
         return n;
     }
 
-    /* import "path" [as alias] */
+    /* import name [as alias]  — name may be a bare identifier or a string */
     advance(p); /* consume 'import' */
     if (!check(p, TOKEN_STRING_LIT) && !check(p, TOKEN_IDENT)) {
-        error_at(p, "expected string path after 'import'");
+        error_at(p, "expected module name or path after 'import'");
         return ast_node_new(NODE_NULL_LIT, line);
     }
     char *path = strdup(p->current->value);
