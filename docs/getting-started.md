@@ -6,8 +6,8 @@ Source files use the `.pr` extension.
 ## Building
 
 ```bash
-git clone <repo>
-cd prism
+git clone https://github.com/Tolu23456/prism-lang.git
+cd prism-lang
 make          # debug build  → ./prism
 make release  # O3 build     → ./prism-release
 ```
