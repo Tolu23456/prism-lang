@@ -20,10 +20,23 @@ typedef enum {
     NODE_FOR_IN,
     NODE_FUNC_DECL,
 
+    /* New control flow */
+    NODE_REPEAT,
+    NODE_TRY_CATCH,
+    NODE_THROW,
+    NODE_MATCH,
+
     /* Expressions */
     NODE_BINOP,
     NODE_UNOP,
     NODE_TERNARY,
+
+    /* New expression nodes */
+    NODE_RANGE,
+    NODE_NULLCOAL,
+    NODE_SAFE_ACCESS,
+    NODE_IS_EXPR,
+    NODE_WALRUS,
 
     /* Literals */
     NODE_INT_LIT,
@@ -59,6 +72,7 @@ typedef struct ASTNode ASTNode;
 typedef struct {
     char    *name;
     char    *type_hint;
+    ASTNode *default_val;  /* optional default value expression; NULL if none */
 } Param;
 
 struct ASTNode {
@@ -103,11 +117,63 @@ struct ASTNode {
             ASTNode *body;
         } func_decl;
 
+        /* NODE_REPEAT */
+        struct {
+            ASTNode *count;    /* repeat N: count expr; NULL if while/until */
+            ASTNode *cond;     /* repeat while/until: condition; NULL if count */
+            bool     until;    /* true = repeat until (negate cond) */
+            ASTNode *body;
+        } repeat_stmt;
+
+        /* NODE_TRY_CATCH */
+        struct {
+            ASTNode *try_body;
+            char    *catch_var;     /* variable name for caught error; may be NULL */
+            ASTNode *catch_body;
+            ASTNode *finally_body;  /* optional; NULL if absent */
+        } try_catch;
+
+        /* NODE_THROW */
+        struct { ASTNode *value; } throw_stmt;
+
+        /* NODE_MATCH */
+        struct {
+            ASTNode  *value;
+            ASTNode **patterns;  /* NULL entry = else */
+            ASTNode **bodies;
+            int       count;
+            ASTNode  *else_body;
+        } match_stmt;
+
         /* NODE_BINOP */
         struct { char op[4]; ASTNode *left; ASTNode *right; } binop;
 
         /* NODE_UNOP */
         struct { char op[4]; ASTNode *operand; } unop;
+
+        /* NODE_RANGE */
+        struct {
+            ASTNode *start;
+            ASTNode *end;
+            ASTNode *step;       /* NULL = step 1 */
+            bool     inclusive;  /* true: start..end includes end */
+        } range_lit;
+
+        /* NODE_NULLCOAL */
+        struct { ASTNode *left; ASTNode *right; } nullcoal;
+
+        /* NODE_SAFE_ACCESS */
+        struct {
+            ASTNode *obj;
+            char    *name;
+            /* method call fields */
+            ASTNode **args;
+            int       arg_count;
+            bool      is_call;
+        } safe_access;
+
+        /* NODE_IS_EXPR */
+        struct { ASTNode *obj; char *type_name; bool negate; } is_expr;
 
         /* NODE_INT_LIT */
         struct { long long value; } int_lit;
@@ -166,7 +232,11 @@ struct ASTNode {
         struct { ASTNode *item; ASTNode *container; } in_expr;
 
         /* NODE_IMPORT */
-        struct { char *path; } import_stmt;
+        struct {
+            char *path;
+            char *alias;    /* 'as' alias; NULL if none */
+            char *symbol;   /* from X import Y: symbol name; NULL for plain import */
+        } import_stmt;
     };
 };
 

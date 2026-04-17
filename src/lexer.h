@@ -33,6 +33,21 @@ typedef enum {
     TOKEN_CONTINUE,
     TOKEN_IMPORT,
 
+    /* New keywords */
+    TOKEN_REPEAT,
+    TOKEN_UNTIL,
+    TOKEN_STEP,
+    TOKEN_TRY,
+    TOKEN_CATCH,
+    TOKEN_THROW,
+    TOKEN_MATCH,
+    TOKEN_WHEN,
+    TOKEN_IS,
+    TOKEN_FROM,
+    TOKEN_AS,
+    TOKEN_CLASS,
+    TOKEN_SELF,
+
     /* Built-in function keywords */
     TOKEN_OUTPUT,
     TOKEN_INPUT,
@@ -44,6 +59,7 @@ typedef enum {
     TOKEN_SET_KW,
     TOKEN_ARR_KW,
     TOKEN_TYPE_KW,
+    TOKEN_DICT_KW,
 
     /* Identifier */
     TOKEN_IDENT,
@@ -70,6 +86,7 @@ typedef enum {
     TOKEN_MINUS_EQ,
     TOKEN_STAR_EQ,
     TOKEN_SLASH_EQ,
+    TOKEN_PERCENT_EQ,
 
     /* Logical / bitwise */
     TOKEN_AMPAMP,
@@ -79,6 +96,13 @@ typedef enum {
     TOKEN_PIPE,
     TOKEN_CARET,
     TOKEN_TILDE,
+
+    /* New operators */
+    TOKEN_DOTDOT,       /* .. range */
+    TOKEN_SAFE_DOT,     /* ?. safe member access */
+    TOKEN_NULLCOAL,     /* ?? null coalescing */
+    TOKEN_WALRUS,       /* := declare-assign */
+    TOKEN_PIPE_ARROW,   /* |> pipe */
 
     /* Punctuation */
     TOKEN_LPAREN,
@@ -93,6 +117,7 @@ typedef enum {
     TOKEN_DOT,
     TOKEN_AT,
     TOKEN_ARROW,
+    TOKEN_QUESTION,
 
     /* Special */
     TOKEN_NEWLINE,

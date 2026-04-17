@@ -41,9 +41,10 @@ static bool opt_jit           = false;
 static bool opt_jit_verbose   = false;
 static bool opt_emit_c        = false;
 static bool opt_emit_llvm     = false;
+static bool opt_use_vm        = false; /* --vm: use bytecode VM instead of tree-walker */
 
 static void bytecode_path_for_source(const char *filename, char *out, size_t out_len) {
-    snprintf(out, out_len, "%s", filename ? filename : "out.pm");
+    snprintf(out, out_len, "%s", filename ? filename : "out.pr");
     char *dot = strrchr(out, '.');
     if (dot) snprintf(dot, out_len - (size_t)(dot - out), ".pmc");
     else     strncat(out, ".pmc", out_len - strlen(out) - 1);
@@ -336,6 +337,8 @@ static const char *configure_gc_from_args(int argc, char **argv) {
             opt_emit_c = true;
         } else if (strcmp(argv[i], "--emit-llvm") == 0) {
             opt_emit_llvm = true;
+        } else if (strcmp(argv[i], "--vm") == 0) {
+            opt_use_vm = true;
         } else if (!path) {
             path = argv[i];
         }
@@ -381,7 +384,7 @@ int main(int argc, char **argv) {
                 gc_shutdown(gc_global());
                 return rc;
             }
-            fprintf(stderr, "Usage: prism %s <file.pm>\n", argv[i]);
+            fprintf(stderr, "Usage: prism %s <file.pr>\n", argv[i]);
             value_immortals_free();
             return 1;
         }
@@ -398,8 +401,8 @@ int main(int argc, char **argv) {
 
     if (path) {
         const char *dot = strrchr(path, '.');
-        if (!dot || strcmp(dot, ".pm") != 0)
-            fprintf(stderr, "Warning: '%s' does not have .pm extension\n", path);
+        if (!dot || strcmp(dot, ".pr") != 0)
+            fprintf(stderr, "Warning: '%s' does not have .pr extension\n", path);
 
         char *src = read_file(path);
         if (!src) {
@@ -416,7 +419,10 @@ int main(int argc, char **argv) {
         } else {
             /* script workload: use adaptive policy */
             gc_set_workload(gc_global(), GC_WORKLOAD_SCRIPT);
-            code = opt_bench ? run_benchmark(src, path) : run_source_vm(src, path);
+            /* default: tree-walker; use --vm for bytecode VM */
+            code = opt_bench   ? run_benchmark(src, path)  :
+                   opt_use_vm  ? run_source_vm(src, path)  :
+                                 run_source_tree(src, path);
         }
 
         free(src);
@@ -426,9 +432,10 @@ int main(int argc, char **argv) {
     }
 
     fprintf(stderr,
-        "Usage: prism [options] [file.pm]\n"
+        "Usage: prism [options] [file.pr]\n"
         "Options:\n"
         "  --version, -v            print version, build date, and feature flags\n"
+        "  --vm                     use bytecode VM instead of tree-walker (default)\n"
         "  --emit-bytecode          write compiled .pmc bytecode file\n"
         "  --bench                  compare tree-walker vs VM speed\n"
         "  --jit                    enable JIT compiler for hot integer loops\n"

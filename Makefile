@@ -66,7 +66,7 @@ clean:
 	rm -f src/*.o $(TARGET) prism-san
 
 run: $(TARGET)
-	./prism examples/hello.pm
+	./prism examples/hello.pr
 
 test: $(TARGET)
 	@chmod +x tests/run_tests.sh

@@ -1,0 +1,102 @@
+output "=== Prism New Features Test ==="
+
+output "--- Ranges ---"
+let r = 1..5
+output r
+
+let r2 = 1..10 step 2
+output r2
+
+for x in 1..3 {
+    output x
+}
+
+output "--- Repeat ---"
+let count = 0
+repeat 3 {
+    count += 1
+}
+output count
+
+let n = 0
+repeat while n < 3 {
+    n += 1
+}
+output n
+
+let m = 5
+repeat until m == 0 {
+    m -= 1
+}
+output m
+
+output "--- Try/Catch ---"
+try {
+    throw "something went wrong"
+} catch err {
+    output "caught: {err}"
+}
+
+output "--- Match ---"
+let val = 2
+match val {
+    when 1 { output "one" }
+    when 2 { output "two" }
+    when 3 { output "three" }
+    else   { output "other" }
+}
+
+output "--- Null coalescing ---"
+let x = null
+let y = x ?? "default"
+output y
+
+let z = "real"
+output z ?? "fallback"
+
+output "--- Is/is not ---"
+let a = 42
+output a is int
+output a is not str
+output "hello" is str
+
+output "--- Auto f-string ---"
+let name = "Prism"
+output "Hello, {name}!"
+
+output "--- String methods ---"
+let s = "Hello, World!"
+output s.contains("World")
+output s.before(",")
+output s.after(", ")
+output s.reverse()
+output s.words()
+output "  hello  ".strip()
+
+output "--- Array methods ---"
+let arr = [3, 1, 2]
+arr.sort()
+output arr
+arr.reverse()
+output arr
+output arr.contains(3)
+
+output "--- Dict methods ---"
+let d = {"a": 1, "b": 2}
+output d.has("a")
+output d.has("c")
+d.remove("b")
+output d
+
+output "--- Walrus operator ---"
+x := 10
+output x
+
+output "--- Default params ---"
+func greet(name, greeting = "Hello") {
+    output "{greeting}, {name}!"
+}
+greet("Alice")
+greet("Bob", "Hi")
+
+output "=== All tests complete ==="

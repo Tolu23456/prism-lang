@@ -26,7 +26,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "make && echo '' && echo '=== Running examples/hello.pm ===' && ./prism examples/hello.pm"
+args = "make && echo '' && echo '=== Running examples/hello.pr ===' && ./prism examples/hello.pr"
 
 [[ports]]
 localPort = 5000

@@ -71,9 +71,38 @@ void ast_node_free(ASTNode *n) {
             for (int i = 0; i < n->func_decl.param_count; i++) {
                 free(n->func_decl.params[i].name);
                 free(n->func_decl.params[i].type_hint);
+                ast_node_free(n->func_decl.params[i].default_val);
             }
             free(n->func_decl.params);
             ast_node_free(n->func_decl.body);
+            break;
+
+        case NODE_REPEAT:
+            ast_node_free(n->repeat_stmt.count);
+            ast_node_free(n->repeat_stmt.cond);
+            ast_node_free(n->repeat_stmt.body);
+            break;
+
+        case NODE_TRY_CATCH:
+            ast_node_free(n->try_catch.try_body);
+            free(n->try_catch.catch_var);
+            ast_node_free(n->try_catch.catch_body);
+            ast_node_free(n->try_catch.finally_body);
+            break;
+
+        case NODE_THROW:
+            ast_node_free(n->throw_stmt.value);
+            break;
+
+        case NODE_MATCH:
+            ast_node_free(n->match_stmt.value);
+            for (int i = 0; i < n->match_stmt.count; i++) {
+                ast_node_free(n->match_stmt.patterns[i]);
+                ast_node_free(n->match_stmt.bodies[i]);
+            }
+            free(n->match_stmt.patterns);
+            free(n->match_stmt.bodies);
+            ast_node_free(n->match_stmt.else_body);
             break;
 
         case NODE_BINOP:
@@ -83,6 +112,30 @@ void ast_node_free(ASTNode *n) {
 
         case NODE_UNOP:
             ast_node_free(n->unop.operand);
+            break;
+
+        case NODE_RANGE:
+            ast_node_free(n->range_lit.start);
+            ast_node_free(n->range_lit.end);
+            ast_node_free(n->range_lit.step);
+            break;
+
+        case NODE_NULLCOAL:
+            ast_node_free(n->nullcoal.left);
+            ast_node_free(n->nullcoal.right);
+            break;
+
+        case NODE_SAFE_ACCESS:
+            ast_node_free(n->safe_access.obj);
+            free(n->safe_access.name);
+            for (int i = 0; i < n->safe_access.arg_count; i++)
+                ast_node_free(n->safe_access.args[i]);
+            free(n->safe_access.args);
+            break;
+
+        case NODE_IS_EXPR:
+            ast_node_free(n->is_expr.obj);
+            free(n->is_expr.type_name);
             break;
 
         case NODE_STRING_LIT:
@@ -151,6 +204,8 @@ void ast_node_free(ASTNode *n) {
 
         case NODE_IMPORT:
             free(n->import_stmt.path);
+            free(n->import_stmt.alias);
+            free(n->import_stmt.symbol);
             break;
 
         default:

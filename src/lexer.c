@@ -80,6 +80,19 @@ static const KW KEYWORDS[] = {
     {"break",    TOKEN_BREAK},
     {"continue", TOKEN_CONTINUE},
     {"import",   TOKEN_IMPORT},
+    {"repeat",   TOKEN_REPEAT},
+    {"until",    TOKEN_UNTIL},
+    {"step",     TOKEN_STEP},
+    {"try",      TOKEN_TRY},
+    {"catch",    TOKEN_CATCH},
+    {"throw",    TOKEN_THROW},
+    {"match",    TOKEN_MATCH},
+    {"when",     TOKEN_WHEN},
+    {"is",       TOKEN_IS},
+    {"from",     TOKEN_FROM},
+    {"as",       TOKEN_AS},
+    {"class",    TOKEN_CLASS},
+    {"self",     TOKEN_SELF},
     {"output",   TOKEN_OUTPUT},
     {"input",    TOKEN_INPUT},
     {"len",      TOKEN_LEN},
@@ -90,6 +103,7 @@ static const KW KEYWORDS[] = {
     {"set",      TOKEN_SET_KW},
     {"arr",      TOKEN_ARR_KW},
     {"type",     TOKEN_TYPE_KW},
+    {"dict",     TOKEN_DICT_KW},
     {NULL, 0}
 };
 
@@ -100,6 +114,16 @@ static TokenType keyword_type(const char *word) {
 }
 
 /* ------------------------------------------------------------------ string helpers */
+
+/* Returns true if a double-quoted string content contains an unescaped { */
+static bool has_interpolation(const char *s) {
+    for (const char *p = s; *p; p++) {
+        if (*p == '\\') { p++; continue; } /* skip escaped chars */
+        if (*p == '{' && *(p+1) != '{')    /* {{ is escaped brace, not interpolation */
+            return true;
+    }
+    return false;
+}
 
 static char *read_string(Lexer *l, char quote, bool verbatim, bool fstr) {
     /* caller already consumed the opening quote (and prefix chars) */
@@ -152,6 +176,17 @@ static char *read_string(Lexer *l, char quote, bool verbatim, bool fstr) {
     return buf;
 }
 
+/* Strip underscore separators from a numeric string (modifies copy) */
+static char *strip_underscores(const char *src) {
+    char *buf = malloc(strlen(src) + 1);
+    char *dst = buf;
+    for (const char *p = src; *p; p++) {
+        if (*p != '_') *dst++ = *p;
+    }
+    *dst = '\0';
+    return buf;
+}
+
 /* ------------------------------------------------------------------ main tokenizer */
 
 Token *lexer_next(Lexer *l) {
@@ -175,28 +210,49 @@ Token *lexer_next(Lexer *l) {
     char c = cur(l);
 
     /* ---- numbers ---- */
-    if (isdigit(c) || (c == '0' && (peek1(l) == 'x' || peek1(l) == 'b'))) {
-        int   cap = 32, sz = 0;
+    if (isdigit(c) || (c == '0' && (peek1(l) == 'x' || peek1(l) == 'b' ||
+                                     peek1(l) == 'o' || peek1(l) == 'O'))) {
+        int   cap = 64, sz = 0;
         char *buf = malloc(cap);
         bool  is_float = false, is_complex = false;
-        bool  is_hex = false, is_bin = false;
+        bool  is_hex = false, is_bin = false, is_oct = false;
 
         if (c == '0' && peek1(l) == 'x') { /* hex */
             buf[sz++] = cur(l); advance(l);
             buf[sz++] = cur(l); advance(l);
             is_hex = true;
-            while (isxdigit(cur(l))) { buf[sz++] = cur(l); advance(l); }
+            while (isxdigit(cur(l)) || cur(l) == '_') {
+                if (cur(l) != '_') buf[sz++] = cur(l);
+                advance(l);
+            }
         } else if (c == '0' && peek1(l) == 'b') { /* binary */
             buf[sz++] = cur(l); advance(l);
             buf[sz++] = cur(l); advance(l);
             is_bin = true;
-            while (cur(l) == '0' || cur(l) == '1') { buf[sz++] = cur(l); advance(l); }
+            while (cur(l) == '0' || cur(l) == '1' || cur(l) == '_') {
+                if (cur(l) != '_') buf[sz++] = cur(l);
+                advance(l);
+            }
+        } else if (c == '0' && (peek1(l) == 'o' || peek1(l) == 'O')) { /* octal */
+            advance(l); advance(l); /* skip 0o */
+            is_oct = true;
+            while ((cur(l) >= '0' && cur(l) <= '7') || cur(l) == '_') {
+                if (cur(l) != '_') buf[sz++] = cur(l);
+                advance(l);
+            }
         } else {
-            while (isdigit(cur(l))) { buf[sz++] = cur(l); advance(l); }
+            while (isdigit(cur(l)) || cur(l) == '_') {
+                if (cur(l) != '_') buf[sz++] = cur(l);
+                advance(l);
+            }
+            /* Only lex . as float if not followed by another . (avoid 1..10 parsing as float) */
             if (cur(l) == '.' && isdigit(peek1(l))) {
                 is_float = true;
                 buf[sz++] = cur(l); advance(l);
-                while (isdigit(cur(l))) { buf[sz++] = cur(l); advance(l); }
+                while (isdigit(cur(l)) || cur(l) == '_') {
+                    if (cur(l) != '_') buf[sz++] = cur(l);
+                    advance(l);
+                }
             }
             if (cur(l) == 'e' || cur(l) == 'E') {
                 is_float = true;
@@ -212,10 +268,18 @@ Token *lexer_next(Lexer *l) {
         buf[sz] = '\0';
 
         TokenType tt;
-        if (is_complex)       tt = TOKEN_COMPLEX_LIT;
-        else if (is_float)    tt = TOKEN_FLOAT_LIT;
-        else if (is_hex || is_bin) tt = TOKEN_INT_LIT;
-        else                  tt = TOKEN_INT_LIT;
+        if (is_complex)     tt = TOKEN_COMPLEX_LIT;
+        else if (is_float)  tt = TOKEN_FLOAT_LIT;
+        else if (is_oct) {
+            /* convert octal string to decimal for storage */
+            long long oval = strtoll(buf, NULL, 8);
+            char dbuf[32];
+            snprintf(dbuf, sizeof(dbuf), "%lld", oval);
+            Token *t = make_token(l, TOKEN_INT_LIT, dbuf);
+            free(buf);
+            return t;
+        }
+        else                tt = TOKEN_INT_LIT;
 
         Token *t = make_token(l, tt, buf);
         free(buf);
@@ -226,7 +290,11 @@ Token *lexer_next(Lexer *l) {
     if (c == '"' || c == '\'') {
         char quote = c; advance(l);
         char *s = read_string(l, quote, false, false);
-        Token *t = make_token(l, TOKEN_STRING_LIT, s);
+        TokenType tt = TOKEN_STRING_LIT;
+        /* Auto-interpolation: double-quoted strings with {expr} become f-strings */
+        if (quote == '"' && has_interpolation(s))
+            tt = TOKEN_FSTRING_LIT;
+        Token *t = make_token(l, tt, s);
         free(s);
         return t;
     }
@@ -297,7 +365,9 @@ Token *lexer_next(Lexer *l) {
         case '/':
             if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_SLASH_EQ, "/="); }
             return make_token_char(l, TOKEN_SLASH, '/');
-        case '%': return make_token_char(l, TOKEN_PERCENT, '%');
+        case '%':
+            if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_PERCENT_EQ, "%="); }
+            return make_token_char(l, TOKEN_PERCENT, '%');
         case '=':
             if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_EQEQ, "=="); }
             return make_token_char(l, TOKEN_EQ, '=');
@@ -315,6 +385,7 @@ Token *lexer_next(Lexer *l) {
             return make_token_char(l, TOKEN_AMP, '&');
         case '|':
             if (cur(l) == '|') { advance(l); return make_token(l, TOKEN_PIPEPIPE, "||"); }
+            if (cur(l) == '>') { advance(l); return make_token(l, TOKEN_PIPE_ARROW, "|>"); }
             return make_token_char(l, TOKEN_PIPE, '|');
         case '^': return make_token_char(l, TOKEN_CARET, '^');
         case '~': return make_token_char(l, TOKEN_TILDE, '~');
@@ -326,9 +397,17 @@ Token *lexer_next(Lexer *l) {
         case '}': return make_token_char(l, TOKEN_RBRACE, '}');
         case ',': return make_token_char(l, TOKEN_COMMA, ',');
         case ';': return make_token_char(l, TOKEN_SEMICOLON, ';');
-        case ':': return make_token_char(l, TOKEN_COLON, ':');
-        case '.': return make_token_char(l, TOKEN_DOT, '.');
+        case ':':
+            if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_WALRUS, ":="); }
+            return make_token_char(l, TOKEN_COLON, ':');
+        case '.':
+            if (cur(l) == '.') { advance(l); return make_token(l, TOKEN_DOTDOT, ".."); }
+            return make_token_char(l, TOKEN_DOT, '.');
         case '@': return make_token_char(l, TOKEN_AT, '@');
+        case '?':
+            if (cur(l) == '.') { advance(l); return make_token(l, TOKEN_SAFE_DOT, "?."); }
+            if (cur(l) == '?') { advance(l); return make_token(l, TOKEN_NULLCOAL, "??"); }
+            return make_token_char(l, TOKEN_QUESTION, '?');
         default: {
             char buf[2] = {c, '\0'};
             return make_token(l, TOKEN_ERROR, buf);
@@ -364,6 +443,20 @@ const char *token_type_name(TokenType t) {
         case TOKEN_NULL:       return "null";
         case TOKEN_BREAK:      return "break";
         case TOKEN_CONTINUE:   return "continue";
+        case TOKEN_IMPORT:     return "import";
+        case TOKEN_REPEAT:     return "repeat";
+        case TOKEN_UNTIL:      return "until";
+        case TOKEN_STEP:       return "step";
+        case TOKEN_TRY:        return "try";
+        case TOKEN_CATCH:      return "catch";
+        case TOKEN_THROW:      return "throw";
+        case TOKEN_MATCH:      return "match";
+        case TOKEN_WHEN:       return "when";
+        case TOKEN_IS:         return "is";
+        case TOKEN_FROM:       return "from";
+        case TOKEN_AS:         return "as";
+        case TOKEN_CLASS:      return "class";
+        case TOKEN_SELF:       return "self";
         case TOKEN_OUTPUT:     return "output";
         case TOKEN_INPUT:      return "input";
         case TOKEN_IDENT:      return "IDENT";
@@ -384,6 +477,7 @@ const char *token_type_name(TokenType t) {
         case TOKEN_MINUS_EQ:   return "-=";
         case TOKEN_STAR_EQ:    return "*=";
         case TOKEN_SLASH_EQ:   return "/=";
+        case TOKEN_PERCENT_EQ: return "%=";
         case TOKEN_AMPAMP:     return "&&";
         case TOKEN_PIPEPIPE:   return "||";
         case TOKEN_BANG:       return "!";
@@ -391,6 +485,11 @@ const char *token_type_name(TokenType t) {
         case TOKEN_PIPE:       return "|";
         case TOKEN_CARET:      return "^";
         case TOKEN_TILDE:      return "~";
+        case TOKEN_DOTDOT:     return "..";
+        case TOKEN_SAFE_DOT:   return "?.";
+        case TOKEN_NULLCOAL:   return "??";
+        case TOKEN_WALRUS:     return ":=";
+        case TOKEN_PIPE_ARROW: return "|>";
         case TOKEN_LPAREN:     return "(";
         case TOKEN_RPAREN:     return ")";
         case TOKEN_LBRACKET:   return "[";
@@ -401,6 +500,7 @@ const char *token_type_name(TokenType t) {
         case TOKEN_SEMICOLON:  return ";";
         case TOKEN_COLON:      return ":";
         case TOKEN_DOT:        return ".";
+        case TOKEN_QUESTION:   return "?";
         case TOKEN_NEWLINE:    return "NEWLINE";
         case TOKEN_EOF:        return "EOF";
         case TOKEN_ERROR:      return "ERROR";

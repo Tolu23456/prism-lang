@@ -1072,13 +1072,3 @@ expect age > 0 else "Age must be positive"
 expect name not empty else "Name is required"
 
 Cleaner than verbose assertion functions.
-
-
-14. Built-in command style
-For scripting:
-
-run "ls"
-run "mkdir projects"
-let files = run "ls" capture
-
-Prism could become much easier for automation than Python.

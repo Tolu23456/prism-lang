@@ -635,6 +635,11 @@ Value *value_copy(Value *v) {
             return a;
         }
         case VAL_TUPLE:   return value_tuple_new(v->tuple.items, v->tuple.len);
+        case VAL_SET: {
+            Value *s = value_set_new();
+            for (int i = 0; i < v->set.len; i++) value_set_add(s, v->set.items[i]);
+            return s;
+        }
         default:          return value_retain(v);
     }
 }

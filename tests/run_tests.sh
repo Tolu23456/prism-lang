@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prism test runner — runs all tests/test_*.pm files
+# Prism test runner — runs all tests/test_*.pr files
 # Exit 0 if all pass, 1 if any fail.
 
 PRISM="${1:-./prism}"
@@ -12,7 +12,7 @@ if [ ! -x "$PRISM" ]; then
     exit 1
 fi
 
-for f in tests/test_*.pm; do
+for f in tests/test_*.pr; do
     OUTPUT=$("$PRISM" "$f" 2>&1)
     CODE=$?
     if [ $CODE -eq 0 ]; then

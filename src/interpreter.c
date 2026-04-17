@@ -279,6 +279,21 @@ static Value *builtin_str_fn(Value **args, int argc) {
     return v;
 }
 
+static Value *builtin_dict_fn(Value **args, int argc) {
+    Value *d = value_dict_new();
+    /* dict() -> empty dict
+     * dict(key, val, key, val, ...) -> pairs
+     * dict(other_dict) -> shallow copy */
+    if (argc == 1 && args[0]->type == VAL_DICT) {
+        for (int i = 0; i < args[0]->dict.len; i++)
+            value_dict_set(d, args[0]->dict.entries[i].key, args[0]->dict.entries[i].val);
+    } else if (argc % 2 == 0) {
+        for (int i = 0; i < argc; i += 2)
+            value_dict_set(d, args[i], args[i + 1]);
+    }
+    return d;
+}
+
 static Value *builtin_set_fn(Value **args, int argc) {
     Value *s = value_set_new();
     if (argc >= 1) {
@@ -605,6 +620,7 @@ static void register_builtins(Interpreter *interp) {
         {"int",         builtin_int_fn},
         {"float",       builtin_float_fn},
         {"str",         builtin_str_fn},
+        {"dict",        builtin_dict_fn},
         {"set",         builtin_set_fn},
         {"array",       builtin_array_fn},
         {"tuple",       builtin_tuple_fn},
@@ -860,6 +876,114 @@ static Value *string_method(Interpreter *interp, Value *obj, const char *method,
         size_t sl = strlen(s), ml = strlen(args[0]->str_val);
         return value_bool((sl >= ml && strcmp(s + sl - ml, args[0]->str_val) == 0) ? 1 : 0);
     }
+    if (strcmp(method, "contains") == 0) {
+        if (argc < 1 || args[0]->type != VAL_STRING) return value_bool(0);
+        return value_bool(strstr(s, args[0]->str_val) != NULL ? 1 : 0);
+    }
+    if (strcmp(method, "before") == 0) {
+        if (argc < 1 || args[0]->type != VAL_STRING) return value_string(s);
+        const char *found = strstr(s, args[0]->str_val);
+        if (!found) return value_string(s);
+        return value_string(strndup(s, found - s));
+    }
+    if (strcmp(method, "after") == 0) {
+        if (argc < 1 || args[0]->type != VAL_STRING) return value_string("");
+        const char *found = strstr(s, args[0]->str_val);
+        if (!found) return value_string("");
+        return value_string(found + strlen(args[0]->str_val));
+    }
+    if (strcmp(method, "reverse") == 0) {
+        size_t len = strlen(s);
+        char *r = malloc(len + 1);
+        for (size_t i = 0; i < len; i++) r[i] = s[len - 1 - i];
+        r[len] = '\0';
+        return value_string_take(r);
+    }
+    if (strcmp(method, "words") == 0) {
+        Value *arr = value_array_new();
+        char *copy = strdup(s);
+        char *tok = strtok(copy, " \t\n\r");
+        while (tok) {
+            Value *sv = value_string(tok);
+            value_array_push(arr, sv); value_release(sv);
+            tok = strtok(NULL, " \t\n\r");
+        }
+        free(copy);
+        return arr;
+    }
+    if (strcmp(method, "lines") == 0) {
+        Value *arr = value_array_new();
+        char *copy = strdup(s), *rest = copy;
+        char *pos;
+        while ((pos = strchr(rest, '\n')) != NULL) {
+            *pos = '\0';
+            Value *sv = value_string(rest); value_array_push(arr, sv); value_release(sv);
+            rest = pos + 1;
+        }
+        Value *sv = value_string(rest); value_array_push(arr, sv); value_release(sv);
+        free(copy);
+        return arr;
+    }
+    if (strcmp(method, "len") == 0 || strcmp(method, "length") == 0) {
+        return value_int((long long)strlen(s));
+    }
+    if (strcmp(method, "format") == 0) {
+        /* simple positional substitution: "hello {}".format("world") */
+        int cap = 256, sz = 0;
+        char *buf = malloc(cap);
+        buf[0] = '\0';
+        const char *p = s;
+        int ai = 0;
+        while (*p) {
+            if (*p == '{' && *(p+1) == '}') {
+                const char *sub = (ai < argc) ? (args[ai]->type == VAL_STRING ? args[ai]->str_val : "") : "";
+                char *vsub = (ai < argc) ? value_to_string(args[ai]) : strdup("");
+                size_t vlen = strlen(vsub);
+                while (sz + (int)vlen + 1 >= cap) { cap *= 2; buf = realloc(buf, cap); }
+                memcpy(buf + sz, vsub, vlen); sz += vlen; buf[sz] = '\0';
+                free(vsub);
+                ai++; p += 2;
+            } else {
+                if (sz + 1 >= cap) { cap *= 2; buf = realloc(buf, cap); }
+                buf[sz++] = *p++; buf[sz] = '\0';
+            }
+        }
+        return value_string_take(buf);
+    }
+    if (strcmp(method, "count") == 0) {
+        if (argc < 1 || args[0]->type != VAL_STRING) return value_int(0);
+        const char *needle = args[0]->str_val;
+        size_t nlen = strlen(needle);
+        long long cnt = 0;
+        if (nlen == 0) return value_int(0);
+        const char *p = s;
+        while ((p = strstr(p, needle)) != NULL) { cnt++; p += nlen; }
+        return value_int(cnt);
+    }
+    if (strcmp(method, "pad_left") == 0 || strcmp(method, "ljust") == 0) {
+        if (argc < 1 || args[0]->type != VAL_INT) return value_string(s);
+        long long width = args[0]->int_val;
+        char fill = (argc >= 2 && args[1]->type == VAL_STRING && args[1]->str_val[0]) ? args[1]->str_val[0] : ' ';
+        size_t slen = strlen(s);
+        if ((long long)slen >= width) return value_string(s);
+        char *r = malloc((size_t)width + 1);
+        memset(r, fill, (size_t)width - slen);
+        memcpy(r + (size_t)width - slen, s, slen);
+        r[width] = '\0';
+        return value_string_take(r);
+    }
+    if (strcmp(method, "pad_right") == 0 || strcmp(method, "rjust") == 0) {
+        if (argc < 1 || args[0]->type != VAL_INT) return value_string(s);
+        long long width = args[0]->int_val;
+        char fill = (argc >= 2 && args[1]->type == VAL_STRING && args[1]->str_val[0]) ? args[1]->str_val[0] : ' ';
+        size_t slen = strlen(s);
+        if ((long long)slen >= width) return value_string(s);
+        char *r = malloc((size_t)width + 1);
+        memcpy(r, s, slen);
+        memset(r + slen, fill, (size_t)width - slen);
+        r[width] = '\0';
+        return value_string_take(r);
+    }
 
     char emsg[128];
     snprintf(emsg, sizeof(emsg), "string has no method '%s'", method);
@@ -915,6 +1039,51 @@ static Value *array_method(Interpreter *interp, Value *obj, const char *method,
             if (value_equals(obj->array.items[i], args[0])) return value_int(i);
         return value_int(-1);
     }
+    if (strcmp(method, "clear") == 0) {
+        for (int i = 0; i < obj->array.len; i++) value_release(obj->array.items[i]);
+        obj->array.len = 0;
+        return value_null();
+    }
+    if (strcmp(method, "contains") == 0) {
+        if (argc < 1) return value_bool(0);
+        for (int i = 0; i < obj->array.len; i++)
+            if (value_equals(obj->array.items[i], args[0])) return value_bool(1);
+        return value_bool(0);
+    }
+    if (strcmp(method, "reverse") == 0) {
+        int n = obj->array.len;
+        for (int i = 0; i < n / 2; i++) {
+            Value *tmp = obj->array.items[i];
+            obj->array.items[i] = obj->array.items[n - 1 - i];
+            obj->array.items[n - 1 - i] = tmp;
+        }
+        return value_null();
+    }
+    if (strcmp(method, "first") == 0) {
+        if (obj->array.len == 0) return value_null();
+        return value_retain(obj->array.items[0]);
+    }
+    if (strcmp(method, "last") == 0) {
+        if (obj->array.len == 0) return value_null();
+        return value_retain(obj->array.items[obj->array.len - 1]);
+    }
+    if (strcmp(method, "join") == 0) {
+        const char *sep = (argc >= 1 && args[0]->type == VAL_STRING) ? args[0]->str_val : "";
+        int cap = 256, sz = 0;
+        char *buf = malloc(cap);
+        buf[0] = '\0';
+        for (int i = 0; i < obj->array.len; i++) {
+            char *piece = value_to_string(obj->array.items[i]);
+            size_t plen = strlen(piece);
+            size_t slen = (i > 0) ? strlen(sep) : 0;
+            while (sz + (int)(plen + slen) + 2 >= cap) { cap *= 2; buf = realloc(buf, cap); }
+            if (i > 0) { memcpy(buf + sz, sep, slen); sz += (int)slen; }
+            memcpy(buf + sz, piece, plen); sz += (int)plen;
+            buf[sz] = '\0';
+            free(piece);
+        }
+        return value_string_take(buf);
+    }
     char emsg[128];
     snprintf(emsg, sizeof(emsg), "array has no method '%s'", method);
     runtime_error(interp, emsg, line);
@@ -959,6 +1128,43 @@ static Value *dict_method(Interpreter *interp, Value *obj, const char *method,
         Value *found = value_dict_get(obj, args[0]);
         if (!found) return (argc >= 2) ? value_retain(args[1]) : value_null();
         return value_retain(found);
+    }
+    if (strcmp(method, "has") == 0 || strcmp(method, "contains") == 0) {
+        if (argc < 1) return value_bool(0);
+        Value *found = value_dict_get(obj, args[0]);
+        return value_bool(found ? 1 : 0);
+    }
+    if (strcmp(method, "remove") == 0 || strcmp(method, "delete") == 0) {
+        if (argc < 1) return value_null();
+        /* find and remove the entry */
+        for (int i = 0; i < obj->dict.len; i++) {
+            if (value_equals(obj->dict.entries[i].key, args[0])) {
+                value_release(obj->dict.entries[i].key);
+                value_release(obj->dict.entries[i].val);
+                /* shift remaining entries down */
+                for (int j = i; j < obj->dict.len - 1; j++)
+                    obj->dict.entries[j] = obj->dict.entries[j + 1];
+                obj->dict.len--;
+                break;
+            }
+        }
+        return value_null();
+    }
+    if (strcmp(method, "clear") == 0) {
+        for (int i = 0; i < obj->dict.len; i++) {
+            value_release(obj->dict.entries[i].key);
+            value_release(obj->dict.entries[i].val);
+        }
+        obj->dict.len = 0;
+        return value_null();
+    }
+    if (strcmp(method, "len") == 0 || strcmp(method, "length") == 0) {
+        return value_int(obj->dict.len);
+    }
+    if (strcmp(method, "set") == 0) {
+        if (argc < 2) { runtime_error(interp, "dict.set() requires 2 arguments", line); return value_null(); }
+        value_dict_set(obj, args[0], args[1]);
+        return value_null();
     }
     char emsg[128];
     snprintf(emsg, sizeof(emsg), "dict has no method '%s'", method);
@@ -1460,9 +1666,21 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         } else if (callee->type == VAL_FUNCTION) {
             Env *fn_env = env_new(callee->func.closure);
             for (int i = 0; i < callee->func.param_count; i++) {
-                Value *arg = (i < node->func_call.arg_count) ? args[i] : value_null();
+                Value *arg;
+                if (i < node->func_call.arg_count) {
+                    arg = args[i];
+                } else if (callee->func.params[i].default_val) {
+                    /* evaluate default value expression in the function's closure */
+                    arg = eval_node(interp, callee->func.params[i].default_val, callee->func.closure);
+                    if (interp->had_error) { env_free(fn_env); goto call_cleanup; }
+                } else {
+                    arg = value_null();
+                }
                 env_set(fn_env, callee->func.params[i].name, arg, false);
-                if (i >= node->func_call.arg_count) value_release(arg);
+                if (i >= node->func_call.arg_count && !callee->func.params[i].default_val)
+                    value_release(arg);
+                else if (i >= node->func_call.arg_count && callee->func.params[i].default_val)
+                    value_release(arg);
             }
 
             bool prev_ret = interp->returning;
@@ -1482,6 +1700,7 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
             runtime_error(interp, "value is not callable", node->line);
         }
 
+    call_cleanup:
         for (int i = 0; i < node->func_call.arg_count; i++) value_release(args[i]);
         free(args);
         value_release(callee);
@@ -1726,6 +1945,275 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
 
         value_release(left); value_release(right);
         return result;
+    }
+
+    /* ---- repeat ---- */
+    case NODE_REPEAT: {
+        Value *result = value_null();
+        Env *loop_env = env_new(env);
+
+        if (node->repeat_stmt.count) {
+            /* repeat N times */
+            Value *cnt_val = eval_node(interp, node->repeat_stmt.count, env);
+            if (interp->had_error) { env_free(loop_env); value_release(cnt_val); return value_null(); }
+            long long n = (cnt_val->type == VAL_INT) ? cnt_val->int_val : 0;
+            value_release(cnt_val);
+            for (long long i = 0; i < n; i++) {
+                value_release(result);
+                result = eval_node(interp, node->repeat_stmt.body, loop_env);
+                if (interp->breaking)   { interp->breaking = false; break; }
+                if (interp->continuing) { interp->continuing = false; continue; }
+                if (interp->returning || interp->had_error) break;
+            }
+        } else {
+            /* repeat while / repeat until */
+            while (true) {
+                Value *cond = eval_node(interp, node->repeat_stmt.cond, env);
+                if (interp->had_error) { value_release(cond); break; }
+                bool ok = value_truthy(cond);
+                value_release(cond);
+                if (node->repeat_stmt.until ? ok : !ok) break;
+                value_release(result);
+                result = eval_node(interp, node->repeat_stmt.body, loop_env);
+                if (interp->breaking)   { interp->breaking = false; break; }
+                if (interp->continuing) { interp->continuing = false; continue; }
+                if (interp->returning || interp->had_error) break;
+            }
+        }
+        env_free(loop_env);
+        return result;
+    }
+
+    /* ---- throw ---- */
+    case NODE_THROW: {
+        Value *v = eval_node(interp, node->throw_stmt.value, env);
+        if (interp->had_error) { value_release(v); return value_null(); }
+        /* Store as error message */
+        char *msg = value_to_string(v);
+        runtime_error(interp, msg, node->line);
+        free(msg);
+        value_release(v);
+        return value_null();
+    }
+
+    /* ---- try/catch ---- */
+    case NODE_TRY_CATCH: {
+        /* Save error state */
+        bool prev_error = interp->had_error;
+        char prev_msg[sizeof(interp->error_msg)];
+        memcpy(prev_msg, interp->error_msg, sizeof(prev_msg));
+
+        interp->had_error = false;
+        memset(interp->error_msg, 0, sizeof(interp->error_msg));
+
+        Value *result = eval_node(interp, node->try_catch.try_body, env);
+
+        if (interp->had_error && node->try_catch.catch_body) {
+            /* error was caught */
+            char caught_msg[sizeof(interp->error_msg)];
+            memcpy(caught_msg, interp->error_msg, sizeof(caught_msg));
+            interp->had_error = false;
+            memset(interp->error_msg, 0, sizeof(interp->error_msg));
+
+            Env *catch_env = env_new(env);
+            if (node->try_catch.catch_var) {
+                Value *err_val = value_string(caught_msg[0] ? caught_msg : "error");
+                env_set(catch_env, node->try_catch.catch_var, err_val, false);
+                value_release(err_val);
+            }
+            value_release(result);
+            result = eval_node(interp, node->try_catch.catch_body, catch_env);
+            env_free(catch_env);
+        } else if (!interp->had_error && prev_error) {
+            /* restore previous error state if try succeeded */
+            interp->had_error = prev_error;
+            memcpy(interp->error_msg, prev_msg, sizeof(prev_msg));
+        }
+
+        if (node->try_catch.finally_body) {
+            value_release(eval_node(interp, node->try_catch.finally_body, env));
+        }
+        return result;
+    }
+
+    /* ---- match ---- */
+    case NODE_MATCH: {
+        Value *val = eval_node(interp, node->match_stmt.value, env);
+        if (interp->had_error) return value_null();
+
+        Value *result = value_null();
+        bool matched = false;
+        for (int i = 0; i < node->match_stmt.count && !matched; i++) {
+            ASTNode *pat = node->match_stmt.patterns[i];
+            /* Check if value matches pattern (equality, or range membership) */
+            Value *pat_val = eval_node(interp, pat, env);
+            if (interp->had_error) { value_release(val); value_release(pat_val); return value_null(); }
+
+            bool match_ok = false;
+            if (pat_val->type == VAL_ARRAY && pat->type == NODE_RANGE) {
+                /* Range match: check if val is in range */
+                if (pat_val->array.len == 0) {
+                    match_ok = false;
+                } else {
+                    /* ranges are stored as an array of values when iterated */
+                    for (int j = 0; j < pat_val->array.len; j++) {
+                        if (value_equals(val, pat_val->array.items[j])) { match_ok = true; break; }
+                    }
+                }
+            } else {
+                match_ok = value_equals(val, pat_val);
+            }
+            value_release(pat_val);
+
+            if (match_ok) {
+                matched = true;
+                value_release(result);
+                result = eval_node(interp, node->match_stmt.bodies[i], env);
+            }
+        }
+
+        if (!matched && node->match_stmt.else_body) {
+            value_release(result);
+            result = eval_node(interp, node->match_stmt.else_body, env);
+        }
+
+        value_release(val);
+        return result;
+    }
+
+    /* ---- range literal ---- */
+    case NODE_RANGE: {
+        Value *start = eval_node(interp, node->range_lit.start, env);
+        Value *end   = eval_node(interp, node->range_lit.end,   env);
+        if (interp->had_error) { value_release(start); value_release(end); return value_null(); }
+
+        long long step_n = 1;
+        if (node->range_lit.step) {
+            Value *step_val = eval_node(interp, node->range_lit.step, env);
+            if (step_val->type == VAL_INT) step_n = step_val->int_val;
+            value_release(step_val);
+        }
+        if (step_n == 0) step_n = 1;
+
+        Value *arr = value_array_new();
+
+        if (start->type == VAL_INT && end->type == VAL_INT) {
+            long long a = start->int_val, b = end->int_val;
+            if (step_n > 0) {
+                for (long long v = a; node->range_lit.inclusive ? v <= b : v < b; v += step_n) {
+                    Value *iv = value_int(v); value_array_push(arr, iv); value_release(iv);
+                }
+            } else {
+                for (long long v = a; node->range_lit.inclusive ? v >= b : v > b; v += step_n) {
+                    Value *iv = value_int(v); value_array_push(arr, iv); value_release(iv);
+                }
+            }
+        } else if (start->type == VAL_FLOAT || end->type == VAL_FLOAT) {
+            double a = (start->type == VAL_FLOAT ? start->float_val : (double)start->int_val);
+            double b = (end->type   == VAL_FLOAT ? end->float_val   : (double)end->int_val);
+            double step_f = (double)step_n;
+            if (step_f > 0) {
+                for (double v = a; node->range_lit.inclusive ? v <= b : v < b; v += step_f) {
+                    Value *fv = value_float(v); value_array_push(arr, fv); value_release(fv);
+                }
+            }
+        } else if (start->type == VAL_STRING && end->type == VAL_STRING) {
+            /* character range: "a".."z" */
+            char sc = start->str_val[0], ec = end->str_val[0];
+            for (char c = sc; node->range_lit.inclusive ? c <= ec : c < ec; c += (char)step_n) {
+                char buf[2] = {c, '\0'};
+                Value *sv = value_string(buf); value_array_push(arr, sv); value_release(sv);
+            }
+        }
+
+        value_release(start); value_release(end);
+        return arr;
+    }
+
+    /* ---- null coalescing ---- */
+    case NODE_NULLCOAL: {
+        Value *left = eval_node(interp, node->nullcoal.left, env);
+        if (interp->had_error) return left;
+        /* Return right if left is null or unknown (bool_val == -1) */
+        bool is_null_like = (left->type == VAL_NULL) ||
+                            (left->type == VAL_BOOL && left->bool_val == -1);
+        if (!is_null_like) {
+            return left;
+        }
+        value_release(left);
+        return eval_node(interp, node->nullcoal.right, env);
+    }
+
+    /* ---- safe access ---- */
+    case NODE_SAFE_ACCESS: {
+        Value *obj = eval_node(interp, node->safe_access.obj, env);
+        if (interp->had_error) return value_null();
+        if (obj->type == VAL_NULL) {
+            value_release(obj);
+            return value_null();
+        }
+        if (node->safe_access.is_call) {
+            /* safe method call */
+            int argc = node->safe_access.arg_count;
+            Value **args = malloc((argc + 1) * sizeof(Value *));
+            for (int i = 0; i < argc; i++) {
+                args[i] = eval_node(interp, node->safe_access.args[i], env);
+                if (interp->had_error) {
+                    for (int j = 0; j < i; j++) value_release(args[j]);
+                    free(args); value_release(obj); return value_null();
+                }
+            }
+            Value *result;
+            switch (obj->type) {
+                case VAL_STRING: result = string_method(interp, obj, node->safe_access.name, args, argc, node->line); break;
+                case VAL_ARRAY:  result = array_method (interp, obj, node->safe_access.name, args, argc, node->line); break;
+                case VAL_DICT:   result = dict_method  (interp, obj, node->safe_access.name, args, argc, node->line); break;
+                default: result = value_null(); break;
+            }
+            for (int i = 0; i < argc; i++) value_release(args[i]);
+            free(args); value_release(obj);
+            return result;
+        } else {
+            /* safe property access */
+            Value *result = value_null();
+            if (obj->type == VAL_DICT) {
+                Value *key = value_string(node->safe_access.name);
+                Value *found = value_dict_get(obj, key);
+                value_release(key);
+                if (found) { value_release(result); result = value_retain(found); }
+            }
+            value_release(obj);
+            return result;
+        }
+    }
+
+    /* ---- is / is not type check ---- */
+    case NODE_IS_EXPR: {
+        Value *obj = eval_node(interp, node->is_expr.obj, env);
+        if (interp->had_error) return value_null();
+        const char *tname = node->is_expr.type_name;
+        bool match_ok = false;
+        if (strcmp(tname, "int")     == 0) match_ok = (obj->type == VAL_INT);
+        else if (strcmp(tname, "float")   == 0) match_ok = (obj->type == VAL_FLOAT);
+        else if (strcmp(tname, "str")     == 0) match_ok = (obj->type == VAL_STRING);
+        else if (strcmp(tname, "bool")    == 0) match_ok = (obj->type == VAL_BOOL);
+        else if (strcmp(tname, "null")    == 0) match_ok = (obj->type == VAL_NULL);
+        else if (strcmp(tname, "arr")     == 0) match_ok = (obj->type == VAL_ARRAY);
+        else if (strcmp(tname, "array")   == 0) match_ok = (obj->type == VAL_ARRAY);
+        else if (strcmp(tname, "dict")    == 0) match_ok = (obj->type == VAL_DICT);
+        else if (strcmp(tname, "set")     == 0) match_ok = (obj->type == VAL_SET);
+        else if (strcmp(tname, "tuple")   == 0) match_ok = (obj->type == VAL_TUPLE);
+        else if (strcmp(tname, "unknown") == 0) match_ok = (obj->type == VAL_BOOL && obj->bool_val == -1);
+        else {
+            /* check type() string */
+            char *tn = value_to_string(obj);
+            /* compare by value_type_name */
+            const char *actual = value_type_name(obj->type);
+            match_ok = (strcmp(actual, tname) == 0 || strcmp(tn, tname) == 0);
+            free(tn);
+        }
+        value_release(obj);
+        return value_bool((node->is_expr.negate ? !match_ok : match_ok) ? 1 : 0);
     }
 
     default: {
