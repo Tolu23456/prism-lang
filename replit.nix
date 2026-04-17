@@ -1,5 +1,7 @@
 {pkgs}: {
   deps = [
+    pkgs.gnumake
+    pkgs.gcc
     pkgs.dejavu_fonts
     pkgs.pkg-config
     pkgs.fontconfig
