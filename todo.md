@@ -109,6 +109,7 @@ Interpretation overhead is the fundamental ceiling. These items describe the roa
 - [ ] **NaN-boxing for scalar values**: encode integers, floats, bools, and null directly into a 64-bit `uint64_t` — no `malloc` for scalars at all. Trades code complexity for a **30–60%** speedup on arithmetic-heavy programs.
 
 ## Next Steps — Compiler
+- [ ] **Switch Prism source extension from `.pm` to `.pr`**: update file loading, examples, docs, syntax files, bytecode/cache naming, and tests so Prism no longer conflicts with Perl module files.
 - [ ] **Variable classification pre-pass**: add a scope-analysis pass before code generation that classifies every variable as local, upvalue, or global. Emit `OP_LOAD_LOCAL n` / `OP_STORE_LOCAL n` for locals (flat array index) instead of `OP_LOAD_NAME` (string lookup). This is the prerequisite for VM local variable slots.
 - [ ] **Constant folding**: if both operands of a binary expression are constant literals at compile time, evaluate the result once and emit a single `OP_PUSH_CONST`. Eliminates `PUSH 2`, `PUSH 3`, `ADD` → single `PUSH 5`.
 - [ ] **32-bit jump offsets**: `patch_jump` encodes the target as a signed `int16_t` (±32767 bytes). Large functions will silently corrupt jump targets. Widen to 32-bit — either always, or via a `OP_JUMP_WIDE` variant.
