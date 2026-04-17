@@ -1,4 +1,4 @@
-# How Prism Should Look
+""# How Prism Should Look
 
 Prism should be a flexible, dynamic, beginner-friendly language that feels easier than Python while still being powerful enough to grow into a serious scripting language.
 
