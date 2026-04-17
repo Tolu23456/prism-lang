@@ -113,6 +113,15 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 - **GC: `fread` unused-result warnings**: `(void)fread(...)` does not silence GCC's `__attribute__((warn_unused_result))`; replaced with `{ size_t _nr = fread(...); (void)_nr; }` in `main.c`, `interpreter.c`, and `vm.c`.
 - **GC: shutdown sweep count inaccurate**: the "from N live objects" count in the shutdown sweep message read `gc->stats.live_objects` (already decremented by earlier sweeps) instead of walking the actual tracked-object list; fixed to count nodes in `gc->objects` directly.
 
+## New Features (v0.7.0)
+
+- **Variadic parameters** (`...args`): `func sum(...nums)` collects remaining args into an array
+- **Arrow functions**: `x => x * x` (expr body) and `x => { block }` (block body)
+- **Spread in calls**: `f(...arr)` expands array to positional args at call site
+- **Closure env reference counting**: `Env.refcount` with `env_retain`/`env_free` — all dangling-pointer closure crashes fixed
+- **`make release`**: `prism-release` binary with `-O3 -DNDEBUG -march=native`
+- **`docs/` folder**: 8 comprehensive markdown reference documents
+
 ## Known Language Limitations (Documented in edgecase/)
 
 - **`arr` is a reserved keyword**: Cannot be used as a variable or parameter name. Use `lst`, `nums`, etc. The syntax `arr[a, b, c]` creates an array literal.

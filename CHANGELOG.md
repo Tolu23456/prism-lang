@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.7.0 — Closures, Varargs, Arrow Functions, Spread, Release Build, Docs
+
+### Added
+- **Variadic parameters (`...args`)**: functions and methods now accept `...name` as the last parameter, collecting all remaining arguments into an array. Works for both user functions and method dispatch.
+- **Arrow functions**: `x => expr` (single expression, implicit return) and `x => { block }` (explicit block body) — parsed via lookahead `IDENT + FAT_ARROW` in `parse_assign`. Single-param shorthand requires no parens; multi-param arrow uses `fn(a, b) => expr`.
+- **Spread in function calls**: `f(...arr)` expands an array into individual arguments at the call site. Works with regular calls and method dispatch. Mixed regular + spread args supported: `f(a, ...rest)`.
+- **Closure env reference counting (`src/interpreter.c`, `src/value.c`)**: added `refcount` field to `Env` struct with `env_retain` / `env_free` (recursive parent release). `env_new` automatically retains its parent chain so closure-captured scopes live as long as any function referencing them does. Root env freed only by `env_free_root` at interpreter shutdown. Fixes all dangling-pointer crashes in compose/counter/curry/memoize patterns.
+- **`make release` build target**: compiles `prism-release` with `-O3 -DNDEBUG -march=native -fomit-frame-pointer`. Reports stripped binary size.
+- **`docs/` folder** — 8 comprehensive markdown reference files:
+  - `getting-started.md`: build, hello world, basic types, running programs
+  - `language-reference.md`: full syntax — operators, control flow, match, ranges, types
+  - `builtins.md`: all built-in functions with signatures and descriptions
+  - `standard-library.md`: all `lib/*.pr` modules with API examples
+  - `closures-and-functions.md`: closures, varargs, arrow fns, compose/pipe/curry/partial/memoize
+  - `classes-and-structs.md`: classes, inheritance, super, structs, duck typing
+  - `vm-and-compiler.md`: instruction set, compiler pipeline, JIT, transpiler, perf builds
+  - `gc-and-memory.md`: generational GC, ref-counting, env lifetimes, adaptive policy, string interning, immortal singletons
+
+### Fixed
+- Compose/curry/counter/once/memoize closures no longer crash — env parent chain now held alive by reference counting until last closure referencing it is released.
+- Spread call `f(...args)` correctly replaces `node->func_call.arg_count` with `actual_argc` throughout `NODE_FUNC_CALL` handler in `src/interpreter.c`.
+
+### Changed
+- `README.md` fully rewritten: feature table, build matrix, full hello-world example, documentation index.
+- `todo.md`: marked `make release` target, varargs, arrow functions, spread, env refcounting as `[x]`; added new next-step items.
+
 ## v0.6.0 — PSS Expansion + Dict Equality + Import Resolver
 
 ### Added

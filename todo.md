@@ -1,6 +1,12 @@
 # Prism TODO
 
 ## Completed
+- [x] Variadic function parameters (`...args`) — last param collects remaining args into array
+- [x] Arrow functions (`x => expr` and `x => { block }`) — parsed via IDENT + FAT_ARROW lookahead
+- [x] Spread in function calls (`f(...arr)`) — expands array to individual arguments at call site
+- [x] Closure env reference counting — `Env.refcount`, `env_retain`/`env_free`, parent chain retention; fixes all closure dangling-pointer crashes
+- [x] `make release` build target — `prism-release` with `-O3 -DNDEBUG -march=native -fomit-frame-pointer`
+- [x] `docs/` reference folder — 8 markdown files covering getting started, language, builtins, stdlib, closures, classes, VM/compiler, GC/memory
 - [x] Tree-walking interpreter in C
 - [x] All core data types (int, float, complex, string, bool, array, dict, set, tuple)
 - [x] f-strings, verbatim strings, triple-quoted strings
@@ -102,7 +108,7 @@ Interpretation overhead is the fundamental ceiling. These items describe the roa
 - [ ] **Strengthen JIT for simple integer loops first**: make hot loops with integer locals, arithmetic, comparisons, and back-edges compile reliably to native code so Prism can outperform Python on numeric loop benchmarks.
 
 ## Next Steps — VM Performance
-- [ ] **Add release build mode with aggressive optimisation**: add a `make release` target using `-O3 -DNDEBUG` so Prism can be benchmarked without debug-build overhead.
+- [x] **Add release build mode with aggressive optimisation**: `make release` target builds `prism-release` with `-O3 -DNDEBUG -march=native -fomit-frame-pointer`.
 - [ ] **Make VM/bytecode execution the default path for normal source runs**: avoid tree-walking AST execution for production-style runs; parse/compile once, then execute bytecode.
 - [ ] **Computed-goto dispatch** (`goto *dispatch_table[opcode]`): replaces the central `switch` with per-opcode direct branch targets. Each opcode jumps straight to the next without bouncing through a shared switch point. Guard with `#ifdef __GNUC__` so it falls back to `switch` on MSVC. Expected gain: **10–25%** on most workloads.
 - [ ] **Direct `uint8_t *ip` pointer**: replace the integer index `frame->ip` with a raw pointer into `chunk->code`. Eliminates a base-pointer add on every instruction fetch. Expected gain: **2–5%**.

@@ -14,6 +14,7 @@ typedef struct {
 } EnvSlot;
 
 typedef struct Env {
+    int         refcount; /* reference count: env_retain/env_free manage lifetime */
     EnvSlot    *slots;
     int         cap;      /* power of 2 */
     int         size;     /* number of active entries */
@@ -33,7 +34,8 @@ typedef struct {
 } Interpreter;
 
 Env         *env_new(Env *parent);
-void         env_free(Env *env);
+Env         *env_retain(Env *env);  /* increment refcount, returns env */
+void         env_free(Env *env);    /* decrement refcount, free when 0  */
 Value       *env_get(Env *env, const char *name);
 bool         env_set(Env *env, const char *name, Value *val, bool is_const);
 bool         env_assign(Env *env, const char *name, Value *val);

@@ -85,15 +85,43 @@ static void env_rehash(Env *env, int new_cap) {
 }
 
 Env *env_new(Env *parent) {
-    Env *e  = calloc(1, sizeof(Env));
-    e->cap  = ENV_INITIAL_CAP;
-    e->slots= calloc((size_t)e->cap, sizeof(EnvSlot));
-    e->size = 0;
+    Env *e    = calloc(1, sizeof(Env));
+    e->refcount = 1;
+    e->cap    = ENV_INITIAL_CAP;
+    e->slots  = calloc((size_t)e->cap, sizeof(EnvSlot));
+    e->size   = 0;
     e->parent = parent;
+    env_retain(parent); /* hold parent alive while this child exists */
     return e;
 }
 
+Env *env_retain(Env *env) {
+    /* Only ref-count non-root envs; the global (root) env lives as long as the
+     * interpreter and freeing it is handled by interpreter_free directly. */
+    if (env && env->parent) env->refcount++;
+    return env;
+}
+
 void env_free(Env *env) {
+    if (!env) return;
+    /* Root/global env (parent == NULL) is NOT ref-counted here;
+     * its lifetime is managed exclusively by interpreter_free. */
+    if (!env->parent) return;
+    if (--env->refcount > 0) return; /* still referenced by a closure or child */
+    /* Release all values stored in this env. */
+    for (int i = 0; i < env->cap; i++) {
+        if (env->slots[i].key)
+            value_release(env->slots[i].val);
+    }
+    free(env->slots);
+    /* Release the reference to the parent that env_new took. */
+    Env *parent = env->parent;
+    free(env);
+    env_free(parent);
+}
+
+/* interpreter_free uses this to destroy the root env. */
+static void env_free_root(Env *env) {
     if (!env) return;
     for (int i = 0; i < env->cap; i++) {
         if (env->slots[i].key)
@@ -2360,27 +2388,68 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         Value *callee = eval_node(interp, node->func_call.callee, env);
         if (interp->had_error) return value_null();
 
-        Value **args = malloc(node->func_call.arg_count * sizeof(Value *));
-        for (int i = 0; i < node->func_call.arg_count; i++) {
-            args[i] = eval_node(interp, node->func_call.args[i], env);
-            if (interp->had_error) {
-                for (int j = 0; j < i; j++) value_release(args[j]);
-                free(args); value_release(callee); return value_null();
+        /* Evaluate args, expanding any spread (...expr) arguments inline. */
+        int raw_argc = node->func_call.arg_count;
+        int max_args = raw_argc + 64; /* extra room for spread expansion */
+        Value **args = malloc((size_t)max_args * sizeof(Value *));
+        int actual_argc = 0;
+        for (int i = 0; i < raw_argc; i++) {
+            ASTNode *arg_node = node->func_call.args[i];
+            if (arg_node->type == NODE_SPREAD) {
+                /* spread: evaluate inner, then flatten array items */
+                Value *spread_val = eval_node(interp, arg_node->spread.expr, env);
+                if (interp->had_error) {
+                    for (int j = 0; j < actual_argc; j++) value_release(args[j]);
+                    value_release(spread_val); free(args); value_release(callee); return value_null();
+                }
+                if (spread_val->type == VAL_ARRAY) {
+                    int need = actual_argc + spread_val->array.len;
+                    if (need > max_args) {
+                        max_args = need + 8;
+                        args = realloc(args, (size_t)max_args * sizeof(Value *));
+                    }
+                    for (int j = 0; j < spread_val->array.len; j++)
+                        args[actual_argc++] = value_retain(spread_val->array.items[j]);
+                    value_release(spread_val);
+                } else {
+                    args[actual_argc++] = spread_val;
+                }
+            } else {
+                if (actual_argc >= max_args) {
+                    max_args += 8;
+                    args = realloc(args, (size_t)max_args * sizeof(Value *));
+                }
+                args[actual_argc] = eval_node(interp, arg_node, env);
+                if (interp->had_error) {
+                    for (int j = 0; j < actual_argc; j++) value_release(args[j]);
+                    free(args); value_release(callee); return value_null();
+                }
+                actual_argc++;
             }
         }
-
         Value *result = value_null();
 
         if (callee->type == VAL_BUILTIN) {
             value_release(result);
             g_current_interp = interp;
-            result = callee->builtin.fn(args, node->func_call.arg_count);
+            result = callee->builtin.fn(args, actual_argc);
             g_current_interp = NULL;
         } else if (callee->type == VAL_FUNCTION) {
             Env *fn_env = env_new(callee->func.closure);
             for (int i = 0; i < callee->func.param_count; i++) {
+                const char *pname = callee->func.params[i].name;
+                /* varargs: collect remaining call args into an array */
+                if (pname[0] == '.' && pname[1] == '.' && pname[2] == '.') {
+                    const char *real_name = pname + 3;
+                    Value *vararg_arr = value_array_new();
+                    for (int j = i; j < actual_argc; j++)
+                        value_array_push(vararg_arr, args[j]);
+                    env_set(fn_env, real_name, vararg_arr, false);
+                    value_release(vararg_arr);
+                    break; /* varargs must be last param */
+                }
                 Value *arg;
-                if (i < node->func_call.arg_count) {
+                if (i < actual_argc) {
                     arg = args[i];
                 } else if (callee->func.params[i].default_val) {
                     /* evaluate default value expression in the function's closure */
@@ -2389,10 +2458,10 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
                 } else {
                     arg = value_null();
                 }
-                env_set(fn_env, callee->func.params[i].name, arg, false);
-                if (i >= node->func_call.arg_count && !callee->func.params[i].default_val)
+                env_set(fn_env, pname, arg, false);
+                if (i >= actual_argc && !callee->func.params[i].default_val)
                     value_release(arg);
-                else if (i >= node->func_call.arg_count && callee->func.params[i].default_val)
+                else if (i >= actual_argc && callee->func.params[i].default_val)
                     value_release(arg);
             }
 
@@ -2414,7 +2483,7 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         }
 
     call_cleanup:
-        for (int i = 0; i < node->func_call.arg_count; i++) value_release(args[i]);
+        for (int i = 0; i < actual_argc; i++) value_release(args[i]);
         free(args);
         value_release(callee);
         return result;
@@ -2478,6 +2547,16 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
                 for (int pi = arg_offset; pi < method_fn->func.param_count; pi++) {
                     const char *pname = method_fn->func.params[pi].name;
                     int ai = pi - arg_offset;
+                    /* varargs: collect remaining args into an array */
+                    if (pname[0] == '.' && pname[1] == '.' && pname[2] == '.') {
+                        const char *real_name = pname + 3;
+                        Value *vararg_arr = value_array_new();
+                        for (int j = ai; j < node->method_call.arg_count; j++)
+                            value_array_push(vararg_arr, value_retain(args[j]));
+                        env_set(call_env, real_name, vararg_arr, false);
+                        value_release(vararg_arr);
+                        break;
+                    }
                     Value *argval;
                     if (ai < node->method_call.arg_count) {
                         argval = value_retain(args[ai]);
@@ -3277,7 +3356,7 @@ void interpreter_free(Interpreter *interp) {
     gc_collect_audit(interp->gc, interp->globals, NULL, NULL);
     if (interp->return_val) gc_pop_root(interp->gc);
     if (interp->return_val) value_release(interp->return_val);
-    env_free(interp->globals);
+    env_free_root(interp->globals); /* use root destructor: bypasses ref-counting */
     /* Item 5: free the static HTML-GUI body buffer allocated by gui_body_append */
     if (g_gui.body) {
         free(g_gui.body);

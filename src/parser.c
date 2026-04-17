@@ -950,6 +950,39 @@ static ASTNode *parse_nullcoal(Parser *p) {
 /* ---- assignment (rightmost prec) ---- */
 
 static ASTNode *parse_assign(Parser *p) {
+    /* single-param arrow function: ident => expr  (e.g. x => x * 2)
+       also handles block body:   ident => { stmts }                */
+    if (check(p, TOKEN_IDENT) && check_peek(p, TOKEN_FAT_ARROW)) {
+        int line = p->current->line;
+        Param *params = malloc(sizeof(Param));
+        params[0].name        = strdup(p->current->value);
+        params[0].type_hint   = NULL;
+        params[0].default_val = NULL;
+        advance(p); /* consume ident */
+        advance(p); /* consume => */
+        skip_newlines(p);
+        ASTNode *body;
+        if (check(p, TOKEN_LBRACE)) {
+            /* block body: ident => { stmts } */
+            body = parse_block(p);
+        } else {
+            /* expression body: ident => expr  (implicit return) */
+            ASTNode *expr        = parse_assign(p); /* right-associative */
+            ASTNode *ret         = ast_node_new(NODE_RETURN, line);
+            ret->ret.value       = expr;
+            body                 = ast_node_new(NODE_BLOCK, line);
+            body->block.stmts    = malloc(sizeof(ASTNode *));
+            body->block.stmts[0] = ret;
+            body->block.count    = 1;
+        }
+        ASTNode *fn          = ast_node_new(NODE_FN_EXPR, line);
+        fn->fn_expr.params      = params;
+        fn->fn_expr.param_count = 1;
+        fn->fn_expr.body        = body;
+        fn->fn_expr.is_arrow    = true;
+        return fn;
+    }
+
     ASTNode *left = parse_nullcoal(p);
     if (p->had_error) return left;
     int line = p->current->line;

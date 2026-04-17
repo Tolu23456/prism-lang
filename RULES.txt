@@ -186,3 +186,95 @@ func get_user_info(str name, int age, bool is_adult){
 this function will return a value
 function can also return 0,1, -1 for false, true or unknown respectively
 like so return 0, return 1, return -1 is vaild
+
+VARIADIC FUNCTIONS
+A function parameter prefixed with ... collects all remaining arguments into an array.
+The variadic parameter must be the last one.
+Example:
+func sum(...nums) {
+    let total = 0
+    for n in nums { total += n }
+    return total
+}
+output(sum(1, 2, 3, 4, 5))   # 15
+
+Mixed:
+func log(level, ...messages) {
+    for msg in messages { output "[{level}] {msg}" }
+}
+
+ARROW FUNCTIONS
+Single-expression shorthand (implicit return):
+    let square = x => x * x
+    let double = x => x * 2
+
+Block body (explicit return required):
+    let process = x => {
+        let r = x * 2
+        return r + 1
+    }
+
+Arrow functions close over their enclosing scope (closures).
+
+SPREAD IN CALLS
+An array can be expanded into individual arguments using ... at the call site:
+    let args = [1, 2, 3]
+    func sum3(a, b, c) { return a + b + c }
+    output(sum3(...args))   # 6
+
+Mixed regular + spread:
+    output(sum3(1, ...[2, 3]))   # 6
+
+CLOSURES
+Functions capture the environment in which they were created.
+The captured scope is kept alive (reference counted) as long as the function exists.
+Example:
+    func make_adder(n) { return x => x + n }
+    let add5 = make_adder(5)
+    output(add5(3))   # 8
+
+ANONYMOUS FUNCTIONS
+    let fn_value = fn(a, b) { return a + b }
+    let result = fn_value(3, 4)   # 7
+
+CLASSES AND INHERITANCE
+    class Animal {
+        func init(name) { self.name = name }
+        func speak() { output "..." }
+    }
+    class Dog extends Animal {
+        func init(name) { super.init(name) }
+        func speak() { output "{self.name} says woof!" }
+    }
+    new Dog("Rex").speak()
+
+STRUCTS
+Lightweight value containers with positional fields:
+    struct Point { x, y }
+    let p = new Point(3, 4)
+    output(p.x)   # 3
+
+ERROR HANDLING
+    try {
+        throw "message"
+    } catch (e) {
+        output "caught: {e}"
+    }
+
+PIPE OPERATOR
+Pass the left value as first argument to the right function:
+    5 |> double |> square   # same as square(double(5))
+
+NULL COALESCING
+    let x = maybe_null_value ?? "default"
+
+TERNARY
+    let r = condition ? value_if_true : value_if_false
+
+TYPE CHECK
+    if x is int { ... }
+    if x is not str { ... }
+
+IN OPERATOR
+    3 in [1, 2, 3]          # true
+    "x" not in {"a", "b"}  # true

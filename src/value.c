@@ -8,6 +8,11 @@
 #include "chunk.h"
 #include "gc.h"
 
+/* Forward declarations for Env ref-counting (implemented in interpreter.c).
+ * Using extern avoids a circular include between value.h <-> interpreter.h. */
+extern Env *env_retain(Env *env);
+extern void env_free(Env *env);
+
 /* ================================================================== immortal singletons
  *
  * Common values that would otherwise be re-allocated on every use are
@@ -112,6 +117,7 @@ void value_release(Value *v) {
                 free(v->func.chunk);
             }
             free(v->func.name);
+            env_free(v->func.closure); /* release reference to captured env */
             break;
         case VAL_BUILTIN:
             free(v->builtin.name);
@@ -230,7 +236,7 @@ Value *value_function(const char *name, Param *params, int param_count,
     v->func.params      = params;
     v->func.param_count = param_count;
     v->func.body        = body;
-    v->func.closure     = closure;
+    v->func.closure     = env_retain(closure); /* keep env alive for closures */
     v->func.chunk       = NULL;
     v->func.owns_chunk  = false;
     return v;
