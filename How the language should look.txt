@@ -963,3 +963,122 @@ output users.join("\n")
 ```
 
 That is the direction: simple at the start, powerful later, dynamic by default, and easier to read than Python.
+
+
+
+Mood-based truth: true, false, unknown
+Prism already has unknown, so lean into it.
+
+let answer = unknown
+if answer {
+    output "yes"
+} elif answer is unknown {
+    output "not sure yet"
+} else {
+    output "no"
+}
+
+Useful for forms, AI answers, user permissions, incomplete data.
+
+2. Built-in fallback expressions
+let name = input("Name: ") else "Guest"
+let age = int(input("Age: ")) else 0
+
+Instead of crashing, Prism lets beginners say: “if this fails, use this.”
+
+3. Safe chains everywhere
+let city = user?.profile?.address?.city ?? "Unknown"
+
+No long error-prone checks like:
+
+if user and user.profile and user.profile.address { ... }
+
+4. Human-style repeat loops
+repeat 5 {
+    output "Hello"
+}
+repeat while connected {
+    read_message()
+}
+repeat until done {
+    step()
+}
+
+This is easier for beginners than only while/for.
+
+5. Friendly range syntax
+for i in 1..10 {
+    output i
+}
+for i in 10..1 {
+    output i
+}
+for i in 0..100 step 5 {
+    output i
+}
+
+Cleaner than range(0, 100, 5).
+
+8. Built-in when blocks
+when temperature > 100 {
+    output "Too hot"
+}
+when user.logged_in {
+    output "Welcome back"
+}
+
+Could work like reactive conditions later.
+
+
+9. Easy event syntax
+Good for GUI/game scripting later:
+
+on click(button) {
+    output "Button clicked"
+}
+on key("space") {
+    player.jump()
+}
+
+This gives Prism a nice identity for apps/games.
+
+
+10. Built-in validation syntax
+let age = input("Age: ") must be int else "Enter a number"
+let password = input("Password: ") must len(password) >= 8 else "Too short"
+
+Prism could make safe input easier than Python.
+
+
+11. Built-in table/data tools
+let adults = users
+    |> where age >= 18
+    |> select name, email
+    |> sort by name
+
+This would make Prism great for data scripting.
+
+
+12. “Explain” mode
+Prism could have a learning feature:
+
+explain fib(5)
+
+It could show what the program is doing step by step. Great for beginners.
+
+
+13. Natural assertions
+expect age > 0 else "Age must be positive"
+expect name not empty else "Name is required"
+
+Cleaner than verbose assertion functions.
+
+
+14. Built-in command style
+For scripting:
+
+run "ls"
+run "mkdir projects"
+let files = run "ls" capture
+
+Prism could become much easier for automation than Python.
