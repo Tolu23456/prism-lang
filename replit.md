@@ -67,11 +67,12 @@ make          # builds ./prism binary
 make clean    # removes build artifacts
 make run      # builds and runs examples/hello.pr
 make test     # builds and runs all tests/test_*.pr files
+make sanitize # builds ./prism-san with -fsanitize=address,undefined
 ```
 
 ## Replit Environment
 
-The project is configured for Replit as a native C project using the C toolchain module. The `Start application` workflow builds the interpreter with `make` and runs `examples/hello.pm` as a console smoke test.
+The project is configured for Replit as a native C project using the C toolchain module. The `Start application` workflow builds the interpreter with `make` and runs `examples/hello.pr` as a console smoke test.
 
 This is a CLI/interpreter project, not a web application. It does not require a browser preview, HTTP server, client/server API boundary, or external package installation to run safely in Replit. The migration was verified by building the `prism` binary and running the bundled hello example through the Replit workflow without runtime errors.
 
@@ -108,6 +109,9 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 - **`elif` in multi-line blocks**: Added `skip_newlines()` before `while (check(p, TOKEN_ELIF))` and after each `elif` body in `parse_if()` in `src/parser.c`. Previously `elif` only worked when on the same line as the closing `}`.
 - **`**` right-associativity**: Changed `parse_power()` right-hand side from `parse_unary(p)` to `parse_power(p)` in `src/parser.c`. Previously `2 ** 3 ** 2` was a parse error.
 - **Set equality**: Added `VAL_SET` case to `value_equals()` in `src/value.c`. Previously two sets with identical elements compared as unequal (fell through to pointer comparison).
+- **GC: nested function chunk constants not marked (use-after-free)**: `gc_mark_value` for `VAL_FUNCTION` only marked the closure env, not `func.chunk`. String/int literals inside nested function bytecode were swept while still owned by the chunk, causing a use-after-free when `chunk_free` tried to release them. Fixed by calling `gc_mark_chunk(gc, value->func.chunk)` in `gc_mark_value`.
+- **GC: `fread` unused-result warnings**: `(void)fread(...)` does not silence GCC's `__attribute__((warn_unused_result))`; replaced with `{ size_t _nr = fread(...); (void)_nr; }` in `main.c`, `interpreter.c`, and `vm.c`.
+- **GC: shutdown sweep count inaccurate**: the "from N live objects" count in the shutdown sweep message read `gc->stats.live_objects` (already decremented by earlier sweeps) instead of walking the actual tracked-object list; fixed to count nodes in `gc->objects` directly.
 
 ## Known Language Limitations (Documented in edgecase/)
 
@@ -123,7 +127,26 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 
 ## Edge Case Test Files (edgecase/)
 
-14 `.pr` files exercising every major syntax feature. All 14 pass as of the current build. Run individually with `./prism edgecase/<file>.pr` or all at once:
+14 `.pr` files exercising every major syntax and runtime feature. All 14 pass as of the current build:
+
+| File | Coverage |
+|---|---|
+| `arrays.pr` | indexing, mutation, slicing, nesting, add/remove/pop/sort/reverse/count/index/clear |
+| `closures.pr` | captured vars, mutation, shared state, nested scopes (factory pattern noted as unsupported) |
+| `control_flow.pr` | if/elif/else chains, while, for, break, continue, nesting |
+| `dicts.pr` | creation, get/set, keys/values/items, erase/has/remove/clear, equality |
+| `error_handling.pr` | try/catch/finally, throw, nested try, rethrow |
+| `functions.pr` | defaults, recursion, higher-order, variadic, nested |
+| `match.pr` | when/else, literal and expression match arms |
+| `numbers.pr` | int/float/complex, underscore separators, hex/bin/oct literals, overflow |
+| `operators.pr` | arithmetic, bitwise, comparison, logical, augmented assign, `**` right-assoc |
+| `sets.pr` | union, intersection, difference, sym-diff, equality, contains |
+| `strings.pr` | f-strings, slicing, all methods, verbatim strings |
+| `tuples.pr` | creation, indexing, nesting, iteration |
+| `types.pr` | `type()` built-in, `is`/`is not`, typecasting |
+| `variables.pr` | let, const, walrus, shadowing, null safety `?.` and `??` |
+
+Run individually with `./prism edgecase/<file>.pr` or all at once:
 
 ```bash
 for f in edgecase/*.pr; do echo -n "$(basename $f): "; ./prism "$f" 2>&1 | tail -1; done
@@ -159,6 +182,18 @@ for f in edgecase/*.pr; do echo -n "$(basename $f): "; ./prism "$f" 2>&1 | tail 
 - **Operators**: arithmetic `+ - * / % **`, comparison, logical `&& || !`, bitwise `& | ^ ~`
 - **Membership**: `x in arr`, `x not in arr`
 - **Slicing**: `s[start:stop:step]` for strings, arrays, tuples
+
+## GC / Memory System
+
+The GC is a generational mark-and-sweep collector layered on top of reference counting:
+
+- **Default mode**: sweep is always on (`gc_init` sets `sweep_enabled = true`). `PRISM_GC_SWEEP=0` disables it for debugging. The old `--gc-sweep` CLI flag is a no-op.
+- **Generations**: young/old split; minor collections sweep only young-gen. Major collections sweep everything.
+- **Root stack**: `gc_push_root` / `gc_pop_root` protect in-flight values during expression evaluation.
+- **Precise rooting**: all GC roots are marked — VM stack, all Env chains, chunk constant pools, function chunk constants (`func.chunk`), interned string table.
+- **Shutdown sweep**: at process exit, one final major collection runs; any surviving objects are reported as confirmed leaks and forcibly reclaimed.
+- **Sanitizer build**: `make sanitize` produces `prism-san` with `-fsanitize=address,undefined`. Run with `ASAN_OPTIONS=detect_leaks=0 ./prism-san file.pr`. ASan exits clean (exit 0) on the full example suite. LSan is disabled by default due to ptrace restrictions in the sandbox; use `valgrind --leak-check=full` as an alternative.
+- **GC diagnostics**: `PRISM_GC_STATS=1 ./prism file.pr` prints a per-type allocation/free/live breakdown and the shutdown sweep report to stderr.
 
 ## Execution Model
 

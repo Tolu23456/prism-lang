@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.5.0 — Zero Memory Leaks + Parser Bug Fixes
+
+### Fixed
+- **GC: nested function chunk constants not marked (use-after-free)**: `gc_mark_value` for `VAL_FUNCTION` only visited the closure environment; string/int literals inside the function's bytecode chunk (`func.chunk`) were invisible to the mark phase and freed by the sweep while the chunk still held live `Value*` pointers. Added `gc_mark_chunk(gc, value->func.chunk)` to `gc_mark_value` in `src/gc.c`. Confirmed clean by ASan (`ASAN_OPTIONS=detect_leaks=0 ./prism-san` exits 0).
+- **GC: `fread` unused-result warning**: `(void)fread(...)` casts do not suppress GCC's `__attribute__((warn_unused_result))`; replaced in `src/main.c`, `src/interpreter.c`, and `src/vm.c` with `{ size_t _nr = fread(...); (void)_nr; }`.
+- **GC: shutdown sweep live-count inaccurate**: the "from N live objects" report read the already-decremented `gc->stats.live_objects` counter; now walks `gc->objects` to get the true pre-sweep count.
+- **Parser: `elif` in multi-line blocks**: added `skip_newlines()` before the `while (check(p, TOKEN_ELIF))` loop and after each `elif` body in `parse_if()`. Previously `elif` was only recognised when on the same line as the preceding `}`.
+- **Parser: `**` right-associativity**: changed `parse_power()` to recurse with `parse_power(p)` instead of `parse_unary(p)`, making exponentiation correctly right-associative (`2 ** 3 ** 2` = 512).
+- **Value: set equality**: added a `VAL_SET` case to `value_equals()` in `src/value.c` that checks element membership in both directions; previously two sets with identical elements compared as unequal (pointer comparison fallthrough).
+
+### Added
+- **GC: sweep enabled by default**: `gc_init` sets `sweep_enabled = true`; `PRISM_GC_SWEEP=0` env var disables it. The `--gc-sweep` CLI flag is now a documented no-op.
+- **GC: temporary root stack**: `GC_ROOT_STACK_MAX=4096` root stack in `PrismGC`; `gc_push_root`/`gc_pop_root` called in `gc_collect_minor`, `gc_collect_major`, `interpreter_run`, and `interpreter_free` so in-flight values are never invisible to the mark phase.
+- **GC: shutdown sweep + leak report**: `gc_shutdown` runs a final `gc_collect_major` after all Prism execution finishes; objects surviving the sweep are logged as confirmed leaks and reclaimed by `gc_reclaim_remaining`. Enable with `PRISM_GC_STATS=1`.
+- **Sanitizer build**: `make sanitize` target produces `prism-san` with `-fsanitize=address,undefined -fno-omit-frame-pointer`. Run with `ASAN_OPTIONS=detect_leaks=0 ./prism-san file.pr`.
+- **Edge case test suite (`edgecase/`)**: 14 `.pr` files covering arrays, closures, control flow, dicts, error handling, functions, match, numbers, operators, sets, strings, tuples, types, and variables. All 14 pass on the current build.
+
 ## v0.4.0 — JIT Compiler + C Transpiler
 
 ### Added

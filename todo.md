@@ -60,12 +60,12 @@ Five things must all be in place simultaneously. None alone is sufficient.
 **When all five are done**: every allocation made by a Prism program is either collected by the GC or proven reachable; every C-level allocation in the runtime is freed at shutdown; and the leak report confirms zero residual objects on exit.
 
 ## Next Steps — GC / Memory Management (near-term correctness + speed)
-- [ ] **Make sweep the default collection mode**: remove the `--gc-sweep` opt-in requirement; `gc_collect_audit` should always sweep after marking. Most impactful correctness fix — in the current default mode cycles are never collected.
-- [ ] **Doubly-linked object list → O(1) untrack**: add a `gc_prev` pointer to `Value` so `gc_untrack_value` can splice out a node without walking the entire list. Currently every `value_release` that hits zero refcount is an O(n) scan.
+- [x] **Make sweep the default collection mode**: `gc_init` sets `sweep_enabled = true`; `PRISM_GC_SWEEP=0` disables it; `--gc-sweep` is now a documented no-op. Cycles are collected on every run.
+- [x] **Doubly-linked object list → O(1) untrack**: `gc_prev` added to `Value`; `gc_untrack_value` splices out nodes in O(1).
 - [ ] **Iterative mark phase (explicit worklist)**: replace the recursive `gc_mark_value` with an explicit `Value *worklist[]` stack. Deep nesting (arrays of arrays, closure chains) currently risks a C stack overflow on the mark walk.
 - [ ] **Wire string interning at all call-sites**: `gc_intern_string` exists but the compiler and interpreter mostly call `strdup` directly. Dict keys and identifier strings should all go through `value_string_intern()` — pointer equality then replaces `strcmp` everywhere.
 - [ ] **Drop ref-counting, rely on pure tracing GC**: every `env_set` calls `value_retain`/`value_release` AND updates the GC list — double bookkeeping on every assignment. Long-term: remove ref-counting entirely and let the generational mark-sweep be the sole ownership mechanism.
-- [ ] **Add temporary root stack for expression/interpreter values**: in-flight values created mid-expression have no GC root, so a collection triggered during evaluation can free them. A small push/pop root stack fixes this.
+- [x] **Add temporary root stack for expression/interpreter values**: `gc_push_root`/`gc_pop_root` implemented; called in `gc_collect_minor`, `gc_collect_major`, `interpreter_run`, and `interpreter_free` to protect in-flight values.
 - [ ] **Promote major GC trigger to threshold-based**: currently a major collection runs every 8 minors regardless of heap size. Should trigger when old-gen exceeds a configurable byte limit instead.
 - [ ] **Expose young/old generation counters in `--gc-stats`**: already tracked internally in `gc->young_count` / `gc->old_count`; just needs to be printed clearly.
 - [ ] **Add cycle-focused tests/examples**: arrays, dicts, closures, and objects that form reference cycles — to verify sweep actually reclaims them once it is the default.
