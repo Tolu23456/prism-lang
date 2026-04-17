@@ -9,7 +9,7 @@ func stringify(val, indent_size, current_depth) {
     current_depth = current_depth ?? 0
     let t = type(val)
 
-    if val == void or val == null { return "null" }
+    if val == null or val == null { return "null" }
     if t == "bool" {
         if val { return "true" }
         return "false"
@@ -27,7 +27,7 @@ func stringify(val, indent_size, current_depth) {
         for item in val {
             push(items, stringify(item, indent_size, current_depth + 1))
         }
-        if indent_size != void {
+        if indent_size != null {
             let pad  = repeat("  ", current_depth + 1)
             let close = repeat("  ", current_depth)
             return "[\n" + pad + join(",\n" + pad, items) + "\n" + close + "]"
@@ -41,13 +41,13 @@ func stringify(val, indent_size, current_depth) {
         for k in ks {
             let kStr = _escapeString(str(k))
             let vStr = stringify(val[k], indent_size, current_depth + 1)
-            if indent_size != void {
+            if indent_size != null {
                 push(pairs, kStr + ": " + vStr)
             } else {
                 push(pairs, kStr + ":" + vStr)
             }
         }
-        if indent_size != void {
+        if indent_size != null {
             let pad  = repeat("  ", current_depth + 1)
             let close = repeat("  ", current_depth)
             return "{\n" + pad + join(",\n" + pad, pairs) + "\n" + close + "}"
@@ -135,7 +135,7 @@ func _parseValue() {
     if ch == "\"" { return _parseString() }
     if ch == "t" { return _parseLiteral("true", true) }
     if ch == "f" { return _parseLiteral("false", false) }
-    if ch == "n" { return _parseLiteral("null", void) }
+    if ch == "n" { return _parseLiteral("null", null) }
     if ch == "-" or (ch >= "0" and ch <= "9") { return _parseNumber() }
     error("JSON parse error: unexpected character '" + ch + "' at pos " + str(_pos))
 }
@@ -261,7 +261,7 @@ func parseOr(text, default_val) {
 }
 
 func minify(text) {
-    return stringify(parse(text), void, 0)
+    return stringify(parse(text), null, 0)
 }
 
 func merge(a_text, b_text) {

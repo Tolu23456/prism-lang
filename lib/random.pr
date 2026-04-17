@@ -180,7 +180,7 @@ func randomTriangular(lo, hi, mode) {
 
 /* ── Noise (1D Value Noise) ─────────────────────────────── */
 
-let _noise_table = void
+let _noise_table = null
 
 func _initNoise() {
     let saved_seed = _seed
@@ -196,7 +196,7 @@ func _initNoise() {
 }
 
 func valueNoise(x) {
-    if _noise_table == void { _initNoise() }
+    if _noise_table == null { _initNoise() }
     let xi = int(floor(x)) % 256
     if xi < 0 { xi = xi + 256 }
     let xf = x - floor(x)
@@ -207,7 +207,7 @@ func valueNoise(x) {
 }
 
 func valueNoise2d(x, y) {
-    if _noise_table == void { _initNoise() }
+    if _noise_table == null { _initNoise() }
     let xi = int(floor(x)) % 256
     let yi = int(floor(y)) % 256
     if xi < 0 { xi = xi + 256 }

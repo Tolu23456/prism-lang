@@ -14,7 +14,7 @@ class Promise {
 
     func then(callback) {
         push(self._then_fns, callback)
-        if not self.pending and self.error == void {
+        if not self.pending and self.error == null {
             self.value = callback(self.value)
         }
         return self
@@ -22,7 +22,7 @@ class Promise {
 
     func catch(callback) {
         push(self._catch_fns, callback)
-        if not self.pending and self.error != void {
+        if not self.pending and self.error != null {
             callback(self.error)
         }
         return self
@@ -34,11 +34,11 @@ class Promise {
 }
 
 func resolved(value) {
-    return new Promise(value, void, false)
+    return new Promise(value, null, false)
 }
 
 func rejected(err) {
-    return new Promise(void, err, false)
+    return new Promise(null, err, false)
 }
 
 func all(promises) {
@@ -57,12 +57,12 @@ func race(promises) {
 func sleep_async(ms) {
     import time
     time.sleep(ms / 1000)
-    return resolved(void)
+    return resolved(null)
 }
 
 class Deferred {
     func init() {
-        self._value = void
+        self._value = null
         self._resolved = false
     }
 
@@ -100,7 +100,7 @@ func retry(action, max_attempts, delay_ms) {
     max_attempts = max_attempts ?? 3
     delay_ms = delay_ms ?? 100
     let attempt = 0
-    let last_err = void
+    let last_err = null
     while attempt < max_attempts {
         try {
             return action()

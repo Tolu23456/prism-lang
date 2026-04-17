@@ -3,7 +3,7 @@
 */
 
 let _suites = []
-let _current_suite = void
+let _current_suite = null
 let _passed = 0
 let _failed = 0
 let _errors = []
@@ -13,7 +13,7 @@ func describe(name, suite_fn) {
     push(_suites, name)
     output(f"\n  Suite: {name}")
     suite_fn()
-    _current_suite = void
+    _current_suite = null
 }
 
 func it(name, test_fn) {
@@ -56,8 +56,8 @@ func expect(actual) {
             }
         },
         "toBeNull": fn() {
-            if actual != void {
-                error(f"Expected void/null, got {str(actual)}")
+            if actual != null {
+                error(f"Expected null/null, got {str(actual)}")
             }
         },
         "toBeGreaterThan": fn(n) {

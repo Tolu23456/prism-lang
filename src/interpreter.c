@@ -190,6 +190,15 @@ static void runtime_error(Interpreter *interp, const char *msg, int line) {
     snprintf(interp->error_msg, sizeof(interp->error_msg), "line %d: %s", line, msg);
 }
 
+/* Global interpreter pointer set during builtin dispatch so builtins can
+   signal catchable errors without needing the interp in their signature. */
+static Interpreter *g_current_interp = NULL;
+
+static void builtin_throw(const char *msg) {
+    if (!g_current_interp) { fprintf(stderr, "RuntimeError: %s\n", msg); exit(1); }
+    runtime_error(g_current_interp, msg, 0);
+}
+
 /* ------------------------------------------------------------------ builtins */
 
 static Value *builtin_output(Value **args, int argc) {
@@ -417,6 +426,573 @@ static Value *builtin_assert_eq(Value **args, int argc) {
     return value_null();
 }
 
+/* ================================================================== Missing builtins block */
+
+#include <time.h>
+
+/* ---- math ---- */
+static Value *builtin_abs(Value **a, int n) {
+    if (n < 1) return value_int(0);
+    if (a[0]->type == VAL_INT)   return value_int(llabs(a[0]->int_val));
+    if (a[0]->type == VAL_FLOAT) return value_float(fabs(a[0]->float_val));
+    return value_retain(a[0]);
+}
+static Value *builtin_sqrt(Value **a, int n) {
+    if (n < 1) return value_float(0.0);
+    double v = (a[0]->type == VAL_INT) ? (double)a[0]->int_val : a[0]->float_val;
+    return value_float(sqrt(v));
+}
+static Value *builtin_floor(Value **a, int n) {
+    if (n < 1) return value_int(0);
+    if (a[0]->type == VAL_INT) return value_int(a[0]->int_val);
+    return value_int((long long)floor(a[0]->float_val));
+}
+static Value *builtin_ceil(Value **a, int n) {
+    if (n < 1) return value_int(0);
+    if (a[0]->type == VAL_INT) return value_int(a[0]->int_val);
+    return value_int((long long)ceil(a[0]->float_val));
+}
+static Value *builtin_round(Value **a, int n) {
+    if (n < 1) return value_int(0);
+    if (a[0]->type == VAL_INT) return value_int(a[0]->int_val);
+    return value_int((long long)round(a[0]->float_val));
+}
+static Value *builtin_pow(Value **a, int n) {
+    if (n < 2) return value_float(0.0);
+    double base = (a[0]->type == VAL_INT) ? (double)a[0]->int_val : a[0]->float_val;
+    double exp  = (a[1]->type == VAL_INT) ? (double)a[1]->int_val : a[1]->float_val;
+    double r = pow(base, exp);
+    if (a[0]->type == VAL_INT && a[1]->type == VAL_INT && exp >= 0)
+        return value_int((long long)r);
+    return value_float(r);
+}
+static Value *builtin_sin(Value **a, int n) { if (n<1) return value_float(0.0); double v=(a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val; return value_float(sin(v)); }
+static Value *builtin_cos(Value **a, int n) { if (n<1) return value_float(1.0); double v=(a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val; return value_float(cos(v)); }
+static Value *builtin_tan(Value **a, int n) { if (n<1) return value_float(0.0); double v=(a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val; return value_float(tan(v)); }
+static Value *builtin_asin(Value **a, int n) { if (n<1) return value_float(0.0); double v=(a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val; return value_float(asin(v)); }
+static Value *builtin_acos(Value **a, int n) { if (n<1) return value_float(0.0); double v=(a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val; return value_float(acos(v)); }
+static Value *builtin_atan(Value **a, int n) { if (n<1) return value_float(0.0); double v=(a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val; return value_float(atan(v)); }
+static Value *builtin_atan2(Value **a, int n) {
+    if (n<2) return value_float(0.0);
+    double y=(a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val;
+    double x=(a[1]->type==VAL_INT)?(double)a[1]->int_val:a[1]->float_val;
+    return value_float(atan2(y,x));
+}
+static Value *builtin_log(Value **a, int n) {
+    if (n<1) return value_float(0.0);
+    double v=(a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val;
+    if (n>=2) { /* log(x, base) */
+        double base=(a[1]->type==VAL_INT)?(double)a[1]->int_val:a[1]->float_val;
+        return value_float(log(v)/log(base));
+    }
+    return value_float(log(v));
+}
+static Value *builtin_log2(Value **a, int n)  { if(n<1)return value_float(0.0); double v=(a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val; return value_float(log2(v)); }
+static Value *builtin_log10(Value **a, int n) { if(n<1)return value_float(0.0); double v=(a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val; return value_float(log10(v)); }
+static Value *builtin_exp(Value **a, int n)   { if(n<1)return value_float(1.0); double v=(a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val; return value_float(exp(v)); }
+static Value *builtin_hypot(Value **a, int n) {
+    if(n<2) return value_float(0.0);
+    double x=(a[0]->type==VAL_INT)?(double)a[0]->int_val:a[0]->float_val;
+    double y=(a[1]->type==VAL_INT)?(double)a[1]->int_val:a[1]->float_val;
+    return value_float(hypot(x,y));
+}
+
+static double _to_double(Value *v) {
+    if (v->type == VAL_INT)   return (double)v->int_val;
+    if (v->type == VAL_FLOAT) return v->float_val;
+    if (v->type == VAL_STRING) { char *e; double d=strtod(v->str_val,&e); return (e!=v->str_val)?d:0.0; }
+    return 0.0;
+}
+
+static Value *builtin_min(Value **a, int n) {
+    if (n == 0) return value_null();
+    if (n == 1 && a[0]->type == VAL_ARRAY) {
+        if (a[0]->array.len == 0) return value_null();
+        Value *m = a[0]->array.items[0];
+        for (int i = 1; i < a[0]->array.len; i++)
+            if (value_compare(a[0]->array.items[i], m) < 0) m = a[0]->array.items[i];
+        return value_retain(m);
+    }
+    Value *m = a[0];
+    for (int i = 1; i < n; i++) if (value_compare(a[i], m) < 0) m = a[i];
+    return value_retain(m);
+}
+static Value *builtin_max(Value **a, int n) {
+    if (n == 0) return value_null();
+    if (n == 1 && a[0]->type == VAL_ARRAY) {
+        if (a[0]->array.len == 0) return value_null();
+        Value *m = a[0]->array.items[0];
+        for (int i = 1; i < a[0]->array.len; i++)
+            if (value_compare(a[0]->array.items[i], m) > 0) m = a[0]->array.items[i];
+        return value_retain(m);
+    }
+    Value *m = a[0];
+    for (int i = 1; i < n; i++) if (value_compare(a[i], m) > 0) m = a[i];
+    return value_retain(m);
+}
+static Value *builtin_clamp(Value **a, int n) {
+    if (n < 3) return n > 0 ? value_retain(a[0]) : value_null();
+    if (value_compare(a[0], a[1]) < 0) return value_retain(a[1]);
+    if (value_compare(a[0], a[2]) > 0) return value_retain(a[2]);
+    return value_retain(a[0]);
+}
+
+/* ---- time ---- */
+static Value *builtin_clock(Value **a, int n) {
+    (void)a; (void)n;
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return value_float((double)ts.tv_sec + (double)ts.tv_nsec * 1e-9);
+}
+static Value *builtin_time_now(Value **a, int n) {
+    (void)a; (void)n;
+    return value_float((double)time(NULL));
+}
+
+/* ---- string builtins ---- */
+static Value *builtin_chars(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_STRING) return value_array_new();
+    const char *s = a[0]->str_val;
+    Value *arr = value_array_new();
+    for (const char *p = s; *p; p++) {
+        char buf[2] = {*p, '\0'};
+        Value *cv = value_string(buf);
+        value_array_push(arr, cv);
+        value_release(cv);
+    }
+    return arr;
+}
+static Value *builtin_upper(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_STRING) return n>0 ? value_retain(a[0]) : value_string("");
+    char *r = strdup(a[0]->str_val);
+    for (char *p = r; *p; p++) *p = toupper(*p);
+    return value_string_take(r);
+}
+static Value *builtin_lower(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_STRING) return n>0 ? value_retain(a[0]) : value_string("");
+    char *r = strdup(a[0]->str_val);
+    for (char *p = r; *p; p++) *p = tolower(*p);
+    return value_string_take(r);
+}
+static Value *builtin_trim(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_STRING) return n>0 ? value_retain(a[0]) : value_string("");
+    const char *s = a[0]->str_val;
+    while (isspace((unsigned char)*s)) s++;
+    const char *e = s + strlen(s);
+    while (e > s && isspace((unsigned char)*(e-1))) e--;
+    return value_string(strndup(s, (size_t)(e - s)));
+}
+static Value *builtin_starts(Value **a, int n) {
+    if (n < 2 || a[0]->type != VAL_STRING || a[1]->type != VAL_STRING) return value_bool(0);
+    return value_bool(strncmp(a[0]->str_val, a[1]->str_val, strlen(a[1]->str_val)) == 0 ? 1 : 0);
+}
+static Value *builtin_ends(Value **a, int n) {
+    if (n < 2 || a[0]->type != VAL_STRING || a[1]->type != VAL_STRING) return value_bool(0);
+    size_t sl = strlen(a[0]->str_val), pl = strlen(a[1]->str_val);
+    return value_bool((sl >= pl && strcmp(a[0]->str_val + sl - pl, a[1]->str_val) == 0) ? 1 : 0);
+}
+static Value *builtin_contains(Value **a, int n) {
+    if (n < 2) return value_bool(0);
+    if (a[0]->type == VAL_STRING && a[1]->type == VAL_STRING)
+        return value_bool(strstr(a[0]->str_val, a[1]->str_val) != NULL ? 1 : 0);
+    if (a[0]->type == VAL_ARRAY) {
+        for (int i = 0; i < a[0]->array.len; i++)
+            if (value_equals(a[0]->array.items[i], a[1])) return value_bool(1);
+        return value_bool(0);
+    }
+    if (a[0]->type == VAL_DICT) {
+        Value *found = value_dict_get(a[0], a[1]);
+        return value_bool(found ? 1 : 0);
+    }
+    return value_bool(0);
+}
+static Value *builtin_split(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_STRING) return value_array_new();
+    const char *s = a[0]->str_val;
+    const char *delim = (n >= 2 && a[1]->type == VAL_STRING) ? a[1]->str_val : " ";
+    Value *arr = value_array_new();
+    size_t dlen = strlen(delim);
+    if (dlen == 0) { /* split each char */
+        for (const char *p = s; *p; p++) {
+            char buf[2] = {*p, '\0'};
+            Value *sv = value_string(buf);
+            value_array_push(arr, sv); value_release(sv);
+        }
+        return arr;
+    }
+    char *copy = strdup(s), *rest = copy;
+    char *pos;
+    while ((pos = strstr(rest, delim)) != NULL) {
+        *pos = '\0';
+        Value *sv = value_string(rest); value_array_push(arr, sv); value_release(sv);
+        rest = pos + dlen;
+    }
+    Value *sv = value_string(rest); value_array_push(arr, sv); value_release(sv);
+    free(copy);
+    return arr;
+}
+static Value *builtin_join(Value **a, int n) {
+    /* join(sep, arr)  or  join(arr, sep) — detect by type */
+    const char *sep = "";
+    Value *arr = NULL;
+    if (n >= 2) {
+        if (a[0]->type == VAL_STRING && a[1]->type == VAL_ARRAY) { sep = a[0]->str_val; arr = a[1]; }
+        else if (a[0]->type == VAL_ARRAY && a[1]->type == VAL_STRING) { arr = a[0]; sep = a[1]->str_val; }
+        else if (a[0]->type == VAL_ARRAY) { arr = a[0]; }
+    } else if (n == 1 && a[0]->type == VAL_ARRAY) {
+        arr = a[0];
+    }
+    if (!arr) return value_string("");
+    size_t dlen = strlen(sep);
+    int cap = 256, sz = 0;
+    char *res = malloc(cap);
+    res[0] = '\0';
+    for (int i = 0; i < arr->array.len; i++) {
+        char *part = value_to_string(arr->array.items[i]);
+        size_t plen = strlen(part);
+        while (sz + (int)plen + (int)dlen + 2 >= cap) { cap *= 2; res = realloc(res, cap); }
+        memcpy(res + sz, part, plen); sz += plen; res[sz] = '\0';
+        if (i < arr->array.len - 1 && dlen > 0) { memcpy(res + sz, sep, dlen); sz += dlen; res[sz] = '\0'; }
+        free(part);
+    }
+    return value_string_take(res);
+}
+static Value *builtin_replace(Value **a, int n) {
+    if (n < 3 || a[0]->type != VAL_STRING || a[1]->type != VAL_STRING || a[2]->type != VAL_STRING)
+        return n > 0 ? value_retain(a[0]) : value_string("");
+    const char *s = a[0]->str_val, *old = a[1]->str_val, *neww = a[2]->str_val;
+    size_t oldlen = strlen(old), newlen = strlen(neww);
+    int cap = 256, sz = 0;
+    char *res = malloc(cap);
+    res[0] = '\0';
+    const char *p = s;
+    while (*p) {
+        if (oldlen > 0 && strncmp(p, old, oldlen) == 0) {
+            while (sz + (int)newlen + 1 >= cap) { cap *= 2; res = realloc(res, cap); }
+            memcpy(res + sz, neww, newlen); sz += newlen; res[sz] = '\0';
+            p += oldlen;
+        } else {
+            if (sz + 1 >= cap) { cap *= 2; res = realloc(res, cap); }
+            res[sz++] = *p++; res[sz] = '\0';
+        }
+    }
+    return value_string_take(res);
+}
+static Value *builtin_fromCharCode(Value **a, int n) {
+    if (n < 1) return value_string("");
+    char buf[2] = {0, 0};
+    long long code = (a[0]->type == VAL_INT) ? a[0]->int_val : (long long)a[0]->float_val;
+    buf[0] = (char)(code & 0xFF);
+    return value_string(buf);
+}
+static Value *builtin_ord(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_STRING || a[0]->str_val[0] == '\0') return value_int(0);
+    return value_int((long long)(unsigned char)a[0]->str_val[0]);
+}
+static Value *builtin_parseInt(Value **a, int n) {
+    if (n < 1) return value_int(0);
+    if (a[0]->type == VAL_INT) return value_retain(a[0]);
+    if (a[0]->type == VAL_FLOAT) return value_int((long long)a[0]->float_val);
+    if (a[0]->type == VAL_STRING) {
+        int base = (n >= 2 && a[1]->type == VAL_INT) ? (int)a[1]->int_val : 10;
+        return value_int(strtoll(a[0]->str_val, NULL, base));
+    }
+    return value_int(0);
+}
+static Value *builtin_parseFloat(Value **a, int n) {
+    if (n < 1) return value_float(0.0);
+    if (a[0]->type == VAL_FLOAT) return value_retain(a[0]);
+    if (a[0]->type == VAL_INT)   return value_float((double)a[0]->int_val);
+    if (a[0]->type == VAL_STRING) return value_float(strtod(a[0]->str_val, NULL));
+    return value_float(0.0);
+}
+static Value *builtin_repr(Value **a, int n) {
+    if (n < 1) return value_string("null");
+    char *s = value_to_string(a[0]);
+    Value *v = value_string(s);
+    free(s);
+    return v;
+}
+
+/* ---- array builtins ---- */
+static Value *builtin_push(Value **a, int n) {
+    if (n < 2 || a[0]->type != VAL_ARRAY) return value_null();
+    for (int i = 1; i < n; i++) value_array_push(a[0], a[i]);
+    return value_retain(a[0]);
+}
+static Value *builtin_pop(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_ARRAY || a[0]->array.len == 0) return value_null();
+    long long idx = (n >= 2 && a[1]->type == VAL_INT) ? a[1]->int_val : (long long)(a[0]->array.len - 1);
+    return value_array_pop(a[0], idx);
+}
+static Value *builtin_sort(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_ARRAY) return n>0?value_retain(a[0]):value_array_new();
+    value_array_sort(a[0]);
+    return value_retain(a[0]);
+}
+static Value *builtin_reverse(Value **a, int n) {
+    if (n < 1) return value_array_new();
+    if (a[0]->type == VAL_ARRAY) {
+        /* in-place reverse, same as sort() */
+        ValueArray *arr = &a[0]->array;
+        for (int i = 0, j = arr->len-1; i < j; i++, j--) {
+            Value *tmp = arr->items[i]; arr->items[i] = arr->items[j]; arr->items[j] = tmp;
+        }
+        return value_retain(a[0]);
+    }
+    if (a[0]->type == VAL_STRING) {
+        const char *s = a[0]->str_val;
+        size_t len = strlen(s);
+        char *r = malloc(len + 1);
+        for (size_t i = 0; i < len; i++) r[i] = s[len-1-i];
+        r[len] = '\0';
+        return value_string_take(r);
+    }
+    return value_retain(a[0]);
+}
+static Value *builtin_slice(Value **a, int n) {
+    if (n < 1) return value_array_new();
+    long long start = (n >= 2 && a[1]->type == VAL_INT) ? a[1]->int_val : 0;
+    if (a[0]->type == VAL_STRING) {
+        const char *s = a[0]->str_val;
+        long long slen = (long long)strlen(s);
+        long long end  = (n >= 3 && a[2]->type == VAL_INT) ? a[2]->int_val : slen;
+        if (start < 0) start = slen + start;
+        if (end   < 0) end   = slen + end;
+        if (start < 0) start = 0;
+        if (end > slen) end = slen;
+        if (start >= end) return value_string("");
+        return value_string(strndup(s + start, (size_t)(end - start)));
+    }
+    if (a[0]->type == VAL_ARRAY) {
+        long long alen = a[0]->array.len;
+        long long end  = (n >= 3 && a[2]->type == VAL_INT) ? a[2]->int_val : alen;
+        if (start < 0) start = alen + start;
+        if (end   < 0) end   = alen + end;
+        if (start < 0) start = 0;
+        if (end > alen) end = alen;
+        Value *arr = value_array_new();
+        for (long long i = start; i < end; i++) value_array_push(arr, a[0]->array.items[i]);
+        return arr;
+    }
+    return value_retain(a[0]);
+}
+static Value *builtin_flatten(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_ARRAY) return n>0?value_retain(a[0]):value_array_new();
+    Value *result = value_array_new();
+    for (int i = 0; i < a[0]->array.len; i++) {
+        Value *item = a[0]->array.items[i];
+        if (item->type == VAL_ARRAY) {
+            for (int j = 0; j < item->array.len; j++) value_array_push(result, item->array.items[j]);
+        } else {
+            value_array_push(result, item);
+        }
+    }
+    return result;
+}
+
+/* ---- range ---- */
+static Value *builtin_range(Value **a, int n) {
+    long long start = 0, stop = 0, step = 1;
+    if (n == 1) {
+        stop = (a[0]->type == VAL_INT) ? a[0]->int_val : (long long)a[0]->float_val;
+    } else if (n >= 2) {
+        start = (a[0]->type == VAL_INT) ? a[0]->int_val : (long long)a[0]->float_val;
+        stop  = (a[1]->type == VAL_INT) ? a[1]->int_val : (long long)a[1]->float_val;
+        if (n >= 3)
+            step = (a[2]->type == VAL_INT) ? a[2]->int_val : (long long)a[2]->float_val;
+    }
+    if (step == 0) step = 1;
+    Value *arr = value_array_new();
+    if (step > 0) {
+        for (long long i = start; i < stop; i += step) {
+            Value *v = value_int(i); value_array_push(arr, v); value_release(v);
+        }
+    } else {
+        for (long long i = start; i > stop; i += step) {
+            Value *v = value_int(i); value_array_push(arr, v); value_release(v);
+        }
+    }
+    return arr;
+}
+
+/* ---- dict builtins ---- */
+static Value *builtin_keys(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_DICT) return value_array_new();
+    Value *arr = value_array_new();
+    for (int i = 0; i < a[0]->dict.len; i++) {
+        Value *k = a[0]->dict.entries[i].key;
+        /* skip internal keys */
+        if (k->type == VAL_STRING && k->str_val[0] == '_' && k->str_val[1] == '_') continue;
+        value_array_push(arr, k);
+    }
+    return arr;
+}
+static Value *builtin_values(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_DICT) return value_array_new();
+    Value *arr = value_array_new();
+    for (int i = 0; i < a[0]->dict.len; i++) {
+        Value *k = a[0]->dict.entries[i].key;
+        if (k->type == VAL_STRING && k->str_val[0] == '_' && k->str_val[1] == '_') continue;
+        value_array_push(arr, a[0]->dict.entries[i].val);
+    }
+    return arr;
+}
+static Value *builtin_items(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_DICT) return value_array_new();
+    Value *arr = value_array_new();
+    for (int i = 0; i < a[0]->dict.len; i++) {
+        Value *k = a[0]->dict.entries[i].key;
+        if (k->type == VAL_STRING && k->str_val[0] == '_' && k->str_val[1] == '_') continue;
+        Value *pair = value_array_new();
+        value_array_push(pair, k);
+        value_array_push(pair, a[0]->dict.entries[i].val);
+        value_array_push(arr, pair);
+        value_release(pair);
+    }
+    return arr;
+}
+static Value *builtin_has(Value **a, int n) {
+    if (n < 2) return value_bool(0);
+    if (a[0]->type == VAL_DICT) {
+        Value *found = value_dict_get(a[0], a[1]);
+        return value_bool(found ? 1 : 0);
+    }
+    if (a[0]->type == VAL_ARRAY) {
+        for (int i = 0; i < a[0]->array.len; i++)
+            if (value_equals(a[0]->array.items[i], a[1])) return value_bool(1);
+        return value_bool(0);
+    }
+    if (a[0]->type == VAL_SET) return value_bool(value_set_has(a[0], a[1]) ? 1 : 0);
+    return value_bool(0);
+}
+
+/* ---- utility ---- */
+static Value *builtin_print(Value **a, int n) {
+    for (int i = 0; i < n; i++) {
+        if (i > 0) printf(" ");
+        char *s = value_to_string(a[i]);
+        printf("%s", s);
+        free(s);
+    }
+    printf("\n");
+    return value_null();
+}
+static Value *builtin_error(Value **a, int n) {
+    const char *msg = (n > 0 && a[0]->type == VAL_STRING) ? a[0]->str_val : "error";
+    builtin_throw(msg);
+    return value_null();
+}
+static Value *builtin_exit(Value **a, int n) {
+    int code = (n > 0 && a[0]->type == VAL_INT) ? (int)a[0]->int_val : 0;
+    exit(code);
+    return value_null();
+}
+static Value *builtin_isnan(Value **a, int n) {
+    if (n < 1) return value_bool(0);
+    if (a[0]->type == VAL_FLOAT) return value_bool(isnan(a[0]->float_val) ? 1 : 0);
+    return value_bool(0);
+}
+static Value *builtin_isinf(Value **a, int n) {
+    if (n < 1) return value_bool(0);
+    if (a[0]->type == VAL_FLOAT) return value_bool(isinf(a[0]->float_val) ? 1 : 0);
+    return value_bool(0);
+}
+static Value *builtin_sum(Value **a, int n) {
+    if (n < 1) return value_int(0);
+    if (a[0]->type == VAL_ARRAY) {
+        long long isum = 0; double fsum = 0.0; bool use_float = false;
+        for (int i = 0; i < a[0]->array.len; i++) {
+            Value *v = a[0]->array.items[i];
+            if (v->type == VAL_FLOAT) { use_float = true; fsum += v->float_val; }
+            else if (v->type == VAL_INT) { isum += v->int_val; fsum += (double)v->int_val; }
+        }
+        return use_float ? value_float(fsum) : value_int(isum);
+    }
+    return value_int(0);
+}
+static Value *builtin_zip(Value **a, int n) {
+    if (n < 2) return value_array_new();
+    /* find shortest length */
+    int minlen = -1;
+    for (int i = 0; i < n; i++) {
+        if (a[i]->type != VAL_ARRAY) return value_array_new();
+        if (minlen < 0 || a[i]->array.len < minlen) minlen = a[i]->array.len;
+    }
+    if (minlen < 0) minlen = 0;
+    Value *result = value_array_new();
+    for (int i = 0; i < minlen; i++) {
+        Value *tuple = value_array_new();
+        for (int j = 0; j < n; j++) value_array_push(tuple, a[j]->array.items[i]);
+        value_array_push(result, tuple);
+        value_release(tuple);
+    }
+    return result;
+}
+static Value *builtin_enumerate(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_ARRAY) return value_array_new();
+    long long start = (n >= 2 && a[1]->type == VAL_INT) ? a[1]->int_val : 0;
+    Value *result = value_array_new();
+    for (int i = 0; i < a[0]->array.len; i++) {
+        Value *pair = value_array_new();
+        Value *idx = value_int(start + i);
+        value_array_push(pair, idx); value_release(idx);
+        value_array_push(pair, a[0]->array.items[i]);
+        value_array_push(result, pair);
+        value_release(pair);
+    }
+    return result;
+}
+static Value *builtin_map_fn(Value **a, int n) {
+    /* map(fn, arr) */
+    if (n < 2 || a[1]->type != VAL_ARRAY) return value_array_new();
+    /* Note: to call fn we'd need interpreter context; return stub array for now */
+    return value_retain(a[1]);
+}
+static Value *builtin_filter_fn(Value **a, int n) {
+    if (n < 2 || a[1]->type != VAL_ARRAY) return value_array_new();
+    return value_retain(a[1]);
+}
+static Value *builtin_copy(Value **a, int n) {
+    if (n < 1) return value_null();
+    return value_copy(a[0]);
+}
+static Value *builtin_id(Value **a, int n) {
+    if (n < 1) return value_int(0);
+    return value_int((long long)(uintptr_t)a[0]);
+}
+static Value *builtin_hex(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_INT) return value_string("0x0");
+    char buf[32];
+    snprintf(buf, sizeof(buf), "0x%llx", (unsigned long long)a[0]->int_val);
+    return value_string(buf);
+}
+static Value *builtin_bin(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_INT) return value_string("0b0");
+    long long v = a[0]->int_val;
+    char buf[70]; int pos = 67;
+    buf[68] = '\0'; buf[67] = '0';
+    if (v == 0) { buf[67] = '0'; buf[66] = 'b'; buf[65] = '0'; return value_string(buf + 65); }
+    unsigned long long uv = (unsigned long long)v;
+    buf[pos--] = '\0';
+    while (uv > 0) { buf[pos--] = (uv & 1) ? '1' : '0'; uv >>= 1; }
+    buf[pos--] = 'b'; buf[pos--] = '0';
+    return value_string(buf + pos + 1);
+}
+static Value *builtin_oct(Value **a, int n) {
+    if (n < 1 || a[0]->type != VAL_INT) return value_string("0o0");
+    char buf[32];
+    snprintf(buf, sizeof(buf), "0o%llo", (unsigned long long)a[0]->int_val);
+    return value_string(buf);
+}
+
+/* math constants exposed as builtins */
+static Value *builtin_math_pi(Value **a, int n) { (void)a;(void)n; return value_float(3.14159265358979323846); }
+static Value *builtin_math_e(Value **a, int n)  { (void)a;(void)n; return value_float(2.71828182845904523536); }
+static Value *builtin_math_tau(Value **a, int n){ (void)a;(void)n; return value_float(6.28318530717958647692); }
+static Value *builtin_math_inf(Value **a, int n){ (void)a;(void)n; return value_float(1.0/0.0); }
+static Value *builtin_math_nan(Value **a, int n){ (void)a;(void)n; return value_float(0.0/0.0); }
+
 static bool is_memory_module(Value *obj) {
     if (!obj || obj->type != VAL_DICT) return false;
     Value *key = value_string("__module");
@@ -613,8 +1189,11 @@ static Value *bi_xgui_no_x11(Value **args, int argc) {
 
 static void register_builtins(Interpreter *interp) {
     struct { const char *name; BuiltinFn fn; } builtins[] = {
+        /* core I/O */
         {"output",      builtin_output},
+        {"print",       builtin_print},
         {"input",       builtin_input},
+        /* type functions */
         {"len",         builtin_len},
         {"bool",        builtin_bool_fn},
         {"int",         builtin_int_fn},
@@ -626,8 +1205,83 @@ static void register_builtins(Interpreter *interp) {
         {"tuple",       builtin_tuple_fn},
         {"complex",     builtin_complex_fn},
         {"type",        builtin_type_fn},
+        {"repr",        builtin_repr},
+        {"copy",        builtin_copy},
+        {"id",          builtin_id},
+        /* assertion */
         {"assert",      builtin_assert},
         {"assert_eq",   builtin_assert_eq},
+        /* math */
+        {"abs",         builtin_abs},
+        {"sqrt",        builtin_sqrt},
+        {"floor",       builtin_floor},
+        {"ceil",        builtin_ceil},
+        {"round",       builtin_round},
+        {"pow",         builtin_pow},
+        {"sin",         builtin_sin},
+        {"cos",         builtin_cos},
+        {"tan",         builtin_tan},
+        {"asin",        builtin_asin},
+        {"acos",        builtin_acos},
+        {"atan",        builtin_atan},
+        {"atan2",       builtin_atan2},
+        {"log",         builtin_log},
+        {"log2",        builtin_log2},
+        {"log10",       builtin_log10},
+        {"exp",         builtin_exp},
+        {"hypot",       builtin_hypot},
+        {"isnan",       builtin_isnan},
+        {"isinf",       builtin_isinf},
+        {"min",         builtin_min},
+        {"max",         builtin_max},
+        {"clamp",       builtin_clamp},
+        {"sum",         builtin_sum},
+        /* string functions */
+        {"chars",       builtin_chars},
+        {"upper",       builtin_upper},
+        {"lower",       builtin_lower},
+        {"trim",        builtin_trim},
+        {"starts",      builtin_starts},
+        {"ends",        builtin_ends},
+        {"contains",    builtin_contains},
+        {"split",       builtin_split},
+        {"join",        builtin_join},
+        {"replace",     builtin_replace},
+        {"fromCharCode",builtin_fromCharCode},
+        {"chr",         builtin_fromCharCode},
+        {"ord",         builtin_ord},
+        {"parseInt",    builtin_parseInt},
+        {"parseFloat",  builtin_parseFloat},
+        {"hex",         builtin_hex},
+        {"bin",         builtin_bin},
+        {"oct",         builtin_oct},
+        /* array functions */
+        {"push",        builtin_push},
+        {"pop",         builtin_pop},
+        {"sort",        builtin_sort},
+        {"reverse",     builtin_reverse},
+        {"slice",       builtin_slice},
+        {"flatten",     builtin_flatten},
+        {"range",       builtin_range},
+        {"zip",         builtin_zip},
+        {"enumerate",   builtin_enumerate},
+        /* dict functions */
+        {"keys",        builtin_keys},
+        {"values",      builtin_values},
+        {"items",       builtin_items},
+        {"has",         builtin_has},
+        /* time */
+        {"clock",       builtin_clock},
+        {"time",        builtin_time_now},
+        /* utility */
+        {"error",       builtin_error},
+        {"exit",        builtin_exit},
+        /* math constants as functions */
+        {"PI",          builtin_math_pi},
+        {"E",           builtin_math_e},
+        {"TAU",         builtin_math_tau},
+        {"INF",         builtin_math_inf},
+        {"NAN",         builtin_math_nan},
         {"gui_window",  builtin_gui_window},
         {"gui_label",   builtin_gui_label},
         {"gui_button",  builtin_gui_button},
@@ -668,6 +1322,27 @@ static void register_builtins(Interpreter *interp) {
         env_set(interp->globals, builtins[i].name, v, false);
         value_release(v);
     }
+    /* math constants as values */
+    {
+        struct { const char *name; double val; } consts[] = {
+            {"PI",  3.14159265358979323846},
+            {"E",   2.71828182845904523536},
+            {"TAU", 6.28318530717958647692},
+            {NULL, 0.0}
+        };
+        for (int i = 0; consts[i].name; i++) {
+            Value *v = value_float(consts[i].val);
+            env_set(interp->globals, consts[i].name, v, true);
+            value_release(v);
+        }
+        Value *inf_v = value_float(1.0/0.0);
+        env_set(interp->globals, "INF", inf_v, true);
+        value_release(inf_v);
+        Value *nan_v = value_float(0.0/0.0);
+        env_set(interp->globals, "NAN", nan_v, true);
+        value_release(nan_v);
+    }
+
     Value *memory = value_dict_new();
     Value *key = value_string("__module");
     Value *name = value_string("memory");
@@ -1698,7 +2373,9 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
 
         if (callee->type == VAL_BUILTIN) {
             value_release(result);
+            g_current_interp = interp;
             result = callee->builtin.fn(args, node->func_call.arg_count);
+            g_current_interp = NULL;
         } else if (callee->type == VAL_FUNCTION) {
             Env *fn_env = env_new(callee->func.closure);
             for (int i = 0; i < callee->func.param_count; i++) {
@@ -1760,11 +2437,78 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         Value *result;
         if (is_memory_module(obj)) {
             result = memory_method(interp, env, obj, node->method_call.method, args, node->method_call.arg_count, node->line);
+        } else if (obj->type == VAL_DICT) {
+            /* Check if it's a class instance (has __instance_of__) */
+            Value *iof_key = value_string("__instance_of__");
+            Value *iof = value_dict_get(obj, iof_key);
+            value_release(iof_key);
+
+            Value *method_fn = NULL;
+            if (iof && iof->type == VAL_DICT) {
+                /* Look for method in class dict */
+                Value *mk = value_string(node->method_call.method);
+                method_fn = value_dict_get(iof, mk);
+                value_release(mk);
+                /* Also check superclass chain */
+                if (!method_fn) {
+                    Value *super_key = value_string("__super__");
+                    Value *super_name = value_dict_get(iof, super_key);
+                    value_release(super_key);
+                    if (super_name && super_name->type == VAL_STRING) {
+                        Value *super_cls = env_get(env, super_name->str_val);
+                        if (super_cls && super_cls->type == VAL_DICT) {
+                            Value *smk = value_string(node->method_call.method);
+                            method_fn = value_dict_get(super_cls, smk);
+                            value_release(smk);
+                        }
+                    }
+                }
+            }
+
+            if (method_fn && method_fn->type == VAL_FUNCTION) {
+                /* Call the method with self=obj injected */
+                Env *call_env = env_new(method_fn->func.closure);
+                env_set(call_env, "self", obj, false);
+                /* bind parameters (skip self if first param is named self) */
+                int arg_offset = 0;
+                if (method_fn->func.param_count > 0 &&
+                    strcmp(method_fn->func.params[0].name, "self") == 0) {
+                    arg_offset = 1;
+                }
+                for (int pi = arg_offset; pi < method_fn->func.param_count; pi++) {
+                    const char *pname = method_fn->func.params[pi].name;
+                    int ai = pi - arg_offset;
+                    Value *argval;
+                    if (ai < node->method_call.arg_count) {
+                        argval = value_retain(args[ai]);
+                    } else if (method_fn->func.params[pi].default_val) {
+                        argval = eval_node(interp, method_fn->func.params[pi].default_val, env);
+                    } else {
+                        argval = value_null();
+                    }
+                    env_set(call_env, pname, argval, false);
+                    value_release(argval);
+                }
+                eval_node(interp, method_fn->func.body, call_env);
+                result = value_null();
+                if (interp->returning) {
+                    interp->returning = false;
+                    if (interp->return_val) {
+                        value_release(result);
+                        result = interp->return_val;
+                        interp->return_val = NULL;
+                    }
+                }
+                env_free(call_env);
+            } else {
+                /* fall through to regular dict method or builtin lookup */
+                result = dict_method(interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line);
+                if (result == NULL) result = value_null();
+            }
         } else {
             switch (obj->type) {
                 case VAL_STRING: result = string_method(interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
                 case VAL_ARRAY:  result = array_method (interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
-                case VAL_DICT:   result = dict_method  (interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
                 case VAL_SET:    result = set_method   (interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
                 case VAL_TUPLE:  result = tuple_method (interp, obj, node->method_call.method, args, node->method_call.arg_count, node->line); break;
                 default: {
@@ -1847,7 +2591,21 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
             Value *key = value_string(node->member.name);
             Value *found = value_dict_get(obj, key);
             value_release(key);
-            if (found) { value_release(result); result = value_retain(found); }
+            if (found) {
+                value_release(result);
+                result = value_retain(found);
+            } else {
+                /* try class dict lookup for class attributes / methods */
+                Value *iof_key = value_string("__instance_of__");
+                Value *iof = value_dict_get(obj, iof_key);
+                value_release(iof_key);
+                if (iof && iof->type == VAL_DICT) {
+                    Value *ck = value_string(node->member.name);
+                    Value *cv = value_dict_get(iof, ck);
+                    value_release(ck);
+                    if (cv) { value_release(result); result = value_retain(cv); }
+                }
+            }
         }
         value_release(obj);
         return result;
@@ -1943,6 +2701,18 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         else if (strcmp(op, "/") == 0) { Value *r = value_div(left, right); if (r) { value_release(result); result = r; } else runtime_error(interp, "division by zero or unsupported type", node->line); }
         else if (strcmp(op, "%") == 0) { Value *r = value_mod(left, right); if (r) { value_release(result); result = r; } else runtime_error(interp, "modulo error", node->line); }
         else if (strcmp(op, "**") == 0) { Value *r = value_pow(left, right); if (r) { value_release(result); result = r; } else runtime_error(interp, "power error", node->line); }
+        else if (strcmp(op, "//") == 0) {
+            if (left->type == VAL_INT && right->type == VAL_INT) {
+                if (right->int_val == 0) { runtime_error(interp, "floor division by zero", node->line); }
+                else { value_release(result); result = value_int(left->int_val / right->int_val); }
+            } else if ((left->type == VAL_FLOAT || left->type == VAL_INT) &&
+                       (right->type == VAL_FLOAT || right->type == VAL_INT)) {
+                double lv = left->type  == VAL_FLOAT ? left->float_val  : (double)left->int_val;
+                double rv = right->type == VAL_FLOAT ? right->float_val : (double)right->int_val;
+                if (rv == 0.0) { runtime_error(interp, "floor division by zero", node->line); }
+                else { value_release(result); result = value_float(floor(lv / rv)); }
+            } else { runtime_error(interp, "'//' requires numeric operands", node->line); }
+        }
         else if (strcmp(op, "==") == 0) { value_release(result); result = value_bool(value_equals(left, right) ? 1 : 0); }
         else if (strcmp(op, "!=") == 0) { value_release(result); result = value_bool(value_equals(left, right) ? 0 : 1); }
         else if (strcmp(op, "<")  == 0) { value_release(result); result = value_bool(value_compare(left, right) < 0  ? 1 : 0); }
@@ -1973,6 +2743,20 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
                 for (int i = 0; i < right->set.len; i++)
                     if (!value_set_has(left, right->set.items[i])) value_set_add(result, right->set.items[i]);
             }
+        }
+        else if (strcmp(op, "<<") == 0) {
+            if (left->type == VAL_INT && right->type == VAL_INT) {
+                long long sh = right->int_val;
+                value_release(result);
+                result = (sh >= 0 && sh < 64) ? value_int(left->int_val << sh) : value_int(0);
+            } else { runtime_error(interp, "'<<' requires integer operands", node->line); }
+        }
+        else if (strcmp(op, ">>") == 0) {
+            if (left->type == VAL_INT && right->type == VAL_INT) {
+                long long sh = right->int_val;
+                value_release(result);
+                result = (sh >= 0 && sh < 64) ? value_int(left->int_val >> sh) : value_int(0);
+            } else { runtime_error(interp, "'>>' requires integer operands", node->line); }
         }
         else {
             char emsg[64]; snprintf(emsg, sizeof(emsg), "unknown operator '%s'", op);
@@ -2250,6 +3034,220 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         }
         value_release(obj);
         return value_bool((node->is_expr.negate ? !match_ok : match_ok) ? 1 : 0);
+    }
+
+    /* ---- ternary: cond ? then_val : else_val ---- */
+    case NODE_TERNARY: {
+        Value *cond = eval_node(interp, node->ternary.cond, env);
+        if (interp->had_error) return value_null();
+        bool truthy = value_truthy(cond);
+        value_release(cond);
+        if (truthy) return eval_node(interp, node->ternary.then_val, env);
+        return eval_node(interp, node->ternary.else_val, env);
+    }
+
+    /* ---- fn expression: fn(params) { body } ---- */
+    case NODE_FN_EXPR: {
+        Value *f = value_function("<anonymous>",
+                                  node->fn_expr.params,
+                                  node->fn_expr.param_count,
+                                  node->fn_expr.body,
+                                  env);
+        return f;
+    }
+
+    /* ---- spread expression: ...expr ---- */
+    case NODE_SPREAD: {
+        /* Spread is handled at the call site; here just evaluate the inner expr */
+        return eval_node(interp, node->spread.expr, env);
+    }
+
+    /* ---- class declaration ---- */
+    case NODE_CLASS_DECL: {
+        /* Store the class as a dict with __class_name__ and methods */
+        Value *cls = value_dict_new();
+        Value *cname_key = value_string("__class_name__");
+        Value *cname_val = value_string(node->class_decl.name);
+        value_dict_set(cls, cname_key, cname_val);
+        value_release(cname_key); value_release(cname_val);
+
+        if (node->class_decl.super) {
+            Value *super_key = value_string("__super__");
+            Value *super_val = value_string(node->class_decl.super);
+            value_dict_set(cls, super_key, super_val);
+            value_release(super_key); value_release(super_val);
+        }
+
+        /* Store each method */
+        for (int i = 0; i < node->class_decl.method_count; i++) {
+            ASTNode *mdecl = node->class_decl.methods[i];
+            if (mdecl->type != NODE_FUNC_DECL) continue;
+            Value *mfunc = value_function(mdecl->func_decl.name,
+                                          mdecl->func_decl.params,
+                                          mdecl->func_decl.param_count,
+                                          mdecl->func_decl.body,
+                                          env);
+            Value *mkey = value_string(mdecl->func_decl.name);
+            value_dict_set(cls, mkey, mfunc);
+            value_release(mkey);
+            value_release(mfunc);
+        }
+
+        env_set(env, node->class_decl.name, cls, false);
+        value_release(cls);
+        return value_null();
+    }
+
+    /* ---- struct declaration ---- */
+    case NODE_STRUCT_DECL: {
+        /* Create a constructor function as a builtin-like value.
+           We store the struct definition as a class dict. */
+        Value *cls = value_dict_new();
+        Value *cname_key = value_string("__class_name__");
+        Value *cname_val = value_string(node->struct_decl.name);
+        value_dict_set(cls, cname_key, cname_val);
+        value_release(cname_key); value_release(cname_val);
+
+        Value *struct_key = value_string("__is_struct__");
+        Value *struct_val = value_bool(1);
+        value_dict_set(cls, struct_key, struct_val);
+        value_release(struct_key); value_release(struct_val);
+
+        /* Store field names array */
+        Value *fields_key = value_string("__fields__");
+        Value *fields_arr = value_array_new();
+        for (int i = 0; i < node->struct_decl.field_count; i++) {
+            Value *fn_v = value_string(node->struct_decl.fields[i]);
+            value_array_push(fields_arr, fn_v);
+            value_release(fn_v);
+        }
+        value_dict_set(cls, fields_key, fields_arr);
+        value_release(fields_key); value_release(fields_arr);
+
+        env_set(env, node->struct_decl.name, cls, false);
+        value_release(cls);
+        return value_null();
+    }
+
+    /* ---- new expression ---- */
+    case NODE_NEW_EXPR: {
+        /* Look up the class */
+        Value *cls = env_get(env, node->new_expr.class_name);
+        if (!cls) {
+            char emsg[128];
+            snprintf(emsg, sizeof(emsg), "class '%s' not defined", node->new_expr.class_name);
+            runtime_error(interp, emsg, node->line);
+            return value_null();
+        }
+
+        if (cls->type != VAL_DICT) {
+            char emsg[128];
+            snprintf(emsg, sizeof(emsg), "'%s' is not a class", node->new_expr.class_name);
+            runtime_error(interp, emsg, node->line);
+            return value_null();
+        }
+
+        /* Create a fresh dict instance */
+        Value *instance = value_dict_new();
+
+        /* Set __instance_of__ */
+        Value *iof_key = value_string("__instance_of__");
+        value_dict_set(instance, iof_key, cls);
+        value_release(iof_key);
+
+        Value *cname_key2 = value_string("__class_name__");
+        Value *cname_val2 = value_dict_get(cls, cname_key2);
+        if (cname_val2) value_dict_set(instance, cname_key2, cname_val2);
+        value_release(cname_key2);
+
+        /* For structs, fill fields from positional args */
+        Value *is_struct_key = value_string("__is_struct__");
+        Value *is_struct = value_dict_get(cls, is_struct_key);
+        value_release(is_struct_key);
+
+        if (is_struct && value_truthy(is_struct)) {
+            Value *fields_key2 = value_string("__fields__");
+            Value *fields_arr2 = value_dict_get(cls, fields_key2);
+            value_release(fields_key2);
+            if (fields_arr2 && fields_arr2->type == VAL_ARRAY) {
+                for (int i = 0; i < fields_arr2->array.len && i < node->new_expr.arg_count; i++) {
+                    Value *fkey = fields_arr2->array.items[i];
+                    Value *fval = eval_node(interp, node->new_expr.args[i], env);
+                    if (interp->had_error) { value_release(instance); return value_null(); }
+                    value_dict_set(instance, fkey, fval);
+                    value_release(fval);
+                }
+                /* remaining fields = null */
+                for (int i = node->new_expr.arg_count; i < fields_arr2->array.len; i++) {
+                    Value *fkey = fields_arr2->array.items[i];
+                    Value *fnull = value_null();
+                    value_dict_set(instance, fkey, fnull);
+                    value_release(fnull);
+                }
+            }
+        } else {
+            /* class: look for 'init' method and call it */
+            Value *init_key = value_string("init");
+            Value *init_fn = value_dict_get(cls, init_key);
+            value_release(init_key);
+            if (!init_fn) {
+                /* try __init__ */
+                Value *init_key2 = value_string("__init__");
+                init_fn = value_dict_get(cls, init_key2);
+                value_release(init_key2);
+            }
+            if (init_fn && init_fn->type == VAL_FUNCTION) {
+                /* Call init with self=instance */
+                Env *call_env = env_new(init_fn->func.closure);
+                env_set(call_env, "self", instance, false);
+                /* bind parameters to args */
+                for (int i = 0; i < init_fn->func.param_count; i++) {
+                    const char *pname = init_fn->func.params[i].name;
+                    if (strncmp(pname, "self", 4) == 0 && strlen(pname) == 4) continue;
+                    Value *argval = value_null();
+                    int arg_offset = 0; /* offset: skip 'self' if it's param 0 */
+                    if (i < init_fn->func.param_count &&
+                        strcmp(init_fn->func.params[0].name, "self") == 0) {
+                        arg_offset = 1;
+                    }
+                    int ai = i - arg_offset;
+                    if (ai >= 0 && ai < node->new_expr.arg_count) {
+                        value_release(argval);
+                        argval = eval_node(interp, node->new_expr.args[ai], env);
+                        if (interp->had_error) { env_free(call_env); value_release(instance); return value_null(); }
+                    } else if (init_fn->func.params[i].default_val) {
+                        value_release(argval);
+                        argval = eval_node(interp, init_fn->func.params[i].default_val, env);
+                    }
+                    env_set(call_env, pname, argval, false);
+                    value_release(argval);
+                }
+                eval_node(interp, init_fn->func.body, call_env);
+                interp->returning = false;
+                if (interp->return_val) { value_release(interp->return_val); interp->return_val = NULL; }
+                env_free(call_env);
+            } else if (node->new_expr.arg_count > 0) {
+                /* No init but args provided — treat as positional dict fields */
+                for (int i = 0; i < node->new_expr.arg_count; i++) {
+                    char kbuf[32]; snprintf(kbuf, sizeof(kbuf), "%d", i);
+                    Value *fkey = value_string(kbuf);
+                    Value *fval = eval_node(interp, node->new_expr.args[i], env);
+                    if (interp->had_error) { value_release(fkey); value_release(instance); return value_null(); }
+                    value_dict_set(instance, fkey, fval);
+                    value_release(fkey); value_release(fval);
+                }
+            }
+        }
+        return instance;
+    }
+
+    /* ---- walrus / walrus_expr ---- */
+    case NODE_WALRUS:
+    case NODE_WALRUS_EXPR: {
+        Value *val = eval_node(interp, node->walrus.value, env);
+        if (interp->had_error) return value_null();
+        env_set(env, node->walrus.name, val, false);
+        return val; /* return without releasing so caller sees it */
     }
 
     default: {

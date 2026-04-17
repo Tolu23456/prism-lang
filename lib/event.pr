@@ -63,7 +63,7 @@ class EventEmitter {
     }
 
     func removeAll(event) {
-        if event != void {
+        if event != null {
             self._listeners[event] = []
         } else {
             self._listeners = {}

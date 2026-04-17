@@ -177,13 +177,13 @@ func zip3(a, b, c) {
 }
 
 func zipLongest(a, b, fillVal) {
-    fillVal = fillVal ?? void
+    fillVal = fillVal ?? null
     let result = []
     let n = max(len(a), len(b))
     let i = 0
     while i < n {
-        let va = void
-        let vb = void
+        let va = null
+        let vb = null
         if i < len(a) { va = a[i] } else { va = fillVal }
         if i < len(b) { vb = b[i] } else { vb = fillVal }
         push(result, [va, vb])
@@ -282,7 +282,7 @@ func filterMap(arr, f) {
     let result = []
     for x in arr {
         let v = f(x)
-        if v != void { push(result, v) }
+        if v != null { push(result, v) }
     }
     return result
 }
@@ -311,7 +311,7 @@ func accumulate(arr, f, init) {
     let acc = init ?? arr[0]
     let result = [acc]
     let start = 0
-    if init == void { start = 1 }
+    if init == null { start = 1 }
     let i = start
     while i < len(arr) {
         acc = f(acc, arr[i])
@@ -352,7 +352,7 @@ func findLast(arr, pred) {
         if pred(arr[i]) { return arr[i] }
         i -= 1
     }
-    return void
+    return null
 }
 
 func findLastIndex(arr, pred) {
@@ -394,10 +394,10 @@ func sumIf(arr, pred) {
 /* ── Reductions ──────────────────────────────────────────── */
 
 func reduce(arr, f, init) {
-    if len(arr) == 0 and init == void { error("iter.reduce: empty array with no init") }
-    let acc = void
+    if len(arr) == 0 and init == null { error("iter.reduce: empty array with no init") }
+    let acc = null
     let start = 0
-    if init != void { acc = init } else { acc = arr[0]; start = 1 }
+    if init != null { acc = init } else { acc = arr[0]; start = 1 }
     let i = start
     while i < len(arr) {
         acc = f(acc, arr[i])
@@ -407,10 +407,10 @@ func reduce(arr, f, init) {
 }
 
 func reduceRight(arr, f, init) {
-    if len(arr) == 0 and init == void { error("iter.reduceRight: empty array with no init") }
-    let acc = void
+    if len(arr) == 0 and init == null { error("iter.reduceRight: empty array with no init") }
+    let acc = null
     let endIdx = 0
-    if init != void {
+    if init != null {
         acc = init
         endIdx = len(arr) - 1
     } else {

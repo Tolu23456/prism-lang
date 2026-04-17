@@ -279,7 +279,7 @@ func toBool(s) {
     let lo = lower(trim(s))
     if lo == "true" or lo == "yes" or lo == "1" or lo == "on" { return true }
     if lo == "false" or lo == "no"  or lo == "0" or lo == "off" { return false }
-    return void
+    return null
 }
 
 func toLines(s)   { return split(s, "\n") }

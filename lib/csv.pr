@@ -105,13 +105,13 @@ func stringify(rows, delimiter, headers) {
 
     let lines = []
 
-    if headers == void {
+    if headers == null {
         if type(rows[0]) == "dict" {
             headers = keys(rows[0])
         }
     }
 
-    if headers != void {
+    if headers != null {
         push(lines, _rowToLine(headers, delimiter))
         for row in rows {
             let vals = []
@@ -171,9 +171,9 @@ func filterRows(rows, pred) {
     return result
 }
 
-func mapRows(rows, fn) {
+func mapRows(rows, mapper) {
     let result = []
-    for row in rows { push(result, fn(row)) }
+    for row in rows { push(result, mapper(row)) }
     return result
 }
 
@@ -200,12 +200,12 @@ func sortRows(rows, key) {
     return sorted
 }
 
-func addColumn(rows, name, fn) {
+func addColumn(rows, name, mapper) {
     let result = []
     for row in rows {
         let new_row = {}
         for k in keys(row) { new_row[k] = row[k] }
-        new_row[name] = fn(row)
+        new_row[name] = mapper(row)
         push(result, new_row)
     }
     return result
@@ -254,7 +254,7 @@ func stats(rows, col) {
             if not isNaN(v) { push(values, v) }
         }
     }
-    if len(values) == 0 { return void }
+    if len(values) == 0 { return null }
     let total = 0
     let mn = values[0]
     let mx = values[0]

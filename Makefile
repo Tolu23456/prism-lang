@@ -90,4 +90,18 @@ uninstall:
 	rm -f $(BINDIR)/$(TARGET)
 	@echo "Removed $(BINDIR)/$(TARGET)"
 
-.PHONY: all clean run test install uninstall sanitize
+# Release build: maximum optimisation, no debug info, no assertions
+RELEASE_FLAGS = -O3 -DNDEBUG -march=native -fomit-frame-pointer
+release: $(SRCS) $(HEADERS)
+	$(CC) $(CFLAGS) $(RELEASE_FLAGS) -o prism-release $(SRCS) -lm $(LDFLAGS)
+	@echo "Release build: prism-release  ($(CC) -O3 -DNDEBUG -march=native)"
+
+# Profile-guided optimisation convenience targets
+pgo-gen: $(SRCS) $(HEADERS)
+	$(CC) $(CFLAGS) -O2 -fprofile-generate -o prism-pgo $(SRCS) -lm $(LDFLAGS)
+	@echo "Run your workload with ./prism-pgo, then 'make pgo-use'"
+pgo-use: $(SRCS) $(HEADERS)
+	$(CC) $(CFLAGS) -O3 -DNDEBUG -fprofile-use -fprofile-correction -o prism-pgo-opt $(SRCS) -lm $(LDFLAGS)
+	@echo "PGO optimised build: prism-pgo-opt"
+
+.PHONY: all clean run test install uninstall sanitize release pgo-gen pgo-use

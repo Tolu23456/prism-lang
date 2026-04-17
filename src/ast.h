@@ -65,6 +65,20 @@ typedef enum {
 
     /* Import */
     NODE_IMPORT,
+
+    /* Class / struct / object system */
+    NODE_CLASS_DECL,    /* class Foo { ... } */
+    NODE_STRUCT_DECL,   /* struct Vec { x, y, z } */
+    NODE_NEW_EXPR,      /* new Foo(args...) */
+
+    /* Anonymous function expression: fn(params) { body } or fn(params) => expr */
+    NODE_FN_EXPR,
+
+    /* Spread / varargs */
+    NODE_SPREAD,        /* ...expr */
+
+    /* Walrus in expression context */
+    NODE_WALRUS_EXPR,
 } NodeType;
 
 typedef struct ASTNode ASTNode;
@@ -237,6 +251,45 @@ struct ASTNode {
             char *alias;    /* 'as' alias; NULL if none */
             char *symbol;   /* from X import Y: symbol name; NULL for plain import */
         } import_stmt;
+
+        /* NODE_CLASS_DECL */
+        struct {
+            char     *name;
+            char     *super;      /* parent class name; NULL if none */
+            ASTNode **methods;    /* array of NODE_FUNC_DECL nodes */
+            int       method_count;
+        } class_decl;
+
+        /* NODE_STRUCT_DECL */
+        struct {
+            char  *name;
+            char **fields;   /* field names */
+            int    field_count;
+        } struct_decl;
+
+        /* NODE_NEW_EXPR */
+        struct {
+            char     *class_name;
+            ASTNode **args;
+            int       arg_count;
+        } new_expr;
+
+        /* NODE_FN_EXPR */
+        struct {
+            Param   *params;
+            int      param_count;
+            ASTNode *body;    /* block or single expression (arrow form) */
+            bool     is_arrow; /* true if => form */
+        } fn_expr;
+
+        /* NODE_SPREAD */
+        struct { ASTNode *expr; } spread;
+
+        /* NODE_WALRUS_EXPR */
+        struct { char *name; ASTNode *value; } walrus;
+
+        /* NODE_TERNARY */
+        struct { ASTNode *cond; ASTNode *then_val; ASTNode *else_val; } ternary;
     };
 };
 

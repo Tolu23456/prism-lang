@@ -27,7 +27,7 @@ func measureMs(f) {
 
 class Stopwatch {
     func init() {
-        self._start   = void
+        self._start   = null
         self._elapsed = 0.0
         self._running = false
         self._laps    = []
@@ -62,7 +62,7 @@ class Stopwatch {
     }
 
     func reset() {
-        self._start   = void
+        self._start   = null
         self._elapsed = 0.0
         self._running = false
         self._laps    = []
@@ -298,7 +298,7 @@ func throttle(f, intervalMs) {
             lastCall = now
             return f(...args)
         }
-        return void
+        return null
     }
 }
 

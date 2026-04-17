@@ -208,6 +208,54 @@ void ast_node_free(ASTNode *n) {
             free(n->import_stmt.symbol);
             break;
 
+        case NODE_CLASS_DECL:
+            free(n->class_decl.name);
+            free(n->class_decl.super);
+            for (int i = 0; i < n->class_decl.method_count; i++)
+                ast_node_free(n->class_decl.methods[i]);
+            free(n->class_decl.methods);
+            break;
+
+        case NODE_STRUCT_DECL:
+            free(n->struct_decl.name);
+            for (int i = 0; i < n->struct_decl.field_count; i++)
+                free(n->struct_decl.fields[i]);
+            free(n->struct_decl.fields);
+            break;
+
+        case NODE_NEW_EXPR:
+            free(n->new_expr.class_name);
+            for (int i = 0; i < n->new_expr.arg_count; i++)
+                ast_node_free(n->new_expr.args[i]);
+            free(n->new_expr.args);
+            break;
+
+        case NODE_FN_EXPR:
+            for (int i = 0; i < n->fn_expr.param_count; i++) {
+                free(n->fn_expr.params[i].name);
+                free(n->fn_expr.params[i].type_hint);
+                ast_node_free(n->fn_expr.params[i].default_val);
+            }
+            free(n->fn_expr.params);
+            ast_node_free(n->fn_expr.body);
+            break;
+
+        case NODE_SPREAD:
+            ast_node_free(n->spread.expr);
+            break;
+
+        case NODE_WALRUS:
+        case NODE_WALRUS_EXPR:
+            free(n->walrus.name);
+            ast_node_free(n->walrus.value);
+            break;
+
+        case NODE_TERNARY:
+            ast_node_free(n->ternary.cond);
+            ast_node_free(n->ternary.then_val);
+            ast_node_free(n->ternary.else_val);
+            break;
+
         default:
             break;
     }

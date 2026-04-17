@@ -15,6 +15,7 @@ typedef enum {
     TOKEN_LET,
     TOKEN_CONST,
     TOKEN_FUNC,
+    TOKEN_FN,           /* fn — anonymous function keyword */
     TOKEN_RETURN,
     TOKEN_IF,
     TOKEN_ELIF,
@@ -46,6 +47,8 @@ typedef enum {
     TOKEN_FROM,
     TOKEN_AS,
     TOKEN_CLASS,
+    TOKEN_STRUCT,       /* struct — lightweight record type */
+    TOKEN_NEW,          /* new — instantiate class/struct */
     TOKEN_SELF,
 
     /* Built-in function keywords */
@@ -71,6 +74,7 @@ typedef enum {
     TOKEN_SLASH,
     TOKEN_PERCENT,
     TOKEN_STARSTAR,
+    TOKEN_SLASH_SLASH,  /* // integer division */
 
     /* Comparison */
     TOKEN_EQ,
@@ -87,6 +91,7 @@ typedef enum {
     TOKEN_STAR_EQ,
     TOKEN_SLASH_EQ,
     TOKEN_PERCENT_EQ,
+    TOKEN_STARSTAR_EQ,
 
     /* Logical / bitwise */
     TOKEN_AMPAMP,
@@ -97,12 +102,18 @@ typedef enum {
     TOKEN_CARET,
     TOKEN_TILDE,
 
+    /* Shift operators */
+    TOKEN_LSHIFT,   /* << */
+    TOKEN_RSHIFT,   /* >> */
+
     /* New operators */
     TOKEN_DOTDOT,       /* .. range */
+    TOKEN_ELLIPSIS,     /* ... spread/varargs */
     TOKEN_SAFE_DOT,     /* ?. safe member access */
     TOKEN_NULLCOAL,     /* ?? null coalescing */
     TOKEN_WALRUS,       /* := declare-assign */
     TOKEN_PIPE_ARROW,   /* |> pipe */
+    TOKEN_FAT_ARROW,    /* => arrow for fn expressions */
 
     /* Punctuation */
     TOKEN_LPAREN,

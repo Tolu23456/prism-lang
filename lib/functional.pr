@@ -55,7 +55,7 @@ func memoize(f) {
 
 func once(f) {
     let called = false
-    let result = void
+    let result = null
     return fn(...args) {
         if not called {
             called = true

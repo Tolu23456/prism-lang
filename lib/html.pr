@@ -40,7 +40,7 @@ func attrs(obj) {
     for k in keys(obj) {
         let v = obj[k]
         if v == true { out = out + " " + k }
-        elif v != false and v != void {
+        elif v != false and v != null {
             out = out + " " + k + "=" + escapeAttr(v)
         }
     }
@@ -50,13 +50,13 @@ func attrs(obj) {
 /* ── Tag builders ────────────────────────────────────────── */
 
 func tag(name, content, attributes) {
-    let a = attributes != void ? attrs(attributes) : ""
-    if content == void { return "<" + name + a + " />" }
+    let a = attributes != null ? attrs(attributes) : ""
+    if content == null { return "<" + name + a + " />" }
     return "<" + name + a + ">" + str(content) + "</" + name + ">"
 }
 
 func selfClosing(name, attributes) {
-    let a = attributes != void ? attrs(attributes) : ""
+    let a = attributes != null ? attrs(attributes) : ""
     return "<" + name + a + " />"
 }
 
@@ -78,15 +78,15 @@ func tbody(content, attributes){ return tag("tbody", content, attributes) }
 func tr(content, attributes)   { return tag("tr", content, attributes) }
 func th(content, attributes)   { return tag("th", content, attributes) }
 func td(content, attributes)   { return tag("td", content, attributes) }
-func strong(content)           { return tag("strong", content, void) }
-func em(content)               { return tag("em", content, void) }
-func code(content)             { return tag("code", content, void) }
-func pre(content)              { return tag("pre", content, void) }
-func blockquote(content)       { return tag("blockquote", content, void) }
+func strong(content)           { return tag("strong", content, null) }
+func em(content)               { return tag("em", content, null) }
+func code(content)             { return tag("code", content, null) }
+func pre(content)              { return tag("pre", content, null) }
+func blockquote(content)       { return tag("blockquote", content, null) }
 
 func a(href, content, attributes) {
     let a_attrs = {"href": href}
-    if attributes != void {
+    if attributes != null {
         for k in keys(attributes) { a_attrs[k] = attributes[k] }
     }
     return tag("a", content, a_attrs)
@@ -94,7 +94,7 @@ func a(href, content, attributes) {
 
 func img(src, alt, attributes) {
     let a = {"src": src, "alt": alt ?? ""}
-    if attributes != void {
+    if attributes != null {
         for k in keys(attributes) { a[k] = attributes[k] }
     }
     return selfClosing("img", a)
@@ -107,13 +107,13 @@ func hr() { return "<hr />" }
 
 func unorderedList(items, attributes) {
     let inner = ""
-    for item in items { inner = inner + li(str(item), void) }
+    for item in items { inner = inner + li(str(item), null) }
     return ul(inner, attributes)
 }
 
 func orderedList(items, attributes) {
     let inner = ""
-    for item in items { inner = inner + li(str(item), void) }
+    for item in items { inner = inner + li(str(item), null) }
     return ol(inner, attributes)
 }
 
@@ -121,39 +121,39 @@ func orderedList(items, attributes) {
 
 func buildTable(rows, headers, attributes) {
     let head_row = ""
-    if headers == void and len(rows) > 0 and type(rows[0]) == "dict" {
+    if headers == null and len(rows) > 0 and type(rows[0]) == "dict" {
         headers = keys(rows[0])
     }
 
-    if headers != void {
+    if headers != null {
         let head_cells = ""
-        for h in headers { head_cells = head_cells + th(escape(str(h)), void) }
-        head_row = thead(tr(head_cells, void), void)
+        for h in headers { head_cells = head_cells + th(escape(str(h)), null) }
+        head_row = thead(tr(head_cells, null), null)
     }
 
     let body_rows = ""
     for row in rows {
         let cells = ""
-        if type(row) == "dict" and headers != void {
+        if type(row) == "dict" and headers != null {
             for h in headers {
                 let val = has(row, h) ? row[h] : ""
-                cells = cells + td(escape(str(val)), void)
+                cells = cells + td(escape(str(val)), null)
             }
         } elif type(row) == "array" {
-            for val in row { cells = cells + td(escape(str(val)), void) }
+            for val in row { cells = cells + td(escape(str(val)), null) }
         }
-        body_rows = body_rows + tr(cells, void)
+        body_rows = body_rows + tr(cells, null)
     }
 
-    return table(head_row + tbody(body_rows, void), attributes)
+    return table(head_row + tbody(body_rows, null), attributes)
 }
 
 /* ── Forms ───────────────────────────────────────────────── */
 
 func input_tag(input_type, name, value, attributes) {
     let a = {"type": input_type, "name": name}
-    if value != void { a["value"] = str(value) }
-    if attributes != void {
+    if value != null { a["value"] = str(value) }
+    if attributes != null {
         for k in keys(attributes) { a[k] = attributes[k] }
     }
     return selfClosing("input", a)
@@ -164,7 +164,7 @@ func textInput(name, value, attributes) {
 }
 
 func passwordInput(name, attributes) {
-    return input_tag("password", name, void, attributes)
+    return input_tag("password", name, null, attributes)
 }
 
 func checkbox(name, value, checked, attributes) {
@@ -181,7 +181,7 @@ func radio(name, value, checked, attributes) {
 
 func select_tag(name, options, selected, attributes) {
     let a = {"name": name}
-    if attributes != void {
+    if attributes != null {
         for k in keys(attributes) { a[k] = attributes[k] }
     }
     let inner = ""
@@ -197,7 +197,7 @@ func select_tag(name, options, selected, attributes) {
 
 func textarea(name, content, attributes) {
     let a = {"name": name}
-    if attributes != void {
+    if attributes != null {
         for k in keys(attributes) { a[k] = attributes[k] }
     }
     return tag("textarea", escape(str(content ?? "")), a)
@@ -205,7 +205,7 @@ func textarea(name, content, attributes) {
 
 func button(content, btn_type, attributes) {
     let a = {"type": btn_type ?? "button"}
-    if attributes != void {
+    if attributes != null {
         for k in keys(attributes) { a[k] = attributes[k] }
     }
     return tag("button", content, a)
@@ -213,7 +213,7 @@ func button(content, btn_type, attributes) {
 
 func form(action, method, content, attributes) {
     let a = {"action": action ?? "", "method": method ?? "get"}
-    if attributes != void {
+    if attributes != null {
         for k in keys(attributes) { a[k] = attributes[k] }
     }
     return tag("form", content, a)
@@ -230,11 +230,11 @@ func doctype() { return "<!DOCTYPE html>" }
 func document(title, body_content, head_extra) {
     head_extra = head_extra ?? ""
     let head = tag("head",
-        tag("meta", void, {"charset": "UTF-8"}) +
-        tag("meta", void, {"name": "viewport", "content": "width=device-width, initial-scale=1"}) +
-        tag("title", escape(title), void) +
-        head_extra, void)
-    let body = tag("body", body_content, void)
+        tag("meta", null, {"charset": "UTF-8"}) +
+        tag("meta", null, {"name": "viewport", "content": "width=device-width, initial-scale=1"}) +
+        tag("title", escape(title), null) +
+        head_extra, null)
+    let body = tag("body", body_content, null)
     return doctype() + "\n" + tag("html", head + body, {"lang": "en"})
 }
 
@@ -243,8 +243,8 @@ func stylesheet(href) {
 }
 
 func script(src, content) {
-    if src != void { return tag("script", "", {"src": src}) }
-    return tag("script", content ?? "", void)
+    if src != null { return tag("script", "", {"src": src}) }
+    return tag("script", content ?? "", null)
 }
 
 /* ── Strip ───────────────────────────────────────────────── */

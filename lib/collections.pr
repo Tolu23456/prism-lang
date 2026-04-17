@@ -120,7 +120,7 @@ func sumBy(arr, key_fn) {
 }
 
 func minBy(arr, key_fn) {
-    if len(arr) == 0 { return void }
+    if len(arr) == 0 { return null }
     let best = arr[0]
     let best_k = key_fn(best)
     for item in arr {
@@ -131,7 +131,7 @@ func minBy(arr, key_fn) {
 }
 
 func maxBy(arr, key_fn) {
-    if len(arr) == 0 { return void }
+    if len(arr) == 0 { return null }
     let best = arr[0]
     let best_k = key_fn(best)
     for item in arr {
@@ -149,12 +149,12 @@ func drop(arr, n) {
 }
 
 func first(arr) {
-    if len(arr) == 0 { return void }
+    if len(arr) == 0 { return null }
     return arr[0]
 }
 
 func last(arr) {
-    if len(arr) == 0 { return void }
+    if len(arr) == 0 { return null }
     return arr[len(arr) - 1]
 }
 
@@ -495,7 +495,7 @@ class Deque {
 class Set {
     func init(arr) {
         self._data = {}
-        if arr != void {
+        if arr != null {
             for x in arr { self.add(x) }
         }
     }
@@ -519,14 +519,14 @@ class Set {
         return s
     }
     func intersection(other) {
-        let s = new Set(void)
+        let s = new Set(null)
         for x in self.toArray() {
             if other.has(x) { s.add(x) }
         }
         return s
     }
     func difference(other) {
-        let s = new Set(void)
+        let s = new Set(null)
         for x in self.toArray() {
             if not other.has(x) { s.add(x) }
         }
@@ -607,7 +607,7 @@ struct ListNode { val, next }
 
 class LinkedList {
     func init() {
-        self._head = void
+        self._head = null
         self._size = 0
     }
 
@@ -619,12 +619,12 @@ class LinkedList {
     }
 
     func append(val) {
-        let node = new ListNode(val, void)
-        if self._head == void {
+        let node = new ListNode(val, null)
+        if self._head == null {
             self._head = node
         } else {
             let cur = self._head
-            while cur.next != void { cur = cur.next }
+            while cur.next != null { cur = cur.next }
             cur.next = node
         }
         self._size += 1
@@ -632,7 +632,7 @@ class LinkedList {
     }
 
     func removeFirst() {
-        if self._head == void { error("LinkedList: removeFirst() on empty list") }
+        if self._head == null { error("LinkedList: removeFirst() on empty list") }
         let val = self._head.val
         self._head = self._head.next
         self._size -= 1
@@ -645,7 +645,7 @@ class LinkedList {
     func toArray() {
         let result = []
         let cur = self._head
-        while cur != void {
+        while cur != null {
             push(result, cur.val)
             cur = cur.next
         }
@@ -654,7 +654,7 @@ class LinkedList {
 
     func contains(val) {
         let cur = self._head
-        while cur != void {
+        while cur != null {
             if cur.val == val { return true }
             cur = cur.next
         }

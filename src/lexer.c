@@ -63,6 +63,7 @@ static const KW KEYWORDS[] = {
     {"let",      TOKEN_LET},
     {"const",    TOKEN_CONST},
     {"func",     TOKEN_FUNC},
+    {"fn",       TOKEN_FN},
     {"return",   TOKEN_RETURN},
     {"if",       TOKEN_IF},
     {"elif",     TOKEN_ELIF},
@@ -92,6 +93,8 @@ static const KW KEYWORDS[] = {
     {"from",     TOKEN_FROM},
     {"as",       TOKEN_AS},
     {"class",    TOKEN_CLASS},
+    {"struct",   TOKEN_STRUCT},
+    {"new",      TOKEN_NEW},
     {"self",     TOKEN_SELF},
     {"output",   TOKEN_OUTPUT},
     {"input",    TOKEN_INPUT},
@@ -197,12 +200,6 @@ Token *lexer_next(Lexer *l) {
 
     /* # line comment */
     if (cur(l) == '#') {
-        while (l->pos < l->len && cur(l) != '\n') advance(l);
-        return lexer_next(l);
-    }
-
-    /* // line comment */
-    if (cur(l) == '/' && peek1(l) == '/') {
         while (l->pos < l->len && cur(l) != '\n') advance(l);
         return lexer_next(l);
     }
@@ -376,10 +373,18 @@ Token *lexer_next(Lexer *l) {
             if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_MINUS_EQ, "-="); }
             return make_token_char(l, TOKEN_MINUS, '-');
         case '*':
-            if (cur(l) == '*') { advance(l); return make_token(l, TOKEN_STARSTAR, "**"); }
+            if (cur(l) == '*') {
+                advance(l);
+                if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_STARSTAR_EQ, "**="); }
+                return make_token(l, TOKEN_STARSTAR, "**");
+            }
             if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_STAR_EQ, "*="); }
             return make_token_char(l, TOKEN_STAR, '*');
         case '/':
+            if (cur(l) == '/') {
+                advance(l);
+                return make_token(l, TOKEN_SLASH_SLASH, "//");
+            }
             if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_SLASH_EQ, "/="); }
             return make_token_char(l, TOKEN_SLASH, '/');
         case '%':
@@ -387,15 +392,18 @@ Token *lexer_next(Lexer *l) {
             return make_token_char(l, TOKEN_PERCENT, '%');
         case '=':
             if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_EQEQ, "=="); }
+            if (cur(l) == '>') { advance(l); return make_token(l, TOKEN_FAT_ARROW, "=>"); }
             return make_token_char(l, TOKEN_EQ, '=');
         case '!':
             if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_NEQ, "!="); }
             return make_token_char(l, TOKEN_BANG, '!');
         case '<':
             if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_LE, "<="); }
+            if (cur(l) == '<') { advance(l); return make_token(l, TOKEN_LSHIFT, "<<"); }
             return make_token_char(l, TOKEN_LT, '<');
         case '>':
             if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_GE, ">="); }
+            if (cur(l) == '>') { advance(l); return make_token(l, TOKEN_RSHIFT, ">>"); }
             return make_token_char(l, TOKEN_GT, '>');
         case '&':
             if (cur(l) == '&') { advance(l); return make_token(l, TOKEN_AMPAMP, "&&"); }
@@ -418,7 +426,11 @@ Token *lexer_next(Lexer *l) {
             if (cur(l) == '=') { advance(l); return make_token(l, TOKEN_WALRUS, ":="); }
             return make_token_char(l, TOKEN_COLON, ':');
         case '.':
-            if (cur(l) == '.') { advance(l); return make_token(l, TOKEN_DOTDOT, ".."); }
+            if (cur(l) == '.') {
+                advance(l);
+                if (cur(l) == '.') { advance(l); return make_token(l, TOKEN_ELLIPSIS, "..."); }
+                return make_token(l, TOKEN_DOTDOT, "..");
+            }
             return make_token_char(l, TOKEN_DOT, '.');
         case '@': return make_token_char(l, TOKEN_AT, '@');
         case '?':
@@ -444,6 +456,7 @@ const char *token_type_name(TokenType t) {
         case TOKEN_LET:        return "let";
         case TOKEN_CONST:      return "const";
         case TOKEN_FUNC:       return "func";
+        case TOKEN_FN:         return "fn";
         case TOKEN_RETURN:     return "return";
         case TOKEN_IF:         return "if";
         case TOKEN_ELIF:       return "elif";
@@ -473,6 +486,8 @@ const char *token_type_name(TokenType t) {
         case TOKEN_FROM:       return "from";
         case TOKEN_AS:         return "as";
         case TOKEN_CLASS:      return "class";
+        case TOKEN_STRUCT:     return "struct";
+        case TOKEN_NEW:        return "new";
         case TOKEN_SELF:       return "self";
         case TOKEN_OUTPUT:     return "output";
         case TOKEN_INPUT:      return "input";
@@ -482,31 +497,37 @@ const char *token_type_name(TokenType t) {
         case TOKEN_STAR:       return "*";
         case TOKEN_SLASH:      return "/";
         case TOKEN_PERCENT:    return "%";
-        case TOKEN_STARSTAR:   return "**";
-        case TOKEN_EQ:         return "=";
-        case TOKEN_EQEQ:       return "==";
-        case TOKEN_NEQ:        return "!=";
-        case TOKEN_LT:         return "<";
-        case TOKEN_GT:         return ">";
-        case TOKEN_LE:         return "<=";
-        case TOKEN_GE:         return ">=";
-        case TOKEN_PLUS_EQ:    return "+=";
-        case TOKEN_MINUS_EQ:   return "-=";
-        case TOKEN_STAR_EQ:    return "*=";
-        case TOKEN_SLASH_EQ:   return "/=";
-        case TOKEN_PERCENT_EQ: return "%=";
-        case TOKEN_AMPAMP:     return "&&";
-        case TOKEN_PIPEPIPE:   return "||";
-        case TOKEN_BANG:       return "!";
-        case TOKEN_AMP:        return "&";
-        case TOKEN_PIPE:       return "|";
-        case TOKEN_CARET:      return "^";
-        case TOKEN_TILDE:      return "~";
-        case TOKEN_DOTDOT:     return "..";
-        case TOKEN_SAFE_DOT:   return "?.";
-        case TOKEN_NULLCOAL:   return "??";
-        case TOKEN_WALRUS:     return ":=";
-        case TOKEN_PIPE_ARROW: return "|>";
+        case TOKEN_STARSTAR:     return "**";
+        case TOKEN_SLASH_SLASH:  return "//";
+        case TOKEN_EQ:           return "=";
+        case TOKEN_EQEQ:         return "==";
+        case TOKEN_NEQ:          return "!=";
+        case TOKEN_LT:           return "<";
+        case TOKEN_GT:           return ">";
+        case TOKEN_LE:           return "<=";
+        case TOKEN_GE:           return ">=";
+        case TOKEN_PLUS_EQ:      return "+=";
+        case TOKEN_MINUS_EQ:     return "-=";
+        case TOKEN_STAR_EQ:      return "*=";
+        case TOKEN_SLASH_EQ:     return "/=";
+        case TOKEN_PERCENT_EQ:   return "%=";
+        case TOKEN_STARSTAR_EQ:  return "**=";
+        case TOKEN_AMPAMP:       return "&&";
+        case TOKEN_PIPEPIPE:     return "||";
+        case TOKEN_BANG:         return "!";
+        case TOKEN_AMP:          return "&";
+        case TOKEN_PIPE:         return "|";
+        case TOKEN_CARET:        return "^";
+        case TOKEN_TILDE:        return "~";
+        case TOKEN_LSHIFT:       return "<<";
+        case TOKEN_RSHIFT:       return ">>";
+        case TOKEN_DOTDOT:       return "..";
+        case TOKEN_ELLIPSIS:     return "...";
+        case TOKEN_SAFE_DOT:     return "?.";
+        case TOKEN_NULLCOAL:     return "??";
+        case TOKEN_WALRUS:       return ":=";
+        case TOKEN_PIPE_ARROW:   return "|>";
+        case TOKEN_FAT_ARROW:    return "=>";
         case TOKEN_LPAREN:     return "(";
         case TOKEN_RPAREN:     return ")";
         case TOKEN_LBRACKET:   return "[";

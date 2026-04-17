@@ -72,7 +72,7 @@ func adler32_hex(s) {
 
 /* ── CRC-32 (IEEE 802.3) ─────────────────────────────────── */
 
-let _crc32_table = void
+let _crc32_table = null
 
 func _buildCRC32Table() {
     let table = []
@@ -96,7 +96,7 @@ func _buildCRC32Table() {
 }
 
 func crc32(s) {
-    if _crc32_table == void { _buildCRC32Table() }
+    if _crc32_table == null { _buildCRC32Table() }
     let crc = 0xFFFFFFFF
     for ch in chars(s) {
         let idx = (crc ^ ord(ch)) & 0xFF
