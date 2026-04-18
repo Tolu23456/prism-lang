@@ -186,7 +186,7 @@ for f in edgecase/*.pr; do echo -n "$(basename $f): "; ./prism "$f" 2>&1 | tail 
 - **Numeric literals**: `1_000_000` (underscore separators), `0x1F` (hex), `0b1010` (binary), `0o17` (octal), `3.5j` (complex)
 - **Assertions**: `assert(cond, msg)` / `assert_eq(a, b, msg)` — used by `make test`
 - **Memory tools**: `memory.stats()`, `memory.collect()`, `memory.limit("512mb")`, `memory.profile()`
-- **XGUI**: native X11 desktop GUI — `xgui_init(w,h,title)`, `xgui_title`, `xgui_subtitle`, `xgui_label`, `xgui_separator`, `xgui_badge`, `xgui_input`, `xgui_textarea`, `xgui_button`, `xgui_checkbox`, `xgui_slider`, `xgui_progress`, `xgui_spacer`, `xgui_row_begin/end`, `xgui_close`
+- **XGUI**: native X11 desktop GUI — `xgui_init(w,h,title)`, `xgui_title`, `xgui_subtitle`, `xgui_label`, `xgui_separator`, `xgui_badge`, `xgui_input`, `xgui_textarea`, `xgui_button`, `xgui_checkbox`, `xgui_slider`, `xgui_progress`, `xgui_spacer`, `xgui_row_begin/end`, `xgui_card_begin/end`, `xgui_tooltip`, `xgui_set_dark`, `xgui_close`. v3 improvements: XRender SDF alpha-mask AA for all rounded rects/circles/outlines; 24-entry font LRU cache; smooth lerp scroll animation; draggable scrollbar with hover; soft multi-layer card shadows; blinking text cursor; button pressed visual state; viewport clipping; PSS-themed scrollbar.
 - **Operators**: arithmetic `+ - * / % **`, comparison, logical `&& || !`, bitwise `& | ^ ~`
 - **Membership**: `x in arr`, `x not in arr`
 - **Slicing**: `s[start:stop:step]` for strings, arrays, tuples

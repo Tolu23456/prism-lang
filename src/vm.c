@@ -601,6 +601,22 @@ static Value *vm_bi_xgui_set_dark(Value **args, int argc) {
     xgui_set_dark(g_vm_xgui, dark);
     return value_null();
 }
+static Value *vm_bi_xgui_card_begin(Value **args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) xgui_card_begin(g_vm_xgui);
+    return value_null();
+}
+static Value *vm_bi_xgui_card_end(Value **args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) xgui_card_end(g_vm_xgui);
+    return value_null();
+}
+static Value *vm_bi_xgui_tooltip(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_null();
+    const char *text = (args[0]->type == VAL_STRING) ? args[0]->str_val : "";
+    xgui_tooltip(g_vm_xgui, text);
+    return value_null();
+}
 
 #else /* !HAVE_X11 — graceful stubs */
 
@@ -661,30 +677,36 @@ void vm_register_builtins(VM *vm) {
         {"xgui_progress",  vm_bi_xgui_progress},
         {"xgui_slider",    vm_bi_xgui_slider},
         {"xgui_textarea",  vm_bi_xgui_textarea},
-        {"xgui_badge",     vm_bi_xgui_badge},
-        {"xgui_set_dark",  vm_bi_xgui_set_dark},
+        {"xgui_badge",       vm_bi_xgui_badge},
+        {"xgui_set_dark",    vm_bi_xgui_set_dark},
+        {"xgui_card_begin",  vm_bi_xgui_card_begin},
+        {"xgui_card_end",    vm_bi_xgui_card_end},
+        {"xgui_tooltip",     vm_bi_xgui_tooltip},
 #else
-        {"xgui_init",      vm_bi_xgui_no_x11},
-        {"xgui_style",     vm_bi_xgui_no_x11},
-        {"xgui_running",   vm_bi_xgui_no_x11},
-        {"xgui_begin",     vm_bi_xgui_no_x11},
-        {"xgui_end",       vm_bi_xgui_no_x11},
-        {"xgui_label",     vm_bi_xgui_no_x11},
-        {"xgui_button",    vm_bi_xgui_no_x11},
-        {"xgui_input",     vm_bi_xgui_no_x11},
-        {"xgui_spacer",    vm_bi_xgui_no_x11},
-        {"xgui_row_begin", vm_bi_xgui_no_x11},
-        {"xgui_row_end",   vm_bi_xgui_no_x11},
-        {"xgui_close",     vm_bi_xgui_no_x11},
-        {"xgui_title",     vm_bi_xgui_no_x11},
-        {"xgui_subtitle",  vm_bi_xgui_no_x11},
-        {"xgui_separator", vm_bi_xgui_no_x11},
-        {"xgui_checkbox",  vm_bi_xgui_no_x11},
-        {"xgui_progress",  vm_bi_xgui_no_x11},
-        {"xgui_slider",    vm_bi_xgui_no_x11},
-        {"xgui_textarea",  vm_bi_xgui_no_x11},
-        {"xgui_badge",     vm_bi_xgui_no_x11},
-        {"xgui_set_dark",  vm_bi_xgui_no_x11},
+        {"xgui_init",        vm_bi_xgui_no_x11},
+        {"xgui_style",       vm_bi_xgui_no_x11},
+        {"xgui_running",     vm_bi_xgui_no_x11},
+        {"xgui_begin",       vm_bi_xgui_no_x11},
+        {"xgui_end",         vm_bi_xgui_no_x11},
+        {"xgui_label",       vm_bi_xgui_no_x11},
+        {"xgui_button",      vm_bi_xgui_no_x11},
+        {"xgui_input",       vm_bi_xgui_no_x11},
+        {"xgui_spacer",      vm_bi_xgui_no_x11},
+        {"xgui_row_begin",   vm_bi_xgui_no_x11},
+        {"xgui_row_end",     vm_bi_xgui_no_x11},
+        {"xgui_close",       vm_bi_xgui_no_x11},
+        {"xgui_title",       vm_bi_xgui_no_x11},
+        {"xgui_subtitle",    vm_bi_xgui_no_x11},
+        {"xgui_separator",   vm_bi_xgui_no_x11},
+        {"xgui_checkbox",    vm_bi_xgui_no_x11},
+        {"xgui_progress",    vm_bi_xgui_no_x11},
+        {"xgui_slider",      vm_bi_xgui_no_x11},
+        {"xgui_textarea",    vm_bi_xgui_no_x11},
+        {"xgui_badge",       vm_bi_xgui_no_x11},
+        {"xgui_set_dark",    vm_bi_xgui_no_x11},
+        {"xgui_card_begin",  vm_bi_xgui_no_x11},
+        {"xgui_card_end",    vm_bi_xgui_no_x11},
+        {"xgui_tooltip",     vm_bi_xgui_no_x11},
 #endif
         {NULL, NULL}
     };
