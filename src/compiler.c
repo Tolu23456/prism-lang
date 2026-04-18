@@ -29,6 +29,7 @@ struct Compiler {
     int        had_error;
     char       error_msg[512];
     LoopCtx   *loop;
+    int        dead_code;  /* 1 after return/break/continue — suppress emission */
 };
 
 static void compiler_error(Compiler *c, const char *msg, int line) {
@@ -40,10 +41,12 @@ static void compiler_error(Compiler *c, const char *msg, int line) {
 /* ================================================================== Emit helpers */
 
 static void emit1(Compiler *c, uint8_t op, int line) {
+    if (c->dead_code) return;
     chunk_emit(c->chunk, op, line);
 }
 
 static void emit3(Compiler *c, uint8_t op, uint16_t operand, int line) {
+    if (c->dead_code) return;
     chunk_emit(c->chunk, op, line);
     chunk_emit16(c->chunk, operand, line);
 }
@@ -186,10 +189,11 @@ static void emit_int(Compiler *c, long long v, int ln) {
 static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body) {
     Chunk *chunk = malloc(sizeof(Chunk));
     Compiler c;
-    c.chunk = chunk;
-    c.had_error = 0;
+    c.chunk      = chunk;
+    c.had_error  = 0;
     c.error_msg[0] = '\0';
-    c.loop = NULL;
+    c.loop       = NULL;
+    c.dead_code  = 0;  /* always reachable at function entry */
 
     chunk_init(chunk);
     if (body && (body->type == NODE_BLOCK || body->type == NODE_PROGRAM)) {
@@ -224,12 +228,21 @@ static void compile_node(Compiler *c, ASTNode *node) {
             compile_node(c, node->block.stmts[i]);
         break;
 
-    case NODE_BLOCK:
+    case NODE_BLOCK: {
+        int outer_dead = c->dead_code;
+        c->dead_code = 0;          /* fresh block — code is reachable again */
         emit1(c, OP_PUSH_SCOPE, ln);
         for (int i = 0; i < node->block.count; i++)
             compile_node(c, node->block.stmts[i]);
         emit1(c, OP_POP_SCOPE, ln);
+        /* Always restore outer dead_code: a block is a sub-scope, not a
+         * terminal construct.  The enclosing statement (if/for/while/return)
+         * is responsible for setting dead_code based on all-paths analysis.
+         * Dead-code suppression *within* the block still works correctly
+         * because emit1/emit3 check c->dead_code during the inner loop. */
+        c->dead_code = outer_dead;
         break;
+    }
 
     /* ---- variable declaration ---- */
     case NODE_VAR_DECL: {
@@ -309,17 +322,18 @@ static void compile_node(Compiler *c, ASTNode *node) {
         else
             emit1(c, OP_PUSH_NULL, ln);
         emit1(c, OP_RETURN, ln);
+        c->dead_code = 1;   /* everything after return in same block is unreachable */
         break;
 
     /* ---- break ---- */
     case NODE_BREAK: {
         if (!c->loop) { compiler_error(c, "break outside loop", ln); break; }
-        /* for for-in loops: pop iter-array and index off the stack */
         if (c->loop->for_in)
             emit3(c, OP_POP_N, 2, ln);
         int patch = emit_jump(c, OP_JUMP, ln);
         if (c->loop->break_count < MAX_BREAK_PATCHES)
             c->loop->break_patches[c->loop->break_count++] = patch;
+        c->dead_code = 1;
         break;
     }
 
@@ -329,6 +343,7 @@ static void compile_node(Compiler *c, ASTNode *node) {
         int patch = emit_jump(c, OP_JUMP, ln);
         if (c->loop->continue_count < MAX_CONTINUE_PATCHES)
             c->loop->continue_patches[c->loop->continue_count++] = patch;
+        c->dead_code = 1;
         break;
     }
 
@@ -364,9 +379,12 @@ static void compile_node(Compiler *c, ASTNode *node) {
         int top = c->chunk->count;
         loop.loop_start = top;
 
+        int while_pre_dead = c->dead_code;
         compile_expr(c, node->while_stmt.cond);
         int exit_patch = emit_jump(c, OP_JUMP_IF_FALSE, ln);
 
+        /* body — loop may execute 0 times, so always emit back-jump */
+        c->dead_code = 0;
         compile_node(c, node->while_stmt.body);
 
         /* patch continues to here (top of condition) */
@@ -374,6 +392,8 @@ static void compile_node(Compiler *c, ASTNode *node) {
             chunk_patch16(c->chunk, loop.continue_patches[i],
                           (uint16_t)(int16_t)(top - (loop.continue_patches[i] + 2)));
 
+        /* always emit back-jump, regardless of body's dead_code state */
+        c->dead_code = while_pre_dead;
         emit_loop(c, top, ln);
         patch_jump(c, exit_patch);
 
@@ -382,6 +402,8 @@ static void compile_node(Compiler *c, ASTNode *node) {
             patch_jump(c, loop.break_patches[i]);
 
         c->loop = loop.outer;
+        /* code after while is reachable (loop may not execute) */
+        c->dead_code = while_pre_dead;
         break;
     }
 
@@ -411,7 +433,10 @@ static void compile_node(Compiler *c, ASTNode *node) {
         uint16_t var_idx = name_const(c, node->for_in.var);
         emit3(c, OP_DEFINE_NAME, var_idx, ln);
 
-        /* body */
+        /* body — may set dead_code, but loop may execute 0 times so we
+         * must always emit the back-jump and patch the exit regardless */
+        int body_dead = c->dead_code;
+        c->dead_code = 0;
         compile_node(c, node->for_in.body);
 
         /* patch continues to for_iter_off */
@@ -421,7 +446,9 @@ static void compile_node(Compiler *c, ASTNode *node) {
                           (uint16_t)(int16_t)(for_iter_off - (off + 2)));
         }
 
-        /* back-jump to FOR_ITER */
+        /* back-jump to FOR_ITER — always emit (loop may not have returned) */
+        int saved_dead = c->dead_code;
+        c->dead_code = body_dead;   /* restore to pre-body state so emit works */
         emit_loop(c, for_iter_off, ln);
 
         /* patch exit */
@@ -432,6 +459,9 @@ static void compile_node(Compiler *c, ASTNode *node) {
             patch_jump(c, loop.break_patches[i]);
 
         c->loop = loop.outer;
+        /* code after the loop is always reachable (loop may not execute) */
+        (void)saved_dead;
+        c->dead_code = body_dead;
         break;
     }
 
@@ -848,6 +878,7 @@ int compile(ASTNode *program, Chunk *out, char *error_buf, int error_buf_len) {
     c.had_error  = 0;
     c.error_msg[0] = '\0';
     c.loop       = NULL;
+    c.dead_code  = 0;
 
     chunk_init(out);
     compile_node(&c, program);
@@ -867,6 +898,7 @@ int compile_module(ASTNode *program, Chunk *out, char *error_buf, int error_buf_
     c.had_error  = 0;
     c.error_msg[0] = '\0';
     c.loop       = NULL;
+    c.dead_code  = 0;
 
     chunk_init(out);
     compile_node(&c, program);

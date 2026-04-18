@@ -4,6 +4,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+/* Maximum shadow layers per widget state */
+#define PSS_MAX_SHADOWS 4
+
+/* One shadow layer */
+typedef struct {
+    int      x, y, blur;
+    uint32_t color;
+} PssShadowLayer;
+
 /* Parsed style for one widget state */
 typedef struct {
     /* ── Colors ─────────────────────────────────────────── */
@@ -11,7 +20,7 @@ typedef struct {
     uint32_t color;             /* 0xRRGGBB  (foreground / text) */
     uint32_t border_color;      /* 0xRRGGBB */
     uint32_t outline_color;     /* 0xRRGGBB */
-    uint32_t shadow_color;      /* 0xRRGGBB */
+    uint32_t shadow_color;      /* 0xRRGGBB  (layer-0 compat) */
     uint32_t accent_color;      /* 0xRRGGBB  (checkbox tick, progress fill, etc.) */
 
     /* ── Border ─────────────────────────────────────────── */
@@ -28,6 +37,7 @@ typedef struct {
     int      padding_y;
     int      margin_x;
     int      margin_y;
+    int      gap;               /* gap between children in row/grid layouts */
 
     /* ── Size constraints ────────────────────────────────── */
     int      min_width;
@@ -47,16 +57,26 @@ typedef struct {
 
     /* ── Effects ─────────────────────────────────────────── */
     int      opacity;           /* 0–100, 100 = fully opaque */
+
+    /* Legacy single-shadow (layer 0) — kept for backward compat */
     int      shadow_blur;
     int      shadow_offset_x;
     int      shadow_offset_y;
+
+    /* ── Multi-layer shadows ──────────────────────────────── */
+    int           shadow_count;                 /* 0 = none */
+    PssShadowLayer shadows[PSS_MAX_SHADOWS];    /* shadows[0] == legacy fields */
+
+    /* ── Gradient background ──────────────────────────────── */
+    uint32_t gradient_end;      /* 0 = no gradient; start color = background */
+    int      gradient_dir;      /* 0=top→bottom, 1=left→right, 2=TL→BR, 3=TR→BL */
 
     /* ── Misc ────────────────────────────────────────────── */
     char     cursor[32];        /* default | pointer | text | crosshair | not-allowed */
 } PssStyle;
 
 /* Max CSS custom properties per theme */
-#define PSS_VAR_MAX 64
+#define PSS_VAR_MAX 128
 
 /* Full parsed theme */
 typedef struct {
@@ -91,6 +111,108 @@ typedef struct {
     PssStyle scrollbar;
     PssStyle scrollbar_thumb;
     PssStyle scrollbar_thumb_hover;
+
+    /* ── Toggle switch ───────────────────────────────────── */
+    PssStyle toggle;
+    PssStyle toggle_on;
+    PssStyle toggle_off;
+
+    /* ── Slider ──────────────────────────────────────────── */
+    PssStyle slider;
+    PssStyle slider_thumb;
+    PssStyle slider_track;
+
+    /* ── Select / dropdown ───────────────────────────────── */
+    PssStyle select;
+    PssStyle select_open;
+    PssStyle select_item;
+    PssStyle select_item_hover;
+
+    /* ── Chip ─────────────────────────────────────────────── */
+    PssStyle chip;
+    PssStyle chip_hover;
+    PssStyle chip_active;
+
+    /* ── Spinner ──────────────────────────────────────────── */
+    PssStyle spinner;
+
+    /* ── Section divider ──────────────────────────────────── */
+    PssStyle section;
+
+    /* ── Group box ────────────────────────────────────────── */
+    PssStyle group;
+    PssStyle group_title;
+
+    /* ── Toast notification ───────────────────────────────── */
+    PssStyle toast;
+    PssStyle toast_success;
+    PssStyle toast_warning;
+    PssStyle toast_error;
+
+    /* ── Radio button ─────────────────────────────────────── */
+    PssStyle radio;
+    PssStyle radio_checked;
+    PssStyle radio_disabled;
+
+    /* ── Menu bar ─────────────────────────────────────────── */
+    PssStyle menu_bar;
+    PssStyle menu_bar_item;
+    PssStyle menu_bar_item_hover;
+    PssStyle menu_bar_item_active;
+
+    /* ── Context menu ─────────────────────────────────────── */
+    PssStyle context_menu;
+    PssStyle context_menu_item;
+    PssStyle context_menu_item_hover;
+
+    /* ── Table ────────────────────────────────────────────── */
+    PssStyle table;
+    PssStyle table_header;
+    PssStyle table_row;
+    PssStyle table_row_alt;
+    PssStyle table_row_hover;
+    PssStyle table_row_selected;
+    PssStyle table_cell;
+
+    /* ── Tree view ────────────────────────────────────────── */
+    PssStyle tree;
+    PssStyle tree_node;
+    PssStyle tree_node_expanded;
+    PssStyle tree_node_selected;
+
+    /* ── Collapsing section ───────────────────────────────── */
+    PssStyle collapsing;
+    PssStyle collapsing_open;
+
+    /* ── Modal / dialog ───────────────────────────────────── */
+    PssStyle modal;
+    PssStyle modal_overlay;
+    PssStyle modal_title;
+
+    /* ── Spinbox ──────────────────────────────────────────── */
+    PssStyle spinbox;
+    PssStyle spinbox_button;
+    PssStyle spinbox_button_hover;
+
+    /* ── Status bar ───────────────────────────────────────── */
+    PssStyle status_bar;
+
+    /* ── Splitter ─────────────────────────────────────────── */
+    PssStyle splitter;
+    PssStyle splitter_handle;
+    PssStyle splitter_handle_hover;
+
+    /* ── Icon button ──────────────────────────────────────── */
+    PssStyle icon_button;
+    PssStyle icon_button_hover;
+    PssStyle icon_button_active;
+
+    /* ── Scroll area ──────────────────────────────────────── */
+    PssStyle scroll_area;
+
+    /* ── Drag handle ──────────────────────────────────────── */
+    PssStyle drag_control;
+    PssStyle drag_control_hover;
 
     /* ── Navigation / layout widgets ─────────────────────── */
     PssStyle header;
@@ -131,6 +253,9 @@ typedef struct {
     /* ── CSS custom properties (--name: value) ───────────── */
     char vars[PSS_VAR_MAX][2][128]; /* vars[i][0]=name, vars[i][1]=value */
     int  var_count;
+
+    /* ── Active theme variant ─────────────────────────────── */
+    char active_theme[32];      /* "light" | "dark" | "" */
 } PssTheme;
 
 /* Fill *t with sensible defaults */
@@ -138,6 +263,9 @@ void pss_theme_default(PssTheme *t);
 
 /* Parse a .pss file into *t (returns false on open error) */
 bool pss_theme_load(PssTheme *t, const char *path);
+
+/* Parse PSS source string directly into *t */
+void pss_theme_load_str(PssTheme *t, const char *src);
 
 /* Look up a CSS custom property by name (returns NULL if not found) */
 const char *pss_var_get(const PssTheme *t, const char *name);

@@ -57,11 +57,48 @@ static void skip_newlines(Parser *p) {
 }
 
 static void error_at(Parser *p, const char *msg) {
-    if (p->had_error) return;
-    p->had_error = 1;
-    snprintf(p->error_msg, sizeof(p->error_msg),
-             "line %d: %s (got '%s')", p->current->line, msg,
-             p->current->value ? p->current->value : token_type_name(p->current->type));
+    /* Suppress cascaded errors while recovering */
+    if (p->panic_mode) return;
+    p->panic_mode = 1;
+    p->had_error  = 1;
+
+    if (p->error_count < PARSER_MAX_ERRORS) {
+        ParseError *e = &p->errors[p->error_count++];
+        e->line = p->current->line;
+        e->col  = p->current->col;
+        const char *got = p->current->value ? p->current->value
+                                             : token_type_name(p->current->type);
+        snprintf(e->msg, sizeof(e->msg), "%s (got '%s')", msg, got);
+        /* compat: mirror first error into flat error_msg */
+        if (p->error_count == 1)
+            snprintf(p->error_msg, sizeof(p->error_msg),
+                     "line %d: %s", e->line, e->msg);
+    }
+}
+
+/* Skip tokens until a safe recovery point (statement boundary). */
+static void synchronize(Parser *p) {
+    p->panic_mode = 0;
+    while (!check(p, TOKEN_EOF)) {
+        /* Past a newline or semicolon → safe to resume */
+        if (check(p, TOKEN_NEWLINE) || check(p, TOKEN_SEMICOLON)) {
+            advance(p);
+            return;
+        }
+        /* Statement-starting keywords are always safe points */
+        switch (p->current->type) {
+            case TOKEN_LET:    case TOKEN_CONST:  case TOKEN_FUNC:
+            case TOKEN_FN:     case TOKEN_CLASS:  case TOKEN_STRUCT:
+            case TOKEN_IF:     case TOKEN_WHILE:  case TOKEN_FOR:
+            case TOKEN_RETURN: case TOKEN_BREAK:  case TOKEN_CONTINUE:
+            case TOKEN_IMPORT: case TOKEN_FROM:   case TOKEN_LINK:
+            case TOKEN_REPEAT: case TOKEN_TRY:    case TOKEN_THROW:
+            case TOKEN_MATCH:
+                return;
+            default: break;
+        }
+        advance(p);
+    }
 }
 
 static Token *expect(Parser *p, TokenType t, const char *msg) {
@@ -78,10 +115,11 @@ static void consume_stmt_end(Parser *p) {
 /* ------------------------------------------------------------------ Parser lifecycle */
 
 Parser *parser_new(const char *source) {
-    Parser *p   = calloc(1, sizeof(Parser));
-    p->lexer    = lexer_new(source);
-    p->current  = lexer_next(p->lexer);
-    p->peek     = lexer_next(p->lexer);
+    Parser *p    = calloc(1, sizeof(Parser));
+    p->lexer     = lexer_new(source);
+    p->source    = source;             /* kept for caret display */
+    p->current   = lexer_next(p->lexer);
+    p->peek      = lexer_next(p->lexer);
     return p;
 }
 
@@ -1770,12 +1808,18 @@ ASTNode *parser_parse(Parser *p) {
 
     skip_newlines(p);
     while (!check(p, TOKEN_EOF)) {
-        if (p->had_error) break;
         skip_newlines(p);
         if (check(p, TOKEN_EOF)) break;
 
         ASTNode *stmt = parse_stmt(p);
-        if (p->had_error) { ast_node_free(program); return ast_node_new(NODE_NULL_LIT, 0); }
+
+        /* Panic-mode recovery: synchronize to next statement boundary, then keep going */
+        if (p->panic_mode) {
+            ast_node_free(stmt);
+            synchronize(p);
+            if (p->error_count >= PARSER_MAX_ERRORS) break;
+            continue;
+        }
 
         if (program->block.count >= cap) {
             cap *= 2;
@@ -1785,4 +1829,46 @@ ASTNode *parser_parse(Parser *p) {
         consume_stmt_end(p);
     }
     return program;
+}
+
+/* ================================================================== error display */
+
+/* Print a single source line by number (1-based) into buf.  Returns length. */
+static int get_source_line(const char *src, int lineno, char *buf, int bufsz) {
+    if (!src) { buf[0] = '\0'; return 0; }
+    int cur = 1;
+    while (*src && cur < lineno) {
+        if (*src++ == '\n') cur++;
+    }
+    /* copy until newline or end */
+    int i = 0;
+    while (*src && *src != '\n' && i < bufsz - 1)
+        buf[i++] = *src++;
+    buf[i] = '\0';
+    return i;
+}
+
+void parser_print_errors(const Parser *p, const char *filename) {
+    if (!p || p->error_count == 0) return;
+    const char *file = filename ? filename : "<source>";
+    for (int i = 0; i < p->error_count; i++) {
+        const ParseError *e = &p->errors[i];
+        /* header line */
+        fprintf(stderr, "\033[1;31merror\033[0m: %s:%d:%d: %s\n",
+                file, e->line, e->col, e->msg);
+        /* source line if available */
+        if (p->source) {
+            char linebuf[512];
+            get_source_line(p->source, e->line, linebuf, sizeof(linebuf));
+            fprintf(stderr, "  %4d | %s\n", e->line, linebuf);
+            /* caret underline */
+            fprintf(stderr, "       | ");
+            int col = e->col > 0 ? e->col : 1;
+            for (int c = 1; c < col; c++) fputc(' ', stderr);
+            fprintf(stderr, "\033[1;33m^\033[0m\n");
+        }
+    }
+    if (p->error_count >= PARSER_MAX_ERRORS)
+        fprintf(stderr, "\033[33mnote\033[0m: too many errors, stopped after %d\n",
+                PARSER_MAX_ERRORS);
 }
