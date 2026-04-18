@@ -205,6 +205,14 @@
 ## Unreleased
 
 ### Added
+- **XGUI Scrolling & Responsiveness**:
+    - **Smooth Scrolling**: Implemented a critically damped spring-damper model for scrolling, providing fluid, non-oscillatory movement that is mathematically framerate-independent.
+    - **Advanced Scroll APIs**: Added `xgui_set_scroll`, `xgui_get_scroll`, `xgui_set_hscroll`, `xgui_get_hscroll`, `xgui_scroll_to_bottom`, and `xgui_ensure_visible`.
+    - **Keyboard Navigation**: Support for Arrows, Page Up/Down, and Home/End keys for scrolling.
+    - **Horizontal Scrolling**: Support for side-to-side scrolling via Shift + Mouse Wheel.
+    - **Mouse Capture**: Added `active_id` system to allow widgets like sliders to "capture" the mouse, ensuring consistent interaction even if the pointer leaves the widget during a drag.
+    - **Scrollbar Interaction**: Added support for Page Up/Down by clicking the scrollbar track.
+    - **Overscroll Effect**: Added a subtle rubber-band effect at scroll boundaries for a more modern feel.
 - **Allocation site tracking**: `--mem-report` now shows a "Top allocation sites"
   table at the end of the memory report.  For each Prism source line that
   triggered a tracked Value allocation, the GC records the file path, line

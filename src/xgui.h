@@ -56,6 +56,14 @@ void        xgui_tooltip(XGui *g, const char *text);
 void        xgui_spacer(XGui *g, int pixels);
 void        xgui_row_begin(XGui *g);
 void        xgui_row_end(XGui *g);
+
+/* ── advanced scroll ────────────────────────────────────────────── */
+void        xgui_set_scroll(XGui *g, int y);
+int         xgui_get_scroll(XGui *g);
+void        xgui_set_hscroll(XGui *g, int x);
+int         xgui_get_hscroll(XGui *g);
+void        xgui_scroll_to_bottom(XGui *g);
+void        xgui_ensure_visible(XGui *g, int x, int y, int w, int h);
 void        xgui_grid_begin(XGui *g, int cols);
 void        xgui_grid_end(XGui *g);
 void        xgui_card_begin(XGui *g);

@@ -114,6 +114,17 @@ while xgui_running() {
 
     xgui_spacer(4)
 
+    # ── Scrolling ─────────────────────────────────────────────────────
+    xgui_separator()
+    xgui_spacer(4)
+    xgui_subtitle("Advanced Scrolling")
+    xgui_label("Test programmatic scroll and keyboard support (Arrows, PgUp/Dn, Home/End)")
+    xgui_row_begin()
+    if xgui_button("Top")    { xgui_set_scroll(0) }
+    if xgui_button("Bottom") { xgui_scroll_to_bottom() }
+    xgui_label(f"Y: {xgui_get_scroll()}")
+    xgui_row_end()
+
     # ── Counter ───────────────────────────────────────────────────────
     xgui_separator()
     xgui_spacer(4)

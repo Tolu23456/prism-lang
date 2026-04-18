@@ -107,6 +107,13 @@ struct XGui {
     int       scroll_y;
     int       content_h;       /* measured last frame */
 
+    /* Horizontal scroll */
+    int       hscroll_target;
+    float     hscroll_pos_f;
+    float     hscroll_vel;
+    int       hscroll_x;
+    int       content_w;
+
     /* Scrollbar drag */
     bool      sb_dragging;
     int       sb_drag_y0, sb_drag_s0;
@@ -120,6 +127,8 @@ struct XGui {
     int       key_count;
     bool      key_backspace, key_enter;
     bool      key_esc_this_frame;
+    bool      key_pgup, key_pgdn, key_home, key_end;
+    bool      key_shift;
 
     /* Key-hold state (for games) — cleared on KeyRelease */
     bool      key_held[256];   /* ASCII 0-255 */
@@ -618,6 +627,10 @@ void xgui_begin(XGui *g) {
     g->key_backspace    = false;
     g->key_enter        = false;
     g->key_esc_this_frame = false;
+    g->key_pgup         = false;
+    g->key_pgdn         = false;
+    g->key_home         = false;
+    g->key_end          = false;
     g->tip_show         = false;
     g->dd.active        = false;
 
@@ -657,13 +670,21 @@ void xgui_begin(XGui *g) {
                     }
                 }
             } else if (e.xbutton.button == Button4) {
-                g->scroll_target -= SCROLL_STEP;
-                if (g->scroll_target < -50) g->scroll_target = -50;
+                if (g->key_shift) {
+                    g->hscroll_target -= SCROLL_STEP;
+                } else {
+                    g->scroll_target -= SCROLL_STEP;
+                    if (g->scroll_target < -50) g->scroll_target = -50;
+                }
             } else if (e.xbutton.button == Button5) {
-                int ms = g->content_h - g->height;
-                if (ms < 0) ms = 0;
-                g->scroll_target += SCROLL_STEP;
-                if (g->scroll_target > ms + 50) g->scroll_target = ms + 50;
+                if (g->key_shift) {
+                    g->hscroll_target += SCROLL_STEP;
+                } else {
+                    int ms = g->content_h - g->height;
+                    if (ms < 0) ms = 0;
+                    g->scroll_target += SCROLL_STEP;
+                    if (g->scroll_target > ms + 50) g->scroll_target = ms + 50;
+                }
             }
             break;
 
@@ -701,6 +722,11 @@ void xgui_begin(XGui *g) {
             if (ks == XK_BackSpace)             g->key_backspace = true;
             else if (ks == XK_Return || ks == XK_KP_Enter) g->key_enter = true;
             else if (ks == XK_Escape)           { g->key_esc_this_frame = true; g->focused_id[0] = '\0'; }
+            else if (ks == XK_Page_Up)          g->key_pgup = true;
+            else if (ks == XK_Page_Down)        g->key_pgdn = true;
+            else if (ks == XK_Home)             g->key_home = true;
+            else if (ks == XK_End)              g->key_end  = true;
+            else if (ks == XK_Shift_L || ks == XK_Shift_R) g->key_shift = true;
             else if (buf[0] >= 32 && g->key_count < KEY_BUF - 1)
                 g->key_chars[g->key_count++] = buf[0];
             /* hold state */
@@ -724,6 +750,7 @@ void xgui_begin(XGui *g) {
             if (ks == XK_Left  || ks == XK_KP_Left)  g->key_left  = false;
             if (ks == XK_Right || ks == XK_KP_Right) g->key_right = false;
             if (ks == XK_space)                       g->key_space = false;
+            if (ks == XK_Shift_L || ks == XK_Shift_R) g->key_shift = false;
             break;
         }
 
@@ -748,6 +775,20 @@ void xgui_begin(XGui *g) {
 
     if (g->mouse_released) {
         g->active_id[0] = '\0';
+    }
+
+    /* Scroll keyboard support */
+    if (!g->focused_id[0]) {
+        int ms = g->content_h - g->height;
+        if (ms < 0) ms = 0;
+        if (g->key_pgup)  g->scroll_target -= (g->height - 40);
+        if (g->key_pgdn)  g->scroll_target += (g->height - 40);
+        if (g->key_home)  g->scroll_target = 0;
+        if (g->key_end)   g->scroll_target = ms;
+        if (g->key_up && !g->in_row && !g->in_grid)   g->scroll_target -= 10;
+        if (g->key_down && !g->in_row && !g->in_grid) g->scroll_target += 10;
+        if (g->scroll_target < -50) g->scroll_target = -50;
+        if (g->scroll_target > ms + 50) g->scroll_target = ms + 50;
     }
 
     /* Apply key events to focused input */
@@ -785,15 +826,75 @@ void xgui_begin(XGui *g) {
         g->scroll_y = (int)(g->scroll_pos_f + 0.5f);
     }
 
+    /* Horizontal smooth scroll */
+    {
+        float dt = g->delta_ms / 1000.0f;
+        if (dt > 0.1f) dt = 0.1f;
+        float omega = SCROLL_OMEGA;
+        float exp_term = expf(-omega * dt);
+        float diff_pos = g->hscroll_pos_f - (float)g->hscroll_target;
+        float n1 = g->hscroll_vel + omega * diff_pos;
+        g->hscroll_pos_f = (float)g->hscroll_target + (diff_pos + n1 * dt) * exp_term;
+        g->hscroll_vel   = (g->hscroll_vel - omega * n1 * dt) * exp_term;
+        if (fabsf(g->hscroll_pos_f - (float)g->hscroll_target) < SNAP_THRESH &&
+            fabsf(g->hscroll_vel) < SNAP_THRESH) {
+            g->hscroll_pos_f = (float)g->hscroll_target;
+            g->hscroll_vel   = 0.0f;
+        }
+        g->hscroll_x = (int)(g->hscroll_pos_f + 0.5f);
+    }
+
     /* Clear backbuffer */
     fill_rect(g, 0, 0, g->width, g->height, g->theme.window.background);
 
     /* Reset layout cursor */
-    g->cx        = g->theme.window.padding_x;
+    g->cx        = g->theme.window.padding_x - g->hscroll_x;
     g->cy        = g->margin - g->scroll_y;
     g->in_row    = false;
     g->row_max_h = 0;
     g->in_grid   = false;
+}
+
+/* ------------------------------------------------------------------ advanced scroll implementation */
+
+void xgui_set_scroll(XGui *g, int y) {
+    if (!g) return;
+    g->scroll_target = y;
+}
+
+int xgui_get_scroll(XGui *g) {
+    return g ? g->scroll_y : 0;
+}
+
+void xgui_set_hscroll(XGui *g, int x) {
+    if (!g) return;
+    g->hscroll_target = x;
+}
+
+int xgui_get_hscroll(XGui *g) {
+    return g ? g->hscroll_x : 0;
+}
+
+void xgui_scroll_to_bottom(XGui *g) {
+    if (!g) return;
+    int ms = g->content_h - g->height;
+    if (ms > 0) g->scroll_target = ms;
+}
+
+void xgui_ensure_visible(XGui *g, int x, int y, int w, int h) {
+    if (!g) return;
+    /* Vertical */
+    if (y < 0) {
+        g->scroll_target += y - 10;
+    } else if (y + h > g->height) {
+        g->scroll_target += (y + h - g->height) + 10;
+    }
+    /* Horizontal */
+    if (x < 0) {
+        g->hscroll_target += x - 10;
+    } else if (x + w > g->width) {
+        g->hscroll_target += (x + w - g->width) + 10;
+    }
 }
 
 /* ------------------------------------------------------------------ frame end */
@@ -801,16 +902,18 @@ void xgui_begin(XGui *g) {
 void xgui_end(XGui *g) {
     if (!g) return;
 
-    /* Record content height */
+    /* Record content dimensions */
     g->content_h = g->cy + g->scroll_y + g->theme.window.padding_y;
+    g->content_w = g->cx + g->hscroll_x + g->theme.window.padding_x;
     int maxs = g->content_h - g->height;
     if (maxs < 0) maxs = 0;
-    if (g->scroll_target > maxs) {
-        g->scroll_target = maxs;
-    }
-    if (g->scroll_target < 0) {
-        g->scroll_target = 0;
-    }
+    if (g->scroll_target > maxs) g->scroll_target = maxs;
+    if (g->scroll_target < 0)    g->scroll_target = 0;
+
+    int maxh = g->content_w - g->width;
+    if (maxh < 0) maxh = 0;
+    if (g->hscroll_target > maxh) g->hscroll_target = maxh;
+    if (g->hscroll_target < 0)    g->hscroll_target = 0;
 
     /* Draw deferred dropdown popup on top of everything */
     if (g->dd.active) {
@@ -1830,6 +1933,12 @@ void        xgui_draw_text_at(XGui *g, int x, int y, const char *t, int s, uint3
 void        xgui_draw_text_centered(XGui *g, int x, int y, const char *t, int s, uint32_t c) { (void)g;(void)x;(void)y;(void)t;(void)s;(void)c; }
 void        xgui_draw_text_bold_at(XGui *g, int x, int y, const char *t, int s, uint32_t c) { (void)g;(void)x;(void)y;(void)t;(void)s;(void)c; }
 void        xgui_draw_text_bold_centered(XGui *g, int x, int y, const char *t, int s, uint32_t c) { (void)g;(void)x;(void)y;(void)t;(void)s;(void)c; }
+void        xgui_set_scroll(XGui *g, int y) { (void)g;(void)y; }
+int         xgui_get_scroll(XGui *g) { (void)g; return 0; }
+void        xgui_set_hscroll(XGui *g, int x) { (void)g;(void)x; }
+int         xgui_get_hscroll(XGui *g) { (void)g; return 0; }
+void        xgui_scroll_to_bottom(XGui *g) { (void)g; }
+void        xgui_ensure_visible(XGui *g, int x, int y, int w, int h) { (void)g;(void)x;(void)y;(void)w;(void)h; }
 bool        xgui_key_held_char(XGui *g, char c)  { (void)g;(void)c; return false; }
 bool        xgui_key_w(XGui *g)                  { (void)g; return false; }
 bool        xgui_key_s(XGui *g)                  { (void)g; return false; }

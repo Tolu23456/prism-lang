@@ -1190,6 +1190,51 @@ static Value *bi_xgui_close(Value **args, int argc) {
     return value_null();
 }
 
+static Value *bi_xgui_set_scroll(Value **args, int argc) {
+    if (g_xgui && argc > 0 && args[0]->type == VAL_INT)
+        xgui_set_scroll(g_xgui, (int)args[0]->int_val);
+    return value_null();
+}
+
+static Value *bi_xgui_get_scroll(Value **args, int argc) {
+    (void)args; (void)argc;
+    return value_int(xgui_get_scroll(g_xgui));
+}
+
+static Value *bi_xgui_set_hscroll(Value **args, int argc) {
+    if (g_xgui && argc > 0 && args[0]->type == VAL_INT)
+        xgui_set_hscroll(g_xgui, (int)args[0]->int_val);
+    return value_null();
+}
+
+static Value *bi_xgui_get_hscroll(Value **args, int argc) {
+    (void)args; (void)argc;
+    return value_int(xgui_get_hscroll(g_xgui));
+}
+
+static Value *bi_xgui_scroll_to_bottom(Value **args, int argc) {
+    (void)args; (void)argc;
+    if (g_xgui) xgui_scroll_to_bottom(g_xgui);
+    return value_null();
+}
+
+static int val_to_int(Value *v) {
+    if (v->type == VAL_INT) return (int)v->int_val;
+    if (v->type == VAL_FLOAT) return (int)v->float_val;
+    return 0;
+}
+
+static Value *bi_xgui_ensure_visible(Value **args, int argc) {
+    if (g_xgui && argc >= 4) {
+        int x = val_to_int(args[0]);
+        int y = val_to_int(args[1]);
+        int w = val_to_int(args[2]);
+        int h = val_to_int(args[3]);
+        xgui_ensure_visible(g_xgui, x, y, w, h);
+    }
+    return value_null();
+}
+
 static Value *bi_xgui_title(Value **args, int argc) {
     if (g_xgui && argc > 0 && args[0]->type == VAL_STRING)
         xgui_title(g_xgui, args[0]->str_val);
@@ -1570,6 +1615,12 @@ static void register_builtins(Interpreter *interp) {
         {"xgui_row_begin", bi_xgui_row_begin},
         {"xgui_row_end",   bi_xgui_row_end},
         {"xgui_close",     bi_xgui_close},
+        {"xgui_set_scroll", bi_xgui_set_scroll},
+        {"xgui_get_scroll", bi_xgui_get_scroll},
+        {"xgui_set_hscroll", bi_xgui_set_hscroll},
+        {"xgui_get_hscroll", bi_xgui_get_hscroll},
+        {"xgui_scroll_to_bottom", bi_xgui_scroll_to_bottom},
+        {"xgui_ensure_visible", bi_xgui_ensure_visible},
         {"xgui_title",     bi_xgui_title},
         {"xgui_subtitle",  bi_xgui_subtitle},
         {"xgui_separator", bi_xgui_separator},

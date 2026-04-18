@@ -1,0 +1,40 @@
+# test_scroll_adv.pr — Test new scrolling features
+
+xgui_init(600, 400, "Advanced Scroll Test")
+
+let items = []
+let i = 1
+while i <= 100 {
+    items.add(f"Item #{i} — Scroll me!")
+    i += 1
+}
+
+let auto_scroll = false
+
+while xgui_running() {
+    xgui_begin()
+
+    xgui_row_begin()
+    if xgui_button("Scroll to Top") {
+        xgui_set_scroll(0)
+    }
+    if xgui_button("Scroll to Bottom") {
+        xgui_scroll_to_bottom()
+    }
+    auto_scroll = xgui_checkbox("auto_scroll", "Auto-scroll")
+    xgui_row_end()
+
+    xgui_separator()
+
+    xgui_card_begin()
+    for item in items {
+        xgui_label(item)
+    }
+    xgui_card_end()
+
+    if auto_scroll {
+        xgui_scroll_to_bottom()
+    }
+
+    xgui_end()
+}

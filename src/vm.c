@@ -542,6 +542,51 @@ static Value *vm_bi_xgui_close(Value **args, int argc) {
     return value_null();
 }
 
+static Value *vm_bi_xgui_set_scroll(Value **args, int argc) {
+    if (g_vm_xgui && argc > 0 && args[0]->type == VAL_INT)
+        xgui_set_scroll(g_vm_xgui, (int)args[0]->int_val);
+    return value_null();
+}
+
+static Value *vm_bi_xgui_get_scroll(Value **args, int argc) {
+    (void)args; (void)argc;
+    return value_int(xgui_get_scroll(g_vm_xgui));
+}
+
+static Value *vm_bi_xgui_set_hscroll(Value **args, int argc) {
+    if (g_vm_xgui && argc > 0 && args[0]->type == VAL_INT)
+        xgui_set_hscroll(g_vm_xgui, (int)args[0]->int_val);
+    return value_null();
+}
+
+static Value *vm_bi_xgui_get_hscroll(Value **args, int argc) {
+    (void)args; (void)argc;
+    return value_int(xgui_get_hscroll(g_vm_xgui));
+}
+
+static Value *vm_bi_xgui_scroll_to_bottom(Value **args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) xgui_scroll_to_bottom(g_vm_xgui);
+    return value_null();
+}
+
+static int vm_val_to_int(Value *v) {
+    if (v->type == VAL_INT) return (int)v->int_val;
+    if (v->type == VAL_FLOAT) return (int)v->float_val;
+    return 0;
+}
+
+static Value *vm_bi_xgui_ensure_visible(Value **args, int argc) {
+    if (g_vm_xgui && argc >= 4) {
+        int x = vm_val_to_int(args[0]);
+        int y = vm_val_to_int(args[1]);
+        int w = vm_val_to_int(args[2]);
+        int h = vm_val_to_int(args[3]);
+        xgui_ensure_visible(g_vm_xgui, x, y, w, h);
+    }
+    return value_null();
+}
+
 static Value *vm_bi_xgui_title(Value **args, int argc) {
     if (g_vm_xgui && argc > 0 && args[0]->type == VAL_STRING)
         xgui_title(g_vm_xgui, args[0]->str_val);
@@ -839,6 +884,12 @@ void vm_register_builtins(VM *vm) {
         {"xgui_row_begin", vm_bi_xgui_row_begin},
         {"xgui_row_end",   vm_bi_xgui_row_end},
         {"xgui_close",     vm_bi_xgui_close},
+        {"xgui_set_scroll", vm_bi_xgui_set_scroll},
+        {"xgui_get_scroll", vm_bi_xgui_get_scroll},
+        {"xgui_set_hscroll", vm_bi_xgui_set_hscroll},
+        {"xgui_get_hscroll", vm_bi_xgui_get_hscroll},
+        {"xgui_scroll_to_bottom", vm_bi_xgui_scroll_to_bottom},
+        {"xgui_ensure_visible", vm_bi_xgui_ensure_visible},
         {"xgui_title",     vm_bi_xgui_title},
         {"xgui_subtitle",  vm_bi_xgui_subtitle},
         {"xgui_separator", vm_bi_xgui_separator},
