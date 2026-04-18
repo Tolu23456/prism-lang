@@ -44,6 +44,10 @@ struct XGui {
     bool       in_row;
     int        row_max_h;
 
+    /* Scroll state */
+    int        scroll_y;      /* current vertical scroll offset in pixels */
+    int        content_h;     /* total content height recorded last frame */
+
     /* Mouse state */
     int        mx, my;
     bool       mouse_down;
@@ -227,6 +231,7 @@ XGui *xgui_init(int width, int height, const char *title) {
     XSelectInput(dpy, g->win,
         ExposureMask | KeyPressMask |
         ButtonPressMask | ButtonReleaseMask |
+        Button4Mask | Button5Mask |
         PointerMotionMask | StructureNotifyMask);
 
     /* Handle window close */
@@ -260,6 +265,37 @@ void xgui_load_style(XGui *g, const char *path) {
     g->margin = g->theme.window.padding_y;
     /* Rebuild background */
     fill_rect(g, 0, 0, g->width, g->height, g->theme.window.background);
+}
+
+void xgui_set_dark(XGui *g, bool dark) {
+    if (!g) return;
+    if (dark) {
+        g->theme.window.background       = 0x1e1e2e;
+        g->theme.label.color             = 0xcdd6f4;
+        g->theme.label.background        = 0x1e1e2e;
+        g->theme.button.background       = 0x313244;
+        g->theme.button.color            = 0xcdd6f4;
+        g->theme.button.border_color     = 0x45475a;
+        g->theme.button_hover.background = 0x45475a;
+        g->theme.button_hover.color      = 0xcdd6f4;
+        g->theme.button_hover.border_color = 0x89b4fa;
+        g->theme.input.background        = 0x313244;
+        g->theme.input.color             = 0xcdd6f4;
+        g->theme.input.border_color      = 0x45475a;
+        g->theme.input_focus.background  = 0x313244;
+        g->theme.input_focus.color       = 0xcdd6f4;
+        g->theme.input_focus.border_color = 0x89b4fa;
+        g->theme.textarea.background     = 0x313244;
+        g->theme.textarea.color          = 0xcdd6f4;
+        g->theme.textarea.border_color   = 0x45475a;
+        g->theme.textarea_focus.background = 0x313244;
+        g->theme.textarea_focus.color    = 0xcdd6f4;
+        g->theme.textarea_focus.border_color = 0x89b4fa;
+    } else {
+        /* Restore light defaults */
+        pss_theme_default(&g->theme);
+    }
+    g->margin = g->theme.window.padding_y;
 }
 
 bool xgui_running(XGui *g) {
@@ -303,6 +339,14 @@ void xgui_begin(XGui *g) {
                 g->mouse_down = true;
                 g->mx = e.xbutton.x;
                 g->my = e.xbutton.y;
+            } else if (e.xbutton.button == Button4) { /* scroll up */
+                g->scroll_y -= 30;
+                if (g->scroll_y < 0) g->scroll_y = 0;
+            } else if (e.xbutton.button == Button5) { /* scroll down */
+                int max_scroll = g->content_h - g->height;
+                if (max_scroll < 0) max_scroll = 0;
+                g->scroll_y += 30;
+                if (g->scroll_y > max_scroll) g->scroll_y = max_scroll;
             }
             break;
 
@@ -370,15 +414,17 @@ void xgui_begin(XGui *g) {
     /* Clear backing buffer */
     fill_rect(g, 0, 0, g->width, g->height, g->theme.window.background);
 
-    /* Reset layout cursor */
+    /* Reset layout cursor — offset by current scroll position */
     g->cx     = g->theme.window.padding_x;
-    g->cy     = g->margin;
+    g->cy     = g->margin - g->scroll_y;
     g->in_row = false;
     g->row_max_h = 0;
 }
 
 void xgui_end(XGui *g) {
     if (!g) return;
+    /* Record total content height for scroll clamping next frame */
+    g->content_h = g->cy + g->scroll_y + g->theme.window.padding_y;
     XCopyArea(g->dpy, g->backbuf, g->win, g->gc,
               0, 0, (unsigned)g->width, (unsigned)g->height, 0, 0);
     XFlush(g->dpy);

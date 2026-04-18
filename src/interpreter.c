@@ -1257,6 +1257,14 @@ static Value *bi_xgui_badge(Value **args, int argc) {
     xgui_badge(g_xgui, text, color);
     return value_null();
 }
+static Value *bi_xgui_set_dark(Value **args, int argc) {
+    if (!g_xgui || argc < 1) return value_null();
+    bool dark = false;
+    if (args[0]->type == VAL_BOOL)  dark = (args[0]->bool_val != 0);
+    else if (args[0]->type == VAL_INT) dark = (args[0]->int_val != 0);
+    xgui_set_dark(g_xgui, dark);
+    return value_null();
+}
 
 #else /* !HAVE_X11 — graceful stubs */
 
@@ -1395,6 +1403,7 @@ static void register_builtins(Interpreter *interp) {
         {"xgui_slider",    bi_xgui_slider},
         {"xgui_textarea",  bi_xgui_textarea},
         {"xgui_badge",     bi_xgui_badge},
+        {"xgui_set_dark",  bi_xgui_set_dark},
 #else
         {"xgui_init",      bi_xgui_no_x11},
         {"xgui_style",     bi_xgui_no_x11},
@@ -1416,6 +1425,7 @@ static void register_builtins(Interpreter *interp) {
         {"xgui_slider",    bi_xgui_no_x11},
         {"xgui_textarea",  bi_xgui_no_x11},
         {"xgui_badge",     bi_xgui_no_x11},
+        {"xgui_set_dark",  bi_xgui_no_x11},
 #endif
         {NULL, NULL}
     };

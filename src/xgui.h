@@ -10,6 +10,7 @@ typedef struct XGui XGui;
 /* Lifecycle */
 XGui       *xgui_init(int width, int height, const char *title);
 void        xgui_load_style(XGui *g, const char *pss_path);
+void        xgui_set_dark(XGui *g, bool dark);
 bool        xgui_running(XGui *g);
 void        xgui_destroy(XGui *g);
 

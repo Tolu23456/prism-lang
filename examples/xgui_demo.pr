@@ -10,18 +10,21 @@ xgui_init(560, 640, "Prism — xgui Widget Gallery")
 xgui_style("examples/default.pss")
 
 # --- state ---
-let name       = ""
-let message    = ""
-let dark_mode  = false
-let show_info  = true
-let volume     = 50.0
-let brightness = 75.0
-let progress   = 0
-let log_text   = ""
+let name        = ""
+let message     = ""
+let dark_mode   = false
+let show_info   = true
+let volume      = 50.0
+let brightness  = 75.0
+let progress    = 0
+let log_text    = ""
 let click_count = 0
 
 while xgui_running() {
     xgui_begin()
+
+    # Apply dark / light theme every frame so the checkbox is live
+    xgui_set_dark(dark_mode)
 
     # ── Header ──────────────────────────────────────────────────────────
     xgui_title("xgui Widget Gallery")
@@ -66,7 +69,7 @@ while xgui_running() {
 
     # ── Toggles / checkboxes ─────────────────────────────────────────────
     xgui_subtitle("Options")
-    dark_mode = xgui_checkbox("dark_mode", "Dark mode (cosmetic demo)")
+    dark_mode = xgui_checkbox("dark_mode", "Dark mode")
     show_info = xgui_checkbox("show_info", "Show system info panel")
     xgui_spacer(6)
 
