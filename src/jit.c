@@ -8,6 +8,13 @@
 
 #if defined(__x86_64__) || defined(__amd64__) || defined(__aarch64__)
 #  include <sys/mman.h>
+#  ifndef MAP_ANONYMOUS
+#    ifdef MAP_ANON
+#      define MAP_ANONYMOUS MAP_ANON
+#    else
+#      define MAP_ANONYMOUS 0x20
+#    endif
+#  endif
 #  define JIT_HAS_BACKEND 1
 #else
 #  define JIT_HAS_BACKEND 0
