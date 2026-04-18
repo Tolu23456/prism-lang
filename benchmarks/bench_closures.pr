@@ -1,0 +1,121 @@
+/* benchmarks/bench_closures.pr — closure and higher-order function performance */
+
+print("=== Closure & Higher-Order Benchmark ===")
+print("")
+
+func bench(name, f, iters) {
+    let t0 = clock()
+    let i = 0
+    while i < iters { f(); i = i + 1 }
+    let elapsed = clock() - t0
+    print(name + ": " + str(round(elapsed * 1000.0, 2)) + " ms")
+}
+
+/* ── Simple closure call ─────────────────────────────────────── */
+func make_adder(n) { func inner(x) { return x + n } return inner }
+let adder = make_adder(42)
+
+func closure_call() {
+    let x = 0
+    let i = 0
+    while i < 1000 { x = adder(x); i = i + 1 }
+    return x
+}
+
+/* ── Closure capturing mutable state ─────────────────────────── */
+func make_counter() {
+    let n = 0
+    func inc() { n = n + 1; return n }
+    return inc
+}
+let ctr = make_counter()
+
+func counter_bench() {
+    let i = 0
+    while i < 1000 { ctr(); i = i + 1 }
+}
+
+/* ── Map/filter/reduce pipeline ──────────────────────────────── */
+let big_arr = []
+let ki = 0
+while ki < 1000 { push(big_arr, ki); ki = ki + 1 }
+
+func map_arr(arr, f) { let r = []; for x in arr { push(r, f(x)) } return r }
+func filter_arr(arr, f) { let r = []; for x in arr { if f(x) { push(r, x) } } return r }
+func reduce_arr(arr, f, i) { let a = i; for x in arr { a = f(a, x) } return a }
+
+func pipeline_bench() {
+    let r = map_arr(big_arr, func(x) { return x * 2 })
+    let f = filter_arr(r, func(x) { return x % 3 == 0 })
+    return reduce_arr(f, func(acc, x) { return acc + x }, 0)
+}
+
+/* ── Function factory (many closures) ───────────────────────── */
+func many_closures() {
+    let fns = []
+    let i = 0
+    while i < 100 {
+        let cap = i
+        push(fns, func() { return cap * cap })
+        i = i + 1
+    }
+    let sum = 0
+    for f in fns { sum = sum + f() }
+    return sum
+}
+
+/* ── Deep closure chain ──────────────────────────────────────── */
+func make_chain(depth) {
+    if depth <= 0 { return func() { return 0 } }
+    let inner = make_chain(depth - 1)
+    func outer() { return inner() + 1 }
+    return outer
+}
+let chain10 = make_chain(10)
+func chain_bench() {
+    let sum = 0
+    let i = 0
+    while i < 100 { sum = sum + chain10(); i = i + 1 }
+    return sum
+}
+
+/* ── Compose chain ────────────────────────────────────────────── */
+func compose(f, g) { func c(x) { return f(g(x)) } return c }
+let double = func(x) { return x * 2 }
+let inc    = func(x) { return x + 1 }
+let comp5 = compose(compose(compose(compose(inc, double), inc), double), inc)
+
+func compose_bench() {
+    let x = 0
+    let i = 0
+    while i < 1000 { x = comp5(x); i = i + 1 }
+    return x
+}
+
+/* ── Partial application chain ───────────────────────────────── */
+func partial(f, x) { func inner(y) { return f(x, y) } return inner }
+func add(a, b) { return a + b }
+let add1  = partial(add, 1)
+let add2  = partial(add, 2)
+let add10 = partial(add, 10)
+
+func partial_bench() {
+    let x = 0
+    let i = 0
+    while i < 500 {
+        x = add1(add2(add10(x)))
+        i = i + 1
+    }
+    return x
+}
+
+bench("closure call (1000 calls)",      closure_call,  100)
+bench("counter (1000 inc)",             counter_bench, 100)
+bench("map/filter/reduce (1000 elems)", pipeline_bench, 50)
+bench("many closures (100 fns)",        many_closures, 100)
+bench("chain depth 10 (100 calls)",     chain_bench,   100)
+bench("compose 5-deep (1000 calls)",    compose_bench, 100)
+bench("partial 3-deep (500 calls)",     partial_bench, 100)
+
+print("")
+print("=== Closure benchmark complete ===")

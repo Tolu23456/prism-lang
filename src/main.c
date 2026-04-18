@@ -160,8 +160,7 @@ static int run_source_vm(const char *source, const char *filename) {
 
     /* Load the prelude (defines filter, map, reduce, forEach, zip, all, any) */
     int prelude_rc = vm_run_prelude(vm);
-    fprintf(stderr, "DEBUG prelude_rc=%d had_error=%d filter=%s\n", prelude_rc, vm->had_error,
-            env_get(vm->globals, "filter") ? "FOUND" : "NOT FOUND");
+    (void)prelude_rc;
     if (vm->had_error) {
         fprintf(stderr, "[prism] Prelude error: %s\n", vm->error_msg);
         vm_free(vm); chunk_free(&chunk); ast_node_free(program); parser_free(parser);

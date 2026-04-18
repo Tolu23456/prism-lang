@@ -1,0 +1,218 @@
+/* tests/test_data_structures.pr — dict, set, tuple, array advanced tests */
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if got == expected {
+        pass += 1
+    } else {
+        print("FAIL:", label, "| got:", got, "expected:", expected)
+        fail += 1
+    }
+}
+
+func assert_true(label, cond) {
+    if cond { pass += 1 }
+    else { print("FAIL:", label); fail += 1 }
+}
+
+/* ── Array operations ─────────────────────────────────────── */
+let arr = [1, 2, 3, 4, 5]
+
+/* slicing */
+assert("slice full",     arr[0:5], [1,2,3,4,5])
+assert("slice middle",   arr[1:4], [2,3,4])
+assert("slice from 0",   arr[:3],  [1,2,3])
+assert("slice to end",   arr[2:],  [3,4,5])
+assert("slice empty",    arr[2:2], [])
+assert("slice step",     arr[0:5], [1,2,3,4,5])
+
+/* negative indices */
+assert("neg idx -1",   arr[-1], 5)
+assert("neg idx -2",   arr[-2], 4)
+assert("neg idx -5",   arr[-5], 1)
+
+/* mutation */
+let mut = [10, 20, 30]
+mut[1] = 99
+assert("arr assign [1]", mut[1], 99)
+mut[-1] = 77
+assert("arr assign [-1]", mut[2], 77)
+
+/* push/pop */
+let stack = []
+push(stack, "a")
+push(stack, "b")
+push(stack, "c")
+assert("stack len", len(stack), 3)
+let top = pop(stack)
+assert("pop value", top, "c")
+assert("stack len after pop", len(stack), 2)
+
+/* insert and remove — implemented via splice */
+func array_insert(arr, idx, val) {
+    push(arr, null)
+    let i = len(arr) - 1
+    while i > idx {
+        arr[i] = arr[i - 1]
+        i = i - 1
+    }
+    arr[idx] = val
+}
+func array_remove(arr, idx) {
+    let n = len(arr)
+    let i = idx
+    while i < n - 1 {
+        arr[i] = arr[i + 1]
+        i = i + 1
+    }
+    pop(arr)
+}
+
+let seq = [1, 2, 4, 5]
+array_insert(seq, 2, 3)
+assert("insert at 2", seq[2], 3)
+assert("after insert len", len(seq), 5)
+array_remove(seq, 0)
+assert("remove [0]", seq[0], 2)
+assert("after remove len", len(seq), 4)
+
+/* reverse and sort */
+let r = [3, 1, 4, 1, 5, 9, 2, 6]
+sort(r)
+assert("sort[0]", r[0], 1)
+assert("sort[-1]", r[-1], 9)
+reverse(r)
+assert("reverse[0]", r[0], 9)
+assert("reverse[-1]", r[-1], 1)
+
+/* contains */
+assert_true("contains 5", 5 in [1,2,3,4,5])
+assert_true("not in", not (6 in [1,2,3,4,5]))
+
+/* ── Dict operations ─────────────────────────────────────────── */
+let d = {"name": "Alice", "age": 30, "city": "NYC"}
+
+assert("dict get name", d["name"], "Alice")
+assert("dict get age",  d["age"],  30)
+assert("dict len",      len(d),    3)
+
+/* keys and values */
+let ks = keys(d)
+assert_true("keys has name",  "name" in ks)
+assert_true("keys has age",   "age" in ks)
+assert_true("keys has city",  "city" in ks)
+
+let vs = values(d)
+assert_true("values has Alice", "Alice" in vs)
+assert_true("values has 30",    30 in vs)
+
+/* update */
+d["age"] = 31
+assert("dict update", d["age"], 31)
+
+/* delete key */
+delete(d, "city")
+assert("after del len", len(d), 2)
+
+/* nested dict */
+let nested = {"a": {"b": {"c": 42}}}
+assert("nested dict", nested["a"]["b"]["c"], 42)
+
+/* dict iteration */
+let sum_vals = 0
+let counts = {"x": 10, "y": 20, "z": 30}
+for k in keys(counts) { sum_vals = sum_vals + counts[k] }
+assert("dict iter sum", sum_vals, 60)
+
+/* ── Set operations ─────────────────────────────────────────── */
+let s1 = {1, 2, 3, 4, 5}
+let s2 = {3, 4, 5, 6, 7}
+
+assert("set len", len(s1), 5)
+assert_true("in set",     3 in s1)
+assert_true("not in set", not (6 in s1))
+
+let union_s = s1 | s2
+assert("union len", len(union_s), 7)
+
+let inter_s = s1 & s2
+assert("inter len", len(inter_s), 3)
+assert_true("inter has 3", 3 in inter_s)
+assert_true("inter has 5", 5 in inter_s)
+
+let diff_s  = s1 ^ s2
+assert("sym diff len", len(diff_s), 4)
+assert_true("sym diff has 1", 1 in diff_s)
+assert_true("sym diff has 7", 7 in diff_s)
+
+/* set uniqueness */
+let dup_set = {1, 1, 2, 2, 3, 3}
+assert("set deduplication", len(dup_set), 3)
+
+/* ── Tuple operations ─────────────────────────────────────────── */
+let t = (10, 20, 30, 40)
+assert("tuple len",   len(t),  4)
+assert("tuple [0]",   t[0],   10)
+assert("tuple [-1]",  t[-1],  40)
+assert("tuple [2]",   t[2],   30)
+
+/* tuple in dict */
+let td = {}
+td["key"] = (1, 2, 3)
+assert("tuple in dict", td["key"][1], 2)
+
+/* ── Stack (array-based) ─────────────────────────────────────── */
+func make_stack() {
+    let data = []
+    func spush(v) { push(data, v) }
+    func spop()   { return pop(data) }
+    func speek()  { return data[-1] }
+    func sempty() { return len(data) == 0 }
+    func slen()   { return len(data) }
+    return [spush, spop, speek, sempty, slen]
+}
+
+let stk = make_stack()
+let s_push = stk[0]
+let s_pop  = stk[1]
+let s_peek = stk[2]
+let s_empty = stk[3]
+let s_len  = stk[4]
+
+assert_true("stack empty initially", s_empty())
+s_push(1); s_push(2); s_push(3)
+assert("stack len", s_len(), 3)
+assert("stack peek", s_peek(), 3)
+assert("stack pop", s_pop(), 3)
+assert("stack len after pop", s_len(), 2)
+
+/* ── Queue (array-based) ─────────────────────────────────────── */
+func make_queue() {
+    let data = []
+    func enqueue(v) { push(data, v) }
+    func dequeue()  { return pop(data, 0) }
+    func qlen()     { return len(data) }
+    func qempty()   { return len(data) == 0 }
+    return [enqueue, dequeue, qlen, qempty]
+}
+
+let q = make_queue()
+let enqueue = q[0]
+let dequeue = q[1]
+let qlen    = q[2]
+let qempty  = q[3]
+
+assert_true("queue empty initially", qempty())
+enqueue("first")
+enqueue("second")
+enqueue("third")
+assert("queue len", qlen(), 3)
+assert("dequeue FIFO first", dequeue(), "first")
+assert("dequeue FIFO second", dequeue(), "second")
+assert("queue len after dequeue", qlen(), 1)
+
+print("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { print("[PASS] test_data_structures") }
+else { print("[FAIL] test_data_structures") }

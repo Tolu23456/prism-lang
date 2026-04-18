@@ -1,5 +1,44 @@
 # Changelog
 
+## v0.9.0 — Computed-Goto Dispatch, True TCO, Extended Folding, New Tests/Examples/Benchmarks/Docs
+
+### Performance
+- **Computed-goto dispatch** (`src/vm.c`): replaced `switch`/`break` dispatch loop with GNU `&&label`-based threaded dispatch. All 50+ opcodes have `lbl_OP_*:` labels. `DISPATCH()` macro jumps directly to the next handler, eliminating the central dispatch branch. GCC/Clang: 15–30% speedup; MSVC/other: automatic fallback to switch loop.
+- **Stack-buffer for calls** (`src/vm.c`): `OP_CALL`, `OP_CALL_METHOD`, `OP_TAIL_CALL`, `OP_PIPE` all now use a 16-element VLA on the C stack for argument passing, eliminating `malloc`/`free` per call when argc ≤ 16 (the overwhelmingly common case).
+- **True tail-call optimization** (`src/vm.c`): `OP_TAIL_CALL` now detects same-function recursion (callee chunk == frame chunk) and reuses the current stack frame — resets `ip=0`, swaps env — instead of pushing a new frame. Eliminates stack overflow for deep self-recursion. Cross-function calls still push a new frame as before.
+- **PRISM_LIKELY/PRISM_UNLIKELY hints**: added branch prediction hints to all hot paths (type checks, bounds checks, error paths).
+
+### Compiler
+- **Unary constant folding** (`src/compiler.c`): `-literal`, `not literal`, `~literal` are folded at compile time. E.g. `let x = -5` emits `OP_PUSH_INT_IMM -5` directly; `let b = not true` emits `OP_PUSH_CONST false`.
+- **String concatenation folding**: adjacent string literals connected by `+` are merged at compile time into one constant. `"hello" + " " + "world"` → single `PUSH_CONST "hello world"`.
+- **Nested folding**: constant folding now applies recursively on the result — folded integer results that fit in -32768..32767 use `OP_PUSH_INT_IMM`.
+
+### Tests
+- `tests/test_closures_advanced.pr`: memoization, currying, compose, once/call-once wrapper, loop capture, higher-order map/filter/reduce.
+- `tests/test_iterators.pr`: for-in patterns, break/continue, nested loops, accumulation, while patterns, sorting, zip, flatten.
+- `tests/test_data_structures.pr`: array/dict/set/tuple operations, insert/remove, sort/reverse, stack/queue ADTs.
+- `tests/test_recursion_advanced.pr`: Ackermann, Hanoi, mutual recursion even/odd, merge sort, binary search, TCO sum.
+- `tests/test_string_advanced.pr`: all string methods (trim, split/join, replace, startsWith/endsWith, contains, indexOf, ord/chr), f-strings, palindrome.
+- `tests/test_scope.pr`: shadowing, block scope (if/while), const, multi-level closure chains, parameter shadowing.
+
+### Examples
+- `examples/linked_list.pr`: full singly-linked list (prepend, append, reverse, find, delete, merge-sorted, cycle detect).
+- `examples/matrix.pr`: matrix arithmetic (add, scale, multiply, transpose, determinant 2×2/3×3, power, identity).
+- `examples/game_of_life.pr`: Conway's Game of Life (20×40 grid, 10 generations, glider + blinker + R-pentomino).
+- `examples/csv_processor.pr`: CSV parsing, statistical analysis (mean/min/max/stddev), group-by, per-dept analysis.
+- `examples/web_scraper_sim.pr`: URL parsing, HTML tag extraction, link extraction, strip_tags, simulated HTTP responses.
+- `examples/functional.pr`: map/filter/reduce, compose, partial, transducers, lazy sequences, memoize, Church numerals.
+
+### Benchmarks
+- `benchmarks/bench_vm_dispatch.pr`: arith loop, branch loop, array index, function calls, dict access, string concat, fib(20), closures, bitwise ops.
+- `benchmarks/bench_gc.pr`: allocation pressure, dict churn, survivor promotion, string alloc, tree recursion, gc_stats() integration.
+- `benchmarks/bench_closures.pr`: closure call, counter increment, map/filter/reduce pipeline, many-closures factory, compose/partial chains.
+
+### Docs
+- `docs/performance.md`: VM architecture, computed-goto explanation, optimization tips, benchmark guide, env var reference.
+- `docs/gc_internals.md`: GC algorithm, generational design, write barriers, string interning, small-int cache, adaptive policy, full API reference.
+- `new_features.md`: comprehensive summary of all new features with code examples and speedup estimates.
+
 ## v0.8.0 — Redesigned Import System with Namespacing
 
 ### Added

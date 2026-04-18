@@ -1,0 +1,147 @@
+/* examples/csv_processor.pr — CSV parsing and statistical analysis */
+
+print("=== CSV Processor Demo ===")
+
+/* Parse CSV text into array of arrays */
+func parse_csv(text, delimiter) {
+    if delimiter == null { delimiter = "," }
+    let lines = split(text, "\n")
+    let result = []
+    for line in lines {
+        let trimmed = trim(line)
+        if len(trimmed) > 0 {
+            let fields = split(trimmed, delimiter)
+            let row = []
+            for field in fields { push(row, trim(field)) }
+            push(result, row)
+        }
+    }
+    return result
+}
+
+/* Get column by index from 2D array */
+func get_column(data, col_idx, skip_header) {
+    let result = []
+    let start = 0
+    if skip_header { start = 1 }
+    let i = start
+    while i < len(data) {
+        push(result, data[i][col_idx])
+        i = i + 1
+    }
+    return result
+}
+
+/* Numeric stats */
+func stats_mean(nums) {
+    if len(nums) == 0 { return 0.0 }
+    let total = 0.0
+    for n in nums { total = total + n }
+    return total / len(nums)
+}
+
+func stats_min(nums) {
+    if len(nums) == 0 { return null }
+    let m = nums[0]
+    for n in nums { if n < m { m = n } }
+    return m
+}
+
+func stats_max(nums) {
+    if len(nums) == 0 { return null }
+    let m = nums[0]
+    for n in nums { if n > m { m = n } }
+    return m
+}
+
+func stats_variance(nums) {
+    if len(nums) <= 1 { return 0.0 }
+    let mean = stats_mean(nums)
+    let sum_sq = 0.0
+    for n in nums { sum_sq = sum_sq + (n - mean) * (n - mean) }
+    return sum_sq / (len(nums) - 1)
+}
+
+/* Group by column value */
+func group_by(data, key_col, skip_header) {
+    let groups = {}
+    let start = 0
+    if skip_header { start = 1 }
+    let i = start
+    while i < len(data) {
+        let key = data[i][key_col]
+        if groups[key] == null { groups[key] = [] }
+        push(groups[key], data[i])
+        i = i + 1
+    }
+    return groups
+}
+
+/* ── Sample data ─────────────────────────────────────────────── */
+let csv_text = """Name,Department,Salary,Years
+Alice,Engineering,95000,5
+Bob,Marketing,72000,3
+Carol,Engineering,88000,7
+Dave,Marketing,68000,2
+Eve,Engineering,102000,9
+Frank,HR,65000,4
+Grace,Marketing,76000,6
+Hank,Engineering,91000,8
+Iris,HR,62000,1
+Jack,Engineering,97000,10"""
+
+let data = parse_csv(csv_text, ",")
+let headers = data[0]
+print("\nHeaders:", headers)
+print("Rows (excl. header):", len(data) - 1)
+
+/* Extract salary column and convert to numbers */
+let salary_strs = get_column(data, 2, true)
+let salaries = []
+for s in salary_strs { push(salaries, int(s)) }
+
+print("\n--- Salary Statistics ---")
+print("Mean:    $" + str(int(stats_mean(salaries))))
+print("Min:     $" + str(stats_min(salaries)))
+print("Max:     $" + str(stats_max(salaries)))
+print("Std Dev: $" + str(int(sqrt(stats_variance(salaries)))))
+
+/* Group by department */
+let by_dept = group_by(data, 1, true)
+print("\n--- Salaries by Department ---")
+for dept in keys(by_dept) {
+    let dept_rows = by_dept[dept]
+    let dept_sals = []
+    for row in dept_rows { push(dept_sals, int(row[2])) }
+    let avg = int(stats_mean(dept_sals))
+    print(dept + ": avg $" + str(avg) + " (" + str(len(dept_rows)) + " employees)")
+}
+
+/* Find highest earner per department */
+print("\n--- Top Earner per Department ---")
+for dept in keys(by_dept) {
+    let dept_rows = by_dept[dept]
+    let best_name = dept_rows[0][0]
+    let best_sal  = int(dept_rows[0][2])
+    for row in dept_rows {
+        if int(row[2]) > best_sal {
+            best_sal  = int(row[2])
+            best_name = row[0]
+        }
+    }
+    print(dept + ": " + best_name + " ($" + str(best_sal) + ")")
+}
+
+/* Employees with 5+ years */
+print("\n--- Employees with 5+ years experience ---")
+let veterans = []
+let r = 1
+while r < len(data) {
+    if int(data[r][3]) >= 5 {
+        push(veterans, data[r][0] + " (" + data[r][1] + ", " + data[r][3] + " yrs)")
+    }
+    r = r + 1
+}
+for v in veterans { print("  " + v) }
+
+print("\n=== CSV processing complete ===")

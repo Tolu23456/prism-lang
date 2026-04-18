@@ -1,0 +1,138 @@
+/* tests/test_scope.pr — scoping, shadowing, const, block scope */
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if got == expected {
+        pass += 1
+    } else {
+        print("FAIL:", label, "| got:", got, "expected:", expected)
+        fail += 1
+    }
+}
+
+func assert_true(label, cond) {
+    if cond { pass += 1 }
+    else { print("FAIL:", label); fail += 1 }
+}
+
+/* ── Global scope ────────────────────────────────────────────── */
+let global_x = 100
+
+func read_global() { return global_x }
+assert("read global", read_global(), 100)
+
+/* ── Shadowing ────────────────────────────────────────────────── */
+let outer = 1
+
+func shadow_test() {
+    let outer = 99
+    return outer
+}
+
+assert("shadow: inner sees local", shadow_test(), 99)
+assert("shadow: outer unchanged",  outer, 1)
+
+/* ── Nested function scope ────────────────────────────────────── */
+func outer_fn() {
+    let x = 10
+    func inner_fn() {
+        let y = 20
+        return x + y
+    }
+    return inner_fn()
+}
+assert("nested scope", outer_fn(), 30)
+
+/* ── Block scope (if/while) ──────────────────────────────────── */
+let block_x = 0
+if true {
+    let block_x = 5   /* different from outer block_x */
+    block_x = block_x + 1
+}
+assert("block scope if", block_x, 0)   /* outer unaffected */
+
+/* ── Const ────────────────────────────────────────────────────── */
+/* Note: PI and E are built-in constants — use different names */
+const MY_RATIO = 3.14159
+const MY_BASE  = 2.71828
+assert("const MY_RATIO", MY_RATIO, 3.14159)
+assert("const MY_BASE",  MY_BASE,  2.71828)
+
+const MAX_SIZE = 1024
+assert("const MAX_SIZE", MAX_SIZE, 1024)
+
+/* ── Function modifying outer scope ──────────────────────────── */
+let counter = 0
+func bump() { counter = counter + 1 }
+bump(); bump(); bump()
+assert("outer modify", counter, 3)
+
+/* ── Scope chain: multi-level closures ───────────────────────── */
+func level1() {
+    let a = 1
+    func level2() {
+        let b = 2
+        func level3() {
+            let c = 3
+            return a + b + c
+        }
+        return level3()
+    }
+    return level2()
+}
+assert("multi-level closure", level1(), 6)
+
+/* ── Parameter shadowing outer ───────────────────────────────── */
+let param_test = 42
+func uses_param(param_test) { return param_test * 2 }
+assert("param shadows outer", uses_param(10), 20)
+assert("outer after call",    param_test, 42)
+
+/* ── Recursive scope ─────────────────────────────────────────── */
+func fib_scope(n) {
+    if n <= 1 { return n }
+    return fib_scope(n-1) + fib_scope(n-2)
+}
+assert("recursive scope", fib_scope(10), 55)
+
+/* ── Closure modifying shared state ──────────────────────────── */
+func make_shared() {
+    let shared = 0
+    func add_one() { shared = shared + 1 }
+    func get()     { return shared }
+    return [add_one, get]
+}
+let sh = make_shared()
+let sh_add = sh[0]
+let sh_get = sh[1]
+sh_add(); sh_add(); sh_add()
+assert("shared closure state", sh_get(), 3)
+
+/* ── Multiple independent closures from same factory ─────────── */
+let c1 = make_shared()
+let c2 = make_shared()
+c1[0](); c1[0]()
+c2[0]()
+assert("independent closure c1", c1[1](), 2)
+assert("independent closure c2", c2[1](), 1)
+
+/* ── Let in for loop doesn't leak ────────────────────────────── */
+let loop_tracker = 0
+for i in [1, 2, 3, 4, 5] { loop_tracker = loop_tracker + i }
+assert("for loop sum", loop_tracker, 15)
+
+/* ── Deep recursive scope accumulation ──────────────────────── */
+let depth_result = 0
+func recurse_scope(n) {
+    if n <= 0 { return }
+    depth_result = depth_result + n
+    recurse_scope(n - 1)
+}
+recurse_scope(10)
+assert("deep recursive scope", depth_result, 55)
+
+print("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { print("[PASS] test_scope") }
+else { print("[FAIL] test_scope") }

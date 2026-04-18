@@ -1,0 +1,169 @@
+/* examples/web_scraper_sim.pr — simulated HTTP requests and HTML parsing */
+
+print("=== Web Scraper Simulation ===")
+print("(Simulates network requests and HTML parsing in Prism)")
+print("")
+
+/* Simulate fetching a URL (returns mock HTML) */
+func fetch_mock(url) {
+    if url == "https://example.com" {
+        return """<!DOCTYPE html>
+<html>
+<head><title>Example Domain</title></head>
+<body>
+<h1>Example Domain</h1>
+<p>This domain is for use in illustrative examples.</p>
+<p>You may use this domain in literature without prior coordination.</p>
+<a href='https://www.iana.org/domains/example'>More information...</a>
+</body>
+</html>"""
+    }
+    if url == "https://news.example.com" {
+        return """<!DOCTYPE html>
+<html>
+<head><title>News Site</title></head>
+<body>
+<article class='story'>
+<h2>Breaking News</h2>
+<p>Something happened today in the world.</p>
+</article>
+<article class='story'>
+<h2>Science Update</h2>
+<p>Researchers discover new method.</p>
+</article>
+<article class='story'>
+<h2>Technology</h2>
+<p>New programming language gains popularity.</p>
+</article>
+</body>
+</html>"""
+    }
+    return ""
+}
+
+/* Extract text between tags */
+func extract_between(html, open_tag, close_tag) {
+    let results = []
+    let pos = 0
+    while pos < len(html) {
+        let open_idx = indexOf(html[pos:], open_tag)
+        if open_idx == -1 { break }
+        let start = pos + open_idx + len(open_tag)
+        let close_idx = indexOf(html[start:], close_tag)
+        if close_idx == -1 { break }
+        let text = html[start: start + close_idx]
+        push(results, trim(text))
+        pos = start + close_idx + len(close_tag)
+    }
+    return results
+}
+
+/* Extract all href values */
+func extract_links(html) {
+    let links = []
+    let pos = 0
+    while pos < len(html) {
+        let href_idx = indexOf(html[pos:], "href='")
+        if href_idx == -1 { break }
+        let start = pos + href_idx + 6
+        let end_idx = indexOf(html[start:], "'")
+        if end_idx == -1 { break }
+        push(links, html[start: start + end_idx])
+        pos = start + end_idx
+    }
+    return links
+}
+
+/* Strip all HTML tags */
+func strip_tags(html) {
+    let result = ""
+    let in_tag = false
+    for ch in html {
+        if ch == "<" {
+            in_tag = true
+        } elif ch == ">" {
+            in_tag = false
+        } elif not in_tag {
+            result = result + ch
+        }
+    }
+    return trim(result)
+}
+
+/* ── Scrape Example Domain ─────────────────────────────────── */
+print("Fetching https://example.com ...")
+let html1 = fetch_mock("https://example.com")
+
+let titles = extract_between(html1, "<title>", "</title>")
+let h1s    = extract_between(html1, "<h1>",    "</h1>")
+let paras  = extract_between(html1, "<p>",     "</p>")
+let links  = extract_links(html1)
+
+print("Title:", titles[0])
+print("H1:", h1s[0])
+print("Paragraphs found:", len(paras))
+for p in paras { print("  •", strip_tags(p)) }
+print("Links:", links)
+print("")
+
+/* ── Scrape News Site ──────────────────────────────────────── */
+print("Fetching https://news.example.com ...")
+let html2 = fetch_mock("https://news.example.com")
+
+let headlines = extract_between(html2, "<h2>", "</h2>")
+let articles  = extract_between(html2, "<p>",  "</p>")
+
+print("Found", len(headlines), "articles:")
+let i = 0
+while i < len(headlines) {
+    print("\n  [" + str(i+1) + "] " + headlines[i])
+    if i < len(articles) { print("      " + articles[i]) }
+    i = i + 1
+}
+print("")
+
+/* ── URL parsing ──────────────────────────────────────────── */
+func parse_url(url) {
+    let result = {}
+    /* protocol */
+    let proto_idx = indexOf(url, "://")
+    if proto_idx != -1 {
+        result["protocol"] = url[:proto_idx]
+        let rest = url[proto_idx + 3:]
+        /* host and path */
+        let slash_idx = indexOf(rest, "/")
+        if slash_idx != -1 {
+            result["host"] = rest[:slash_idx]
+            result["path"] = rest[slash_idx:]
+        } else {
+            result["host"] = rest
+            result["path"] = "/"
+        }
+        /* port from host */
+        let colon_idx = indexOf(result["host"], ":")
+        if colon_idx != -1 {
+            result["port"] = int(result["host"][colon_idx+1:])
+            result["host"] = result["host"][:colon_idx]
+        } else {
+            result["port"] = 80
+        }
+    }
+    return result
+}
+
+let test_urls = [
+    "https://example.com",
+    "http://api.example.com/v1/users",
+    "https://news.example.com/articles/1"
+]
+
+print("URL Parsing:")
+for url in test_urls {
+    let parsed = parse_url(url)
+    print("  " + url)
+    print("    protocol: " + str(parsed["protocol"]))
+    print("    host:     " + str(parsed["host"]))
+    print("    path:     " + str(parsed["path"]))
+}
+
+print("\n=== Scraper simulation complete ===")

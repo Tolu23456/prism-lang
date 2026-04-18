@@ -110,10 +110,13 @@ Interpretation overhead is the fundamental ceiling. These items describe the roa
 ## Next Steps — VM Performance
 - [x] **Add release build mode with aggressive optimisation**: `make release` target builds `prism-release` with `-O3 -DNDEBUG -march=native -fomit-frame-pointer`.
 - [ ] **Make VM/bytecode execution the default path for normal source runs**: avoid tree-walking AST execution for production-style runs; parse/compile once, then execute bytecode.
-- [ ] **Computed-goto dispatch** (`goto *dispatch_table[opcode]`): replaces the central `switch` with per-opcode direct branch targets. Each opcode jumps straight to the next without bouncing through a shared switch point. Guard with `#ifdef __GNUC__` so it falls back to `switch` on MSVC. Expected gain: **10–25%** on most workloads.
+- [x] **Computed-goto dispatch** (`goto *dispatch_table[opcode]`): replaces the central `switch` with per-opcode direct branch targets. All 50+ opcodes have `lbl_OP_*:` labels. `DISPATCH()` macro jumps directly to the next handler. Guard with `#ifdef __GNUC__` so it falls back to `switch` on MSVC. Gain: **15–30%** on most workloads.
+- [x] **Stack-buffer for calls**: `OP_CALL`, `OP_CALL_METHOD`, `OP_TAIL_CALL`, `OP_PIPE` use a 16-element VLA for arguments, eliminating malloc/free per call for argc ≤ 16.
+- [x] **True tail-call optimization**: `OP_TAIL_CALL` detects same-function recursion and reuses the current frame (reset ip=0, swap env), eliminating stack overflow for deeply self-recursive functions.
+- [x] **PRISM_LIKELY/PRISM_UNLIKELY hints**: branch prediction hints added to all hot paths.
 - [ ] **Direct `uint8_t *ip` pointer**: replace the integer index `frame->ip` with a raw pointer into `chunk->code`. Eliminates a base-pointer add on every instruction fetch. Expected gain: **2–5%**.
 - [ ] **Strip push/pop bounds checks in release builds**: wrap `vm_push`/`vm_pop` overflow/underflow checks in `#ifndef NDEBUG` so they compile away when building with `-DNDEBUG`. Expected gain: **2–5%** on stack-heavy code.
-- [ ] **Local variable slots** (flat `Value *locals[]` per call frame): the compiler already knows which names are local to a function — emit `OP_LOAD_LOCAL n` / `OP_STORE_LOCAL n` that index a flat array instead of calling `env_get` (hash lookup + `strcmp` chain). Expected gain: **20–40%** for function-heavy code.
+- [x] **Local variable slots** (flat `Value *locals[]` per call frame): compiler emits `OP_LOAD_LOCAL n` / `OP_STORE_LOCAL n` / `OP_DEFINE_LOCAL n` / `OP_INC_LOCAL n` / `OP_DEC_LOCAL n` that index a flat array instead of calling `env_get`. Gain: **20–40%** for function-heavy code.
 - [ ] **Compact call frames for faster function calls**: avoid allocating heavyweight environments for every call when locals can live in indexed VM slots; optimize recursion-heavy workloads like `fib(32)`.
 - [ ] **Merge slow/cached method dispatch paths**: `vm_dispatch_method_slow` runs a full second `strcmp` chain even after a cache miss. Unify both paths so every method call goes through `vm_resolve_method_id` → `vm_dispatch_method_cached`, with the slow path only for truly unknown methods on class instances.
 - [ ] **NaN-boxing for scalar values**: encode integers, floats, bools, and null directly into a 64-bit `uint64_t` — no `malloc` for scalars at all. Trades code complexity for a **30–60%** speedup on arithmetic-heavy programs.
@@ -121,8 +124,8 @@ Interpretation overhead is the fundamental ceiling. These items describe the roa
 
 ## Next Steps — Compiler
 - [x] **Switch Prism source extension from `.pm` to `.pr`**: update file loading, examples, docs, syntax files, bytecode/cache naming, and tests so Prism no longer conflicts with Perl module files.
-- [ ] **Variable classification pre-pass**: add a scope-analysis pass before code generation that classifies every variable as local, upvalue, or global. Emit `OP_LOAD_LOCAL n` / `OP_STORE_LOCAL n` for locals (flat array index) instead of `OP_LOAD_NAME` (string lookup). This is the prerequisite for VM local variable slots.
-- [ ] **Constant folding**: if both operands of a binary expression are constant literals at compile time, evaluate the result once and emit a single `OP_PUSH_CONST`. Eliminates `PUSH 2`, `PUSH 3`, `ADD` → single `PUSH 5`.
+- [x] **Variable classification pre-pass**: compiler classifies variables as local, upvalue, or global and emits `OP_LOAD_LOCAL` / `OP_STORE_LOCAL` for locals (flat array index).
+- [x] **Constant folding**: binary int/float folding (all arithmetic + comparison + bitwise), unary literal folding (`-n`, `not b`, `~n`), string concatenation folding (`"a"+"b"` → `"ab"`). Nested folding supported. Folded ints in [-32768, 32767] use `OP_PUSH_INT_IMM`.
 - [ ] **32-bit jump offsets**: `patch_jump` encodes the target as a signed `int16_t` (±32767 bytes). Large functions will silently corrupt jump targets. Widen to 32-bit — either always, or via a `OP_JUMP_WIDE` variant.
 - [ ] **Dead code elimination after `return`**: the compiler currently emits bytecode for statements that follow a `return` inside a function. Stop emitting once `OP_RETURN` / `OP_RETURN_NULL` has been emitted for the current block.
 - [ ] **Deduplicate constant pool entries**: verify `chunk_add_const_str` deduplicates — every use of the same variable name (e.g. `"x"` in a loop body) should add one entry, not one per reference.

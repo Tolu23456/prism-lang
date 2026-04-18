@@ -1,0 +1,196 @@
+/* tests/test_iterators.pr — iterator patterns, for-in edge cases, ranges */
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if got == expected {
+        pass += 1
+    } else {
+        print("FAIL:", label, "| got:", got, "expected:", expected)
+        fail += 1
+    }
+}
+
+func assert_true(label, cond) {
+    if cond { pass += 1 }
+    else { print("FAIL:", label); fail += 1 }
+}
+
+/* ── Basic range iteration ─────────────────────────────────── */
+let sum = 0
+for x in [0, 1, 2, 3, 4] { sum = sum + x }
+assert("range sum 0..4", sum, 10)
+
+/* ── String iteration ──────────────────────────────────────── */
+let chars = ""
+for ch in "hello" { chars = chars + ch }
+assert("string iter", chars, "hello")
+
+let char_count = 0
+for ch in "hello world" { char_count = char_count + 1 }
+assert("string char count", char_count, 11)
+
+/* ── Array iteration with index ──────────────────────────────── */
+let arr = ["a", "b", "c", "d", "e"]
+let collected = []
+let idx = 0
+for item in arr {
+    push(collected, str(idx) + ":" + item)
+    idx = idx + 1
+}
+assert("indexed iter[0]",  collected[0], "0:a")
+assert("indexed iter[4]",  collected[4], "4:e")
+
+/* ── Nested loops ───────────────────────────────────────────── */
+let pairs = []
+for i in [1, 2, 3] {
+    for j in [10, 20] {
+        push(pairs, [i, j])
+    }
+}
+assert("nested loop count",    len(pairs), 6)
+assert("nested loop [0][0]",   pairs[0][0], 1)
+assert("nested loop [0][1]",   pairs[0][1], 10)
+assert("nested loop [5][0]",   pairs[5][0], 3)
+assert("nested loop [5][1]",   pairs[5][1], 20)
+
+/* ── Break in for-in ────────────────────────────────────────── */
+let found = -1
+for x in [10, 20, 30, 40, 50] {
+    if x == 30 {
+        found = x
+        break
+    }
+}
+assert("break in for-in", found, 30)
+
+/* ── Continue in for-in ─────────────────────────────────────── */
+let odds_sum = 0
+for x in [1, 2, 3, 4, 5, 6, 7, 8, 9] {
+    if x % 2 == 0 { continue }
+    odds_sum = odds_sum + x
+}
+assert("continue sum odds", odds_sum, 25)
+
+/* ── Accumulating into dict ─────────────────────────────────── */
+let freq = {}
+let words = ["a", "b", "a", "c", "b", "a"]
+for w in words {
+    if freq[w] != null {
+        freq[w] = freq[w] + 1
+    } else {
+        freq[w] = 1
+    }
+}
+assert("word freq a", freq["a"], 3)
+assert("word freq b", freq["b"], 2)
+assert("word freq c", freq["c"], 1)
+
+/* ── While-loop patterns ─────────────────────────────────────── */
+let n = 1
+let powers = []
+while n <= 1024 {
+    push(powers, n)
+    n = n * 2
+}
+assert("powers of 2 count", len(powers), 11)
+assert("powers[0]", powers[0], 1)
+assert("powers[10]", powers[10], 1024)
+
+/* ── Do-while emulation ─────────────────────────────────────── */
+let do_result = 0
+let count = 0
+let continue_loop = true
+while continue_loop {
+    do_result = do_result + count
+    count = count + 1
+    if count >= 5 { continue_loop = false }
+}
+assert("do-while sum", do_result, 10)
+
+/* ── Fibonacci via iteration ─────────────────────────────────── */
+func fib_iter(n) {
+    if n <= 1 { return n }
+    let a = 0
+    let b = 1
+    let i = 2
+    while i <= n {
+        let tmp = a + b
+        a = b
+        b = tmp
+        i = i + 1
+    }
+    return b
+}
+assert("fib_iter(0)",  fib_iter(0),  0)
+assert("fib_iter(1)",  fib_iter(1),  1)
+assert("fib_iter(10)", fib_iter(10), 55)
+assert("fib_iter(20)", fib_iter(20), 6765)
+
+/* ── Sorting via bubble sort ─────────────────────────────────── */
+func bubble_sort(arr) {
+    let n2 = len(arr)
+    let i = 0
+    while i < n2 - 1 {
+        let j = 0
+        while j < n2 - i - 1 {
+            if arr[j] > arr[j+1] {
+                let tmp = arr[j]
+                arr[j] = arr[j+1]
+                arr[j+1] = tmp
+            }
+            j = j + 1
+        }
+        i = i + 1
+    }
+    return arr
+}
+
+let unsorted = [5, 3, 8, 1, 9, 2, 7, 4, 6]
+let sorted = bubble_sort(unsorted)
+assert("sorted[0]",   sorted[0], 1)
+assert("sorted[8]",   sorted[8], 9)
+assert("sorted[4]",   sorted[4], 5)
+
+/* ── Flatten nested arrays ──────────────────────────────────── */
+func flatten(arr) {
+    let result = []
+    for item in arr {
+        if type(item) == "array" {
+            for sub in item { push(result, sub) }
+        } else {
+            push(result, item)
+        }
+    }
+    return result
+}
+
+let nested = [1, [2, 3], [4, 5], 6]
+let flat = flatten(nested)
+assert("flatten len",  len(flat), 6)
+assert("flatten[0]",   flat[0], 1)
+assert("flatten[2]",   flat[2], 3)
+
+/* ── Zip two arrays ─────────────────────────────────────────── */
+func zip(a, b) {
+    let result = []
+    let lim = len(a)
+    if len(b) < lim { lim = len(b) }
+    let i = 0
+    while i < lim {
+        push(result, [a[i], b[i]])
+        i = i + 1
+    }
+    return result
+}
+
+let zipped = zip([1,2,3], ["a","b","c"])
+assert("zip len",     len(zipped), 3)
+assert("zip[0][0]",   zipped[0][0], 1)
+assert("zip[0][1]",   zipped[0][1], "a")
+assert("zip[2][0]",   zipped[2][0], 3)
+
+print("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { print("[PASS] test_iterators") }
+else { print("[FAIL] test_iterators") }

@@ -1,0 +1,191 @@
+/* examples/functional.pr — Functional programming patterns in Prism */
+
+print("=== Functional Programming Patterns ===")
+
+/* ── Core FP utilities ──────────────────────────────────────── */
+
+func map(arr, f) {
+    let result = []
+    for x in arr { push(result, f(x)) }
+    return result
+}
+
+func filter(arr, pred) {
+    let result = []
+    for x in arr { if pred(x) { push(result, x) } }
+    return result
+}
+
+func reduce(arr, f, init) {
+    let acc = init
+    for x in arr { acc = f(acc, x) }
+    return acc
+}
+
+func compose(f, g) {
+    func inner(x) { return f(g(x)) }
+    return inner
+}
+
+func partial(f, x) {
+    func inner(y) { return f(x, y) }
+    return inner
+}
+
+func pipe_val(val, fns) {
+    let result = val
+    for f in fns { result = f(result) }
+    return result
+}
+
+func identity(x) { return x }
+func const_fn(x) { func inner(y) { return x } return inner }
+
+/* ── Transducer-like composition ──────────────────────────────── */
+func map_fn(f) {
+    func xf(arr) { return map(arr, f) }
+    return xf
+}
+
+func filter_fn(pred) {
+    func xf(arr) { return filter(arr, pred) }
+    return xf
+}
+
+/* ── Infinite sequence simulation ────────────────────────────── */
+func take(gen_fn, n) {
+    let result = []
+    let i = 0
+    while i < n { push(result, gen_fn(i)); i = i + 1 }
+    return result
+}
+
+func naturals(i) { return i + 1 }
+func squares(i)  { return (i+1) * (i+1) }
+func fibs(i) {
+    if i <= 1 { return i }
+    let a = 0
+    let b = 1
+    let k = 2
+    while k <= i { let tmp = a + b; a = b; b = tmp; k = k + 1 }
+    return b
+}
+
+/* ── Demo ──────────────────────────────────────────────────── */
+let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+print("\n--- Map examples ---")
+print("Squares:", map(nums, func(x) { return x * x }))
+print("Strings:", map(nums, func(x) { return "n" + str(x) }))
+
+print("\n--- Filter examples ---")
+print("Evens:",   filter(nums, func(x) { return x % 2 == 0 }))
+print("Gt 5:",    filter(nums, func(x) { return x > 5 }))
+print("Prime:") 
+func is_prime(n) {
+    if n < 2 { return false }
+    let i = 2
+    while i * i <= n { if n % i == 0 { return false }; i = i + 1 }
+    return true
+}
+print(filter(nums, is_prime))
+
+print("\n--- Reduce examples ---")
+let sum = reduce(nums, func(acc, x) { return acc + x }, 0)
+print("Sum:", sum)
+let product = reduce([1,2,3,4,5], func(acc, x) { return acc * x }, 1)
+print("Product:", product)
+let max_val = reduce(nums, func(acc, x) { if x > acc { return x } return acc }, nums[0])
+print("Max:", max_val)
+
+print("\n--- Compose and pipe ---")
+let double = func(x) { return x * 2 }
+let inc    = func(x) { return x + 1 }
+let square = func(x) { return x * x }
+
+let double_then_inc = compose(inc, double)
+let inc_then_double = compose(double, inc)
+print("double_then_inc(5):", double_then_inc(5))
+print("inc_then_double(5):", inc_then_double(5))
+
+let pipeline = [double, inc, square]
+print("pipe 3 through [*2, +1, ^2]:", pipe_val(3, pipeline))
+
+print("\n--- Partial application ---")
+func add(a, b) { return a + b }
+func mul(a, b) { return a * b }
+let add10  = partial(add, 10)
+let times3 = partial(mul, 3)
+print("add10(5):", add10(5))
+print("times3(7):", times3(7))
+
+print("\n--- Higher-order composition ---")
+let process = [
+    filter_fn(func(x) { return x % 2 == 0 }),
+    map_fn(func(x) { return x * x }),
+    map_fn(func(x) { return x + 1 })
+]
+let result = pipe_val(nums, process)
+print("Filter evens, square, +1:", result)
+
+print("\n--- Lazy sequences ---")
+print("First 8 naturals:", take(naturals, 8))
+print("First 8 squares:", take(squares, 8))
+print("First 10 Fibonacci:", take(fibs, 10))
+
+print("\n--- Memoize ---")
+func memoize(f) {
+    let cache = {}
+    func memo_fn(n) {
+        let key = str(n)
+        if cache[key] != null { return cache[key] }
+        let val = f(n)
+        cache[key] = val
+        return val
+    }
+    return memo_fn
+}
+
+let call_count = 0
+let expensive = func(n) {
+    call_count = call_count + 1
+    return n * n * n
+}
+let memo_expensive = memoize(expensive)
+memo_expensive(5)
+memo_expensive(5)
+memo_expensive(5)
+memo_expensive(10)
+print("Call count (3x same + 1x different):", call_count)
+
+print("\n--- Higher-order utility functions ---")
+
+func negate(pred) {
+    return func(x) { return not pred(x) }
+}
+
+func juxt(fns) {
+    return func(x) {
+        let results = []
+        for f in fns { push(results, f(x)) }
+        return results
+    }
+}
+
+func flip(f) {
+    return func(a) { return func(b) { return f(b)(a) } }
+}
+
+let is_even = func(x) { return x % 2 == 0 }
+let is_odd  = negate(is_even)
+print("is_odd(7):", is_odd(7))
+print("is_odd(4):", is_odd(4))
+
+let describe = juxt([
+    func(x) { return x * 2 },
+    func(x) { return x + 10 },
+    func(x) { return x * x }
+])
+print("juxt(5) [*2, +10, ^2]:", describe(5))
+
+print("\n=== Functional programming demo complete ===")

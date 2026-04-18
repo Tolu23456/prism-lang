@@ -1,0 +1,141 @@
+/* benchmarks/bench_vm_dispatch.pr — VM dispatch throughput benchmark
+ *
+ * Measures raw opcode dispatch speed for the most common opcodes.
+ * Run with: ./prism benchmarks/bench_vm_dispatch.pr
+ *
+ * Compare before/after adding computed-goto dispatch.
+ */
+
+print("=== VM Dispatch Throughput Benchmarks ===")
+print("")
+
+func bench(name, f, iters) {
+    let t0 = clock()
+    let i = 0
+    while i < iters { f(); i = i + 1 }
+    let elapsed = clock() - t0
+    let ops_per_sec = int(iters / elapsed)
+    print(name + ": " + str(elapsed * 1000.0) + " ms (" + str(ops_per_sec) + " calls/sec)")
+}
+
+/* ── Integer arithmetic tight loop ─────────────────────────── */
+func arith_loop() {
+    let x = 0
+    let i = 0
+    while i < 1000 {
+        x = x + i
+        x = x - 1
+        x = x * 2
+        x = x // 3
+        i = i + 1
+    }
+    return x
+}
+
+/* ── Comparison and branch ──────────────────────────────────── */
+func branch_loop() {
+    let count = 0
+    let i = 0
+    while i < 1000 {
+        if i % 2 == 0 { count = count + 1 }
+        if i % 3 == 0 { count = count + 1 }
+        if i > 500    { count = count + 1 }
+        i = i + 1
+    }
+    return count
+}
+
+/* ── Array indexing ─────────────────────────────────────────── */
+let bench_arr = []
+let k = 0
+while k < 100 { push(bench_arr, k * 3); k = k + 1 }
+
+func index_loop() {
+    let sum = 0
+    let i = 0
+    while i < len(bench_arr) {
+        sum = sum + bench_arr[i]
+        i = i + 1
+    }
+    return sum
+}
+
+/* ── Function calls ─────────────────────────────────────────── */
+func tiny_fn(x) { return x + 1 }
+func call_loop() {
+    let x = 0
+    let i = 0
+    while i < 100 { x = tiny_fn(x); i = i + 1 }
+    return x
+}
+
+/* ── Dict access ────────────────────────────────────────────── */
+let bench_dict = {"a": 1, "b": 2, "c": 3, "d": 4, "e": 5}
+func dict_loop() {
+    let sum = 0
+    let i = 0
+    while i < 100 {
+        sum = sum + bench_dict["a"] + bench_dict["b"] + bench_dict["c"]
+        i = i + 1
+    }
+    return sum
+}
+
+/* ── String operations ──────────────────────────────────────── */
+func string_loop() {
+    let s = ""
+    let i = 0
+    while i < 50 {
+        s = s + "x"
+        i = i + 1
+    }
+    return len(s)
+}
+
+/* ── Fibonacci (recursive — tests call overhead) ─────────────── */
+func fib(n) {
+    if n <= 1 { return n }
+    return fib(n-1) + fib(n-2)
+}
+func fib_bench() { return fib(20) }
+
+/* ── Closure dispatch ────────────────────────────────────────── */
+func make_adder(n) { func inner(x) { return x + n } return inner }
+let add5 = make_adder(5)
+func closure_loop() {
+    let x = 0
+    let i = 0
+    while i < 200 { x = add5(x); i = i + 1 }
+    return x
+}
+
+/* ── Bitwise ops ────────────────────────────────────────────── */
+func bitwise_loop() {
+    let x = 0xDEADBEEF
+    let i = 0
+    while i < 1000 {
+        x = x ^ (i << 7)
+        x = x & 0xFFFFFFFF
+        x = x | (i >> 3)
+        i = i + 1
+    }
+    return x
+}
+
+print("Running benchmarks (each iteration = 1000 outer calls)...")
+print("")
+
+bench("arith_loop (1000 iters/call)",   arith_loop,   1000)
+bench("branch_loop (1000 iters/call)",  branch_loop,  1000)
+bench("index_loop  (100 elems/call)",   index_loop,   1000)
+bench("call_loop   (100 calls/call)",   call_loop,    1000)
+bench("dict_loop   (100 iters/call)",   dict_loop,    1000)
+bench("string_loop (50 concat/call)",   string_loop,  1000)
+bench("fib(20)     (recursive)",        fib_bench,    100)
+bench("closure_loop (200 calls/call)",  closure_loop, 1000)
+bench("bitwise_loop (1000 iters/call)", bitwise_loop, 1000)
+
+print("")
+print("=== Benchmark complete ===")
+print("Higher ops/sec = better. Compare with baseline to measure")
+print("computed-goto dispatch improvement (typically 15-30% speedup).")

@@ -1,0 +1,164 @@
+/* tests/test_string_advanced.pr — comprehensive string method tests */
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if got == expected {
+        pass += 1
+    } else {
+        print("FAIL:", label, "| got:", got, "expected:", expected)
+        fail += 1
+    }
+}
+
+func assert_true(label, cond) {
+    if cond { pass += 1 }
+    else { print("FAIL:", label); fail += 1 }
+}
+
+/* ── Basic string operations ─────────────────────────────────── */
+assert("len empty",    len(""),        0)
+assert("len hello",    len("hello"),   5)
+assert("concat",       "hello" + " " + "world", "hello world")
+assert("repeat 3",     "ab" + "ab" + "ab",       "ababab")
+
+/* ── Case conversion ─────────────────────────────────────────── */
+assert("upper",        upper("hello World"),   "HELLO WORLD")
+assert("lower",        lower("HELLO World"),   "hello world")
+assert("upper empty",  upper(""),              "")
+assert("lower empty",  lower(""),              "")
+
+/* ── Trim functions ──────────────────────────────────────────── */
+assert("trim both",    trim("  hello  "),      "hello")
+assert("trim left",    ltrim("  hello  "),     "hello  ")
+assert("trim right",   rtrim("  hello  "),     "  hello")
+assert("trim none",    trim("hello"),          "hello")
+assert("trim all",     trim("   "),            "")
+
+/* ── Split and join ──────────────────────────────────────────── */
+let parts = split("a,b,c,d", ",")
+assert("split len",    len(parts),  4)
+assert("split[0]",     parts[0],    "a")
+assert("split[-1]",    parts[-1],   "d")
+
+let rejoined = join(",", parts)
+assert("join round-trip", rejoined, "a,b,c,d")
+
+assert("join empty",   join("-", []),          "")
+assert("join single",  join("-", ["x"]),       "x")
+assert("join no sep",  join("", ["a","b","c"]),"abc")
+
+let ws_parts = split("hello world  foo", " ")
+assert_true("split whitespace", len(ws_parts) >= 3)
+
+/* ── Search and replace ──────────────────────────────────────── */
+assert("contains true",   contains("hello world", "world"), true)
+assert("contains false",  contains("hello world", "xyz"),   false)
+assert("contains empty",  contains("hello", ""),             true)
+
+assert("indexOf found",   indexOf("hello", "l"),   2)
+assert("indexOf first",   indexOf("hello", "h"),   0)
+assert("indexOf last",    indexOf("hello", "o"),   4)
+assert("indexOf missing", indexOf("hello", "z"),  -1)
+
+assert("replace basic",   replace("hello world", "world", "Prism"), "hello Prism")
+assert("replace all",     replace("aababc", "a", "x"),              "xxbxbc")
+assert("replace none",    replace("hello", "xyz", "abc"),           "hello")
+assert("replace empty",   replace("", "x", "y"),                   "")
+
+assert("startsWith yes",  startsWith("hello", "he"),    true)
+assert("startsWith no",   startsWith("hello", "lo"),    false)
+assert("startsWith empty",startsWith("hello", ""),      true)
+assert("startsWith self", startsWith("hi", "hi"),       true)
+assert("startsWith long", startsWith("hi", "hello"),    false)
+
+assert("endsWith yes",    endsWith("hello", "lo"),    true)
+assert("endsWith no",     endsWith("hello", "he"),    false)
+assert("endsWith empty",  endsWith("hello", ""),      true)
+assert("endsWith self",   endsWith("hi", "hi"),       true)
+
+/* ── Substring / slicing ─────────────────────────────────────── */
+let s = "hello world"
+assert("str slice [0:5]",  s[0:5],  "hello")
+assert("str slice [6:]",   s[6:],   "world")
+assert("str slice [:5]",   s[:5],   "hello")
+assert("str index [0]",    s[0],    "h")
+assert("str index [-1]",   s[-1],   "d")
+assert("str index [4]",    s[4],    "o")
+
+/* ── String-to-number conversions ────────────────────────────── */
+assert("int('123')",     int("123"),     123)
+assert("int('-5')",      int("-5"),      -5)
+assert("float('3.14')",  float("3.14"),  3.14)
+assert("str(42)",        str(42),        "42")
+assert("str(3.14)",      str(3.14),      "3.14")
+assert("str(true)",      str(true),      "true")
+assert("str(false)",     str(false),     "false")
+assert("str(null)",      str(null),      "null")
+
+/* ── F-strings (interpolation) ──────────────────────────────── */
+let name = "Alice"
+let age = 30
+let greeting = f"Hello, {name}! You are {age} years old."
+assert("fstring basic", greeting, "Hello, Alice! You are 30 years old.")
+
+let result = f"1 + 1 = {1 + 1}"
+assert("fstring expr", result, "1 + 1 = 2")
+
+let arr = [1, 2, 3]
+let fstr_arr = f"Array: {arr}"
+assert_true("fstring array", len(fstr_arr) > 0)
+
+/* ── Char-level operations ──────────────────────────────────── */
+assert("ord 'A'",    ord("A"),    65)
+assert("ord 'a'",    ord("a"),    97)
+assert("ord '0'",    ord("0"),    48)
+assert("chr 65",     chr(65),     "A")
+assert("chr 97",     chr(97),     "a")
+assert("chr 48",     chr(48),     "0")
+
+/* ── Palindrome check ────────────────────────────────────────── */
+func is_palindrome(s) {
+    let lo = 0
+    let hi = len(s) - 1
+    while lo < hi {
+        if s[lo] != s[hi] { return false }
+        lo = lo + 1
+        hi = hi - 1
+    }
+    return true
+}
+assert_true("palindrome 'racecar'", is_palindrome("racecar"))
+assert_true("palindrome 'abba'",    is_palindrome("abba"))
+assert_true("palindrome 'a'",       is_palindrome("a"))
+assert_true("palindrome ''",        is_palindrome(""))
+assert_true("not palindrome",       not is_palindrome("hello"))
+
+/* ── Word count ─────────────────────────────────────────────── */
+func word_count(s) {
+    let words = split(trim(s), " ")
+    let count = 0
+    for w in words {
+        if len(trim(w)) > 0 { count = count + 1 }
+    }
+    return count
+}
+assert("word count basic",    word_count("hello world"),      2)
+assert("word count single",   word_count("hello"),            1)
+
+/* ── Numeric string operations ────────────────────────────────── */
+func digits_only(s) {
+    for ch in s {
+        let o = ord(ch)
+        if o < 48 or o > 57 { return false }
+    }
+    return len(s) > 0
+}
+assert_true("digits '123'",   digits_only("123"))
+assert_true("not digits 'abc'", not digits_only("abc"))
+assert_true("not digits '1a'",  not digits_only("1a"))
+
+print("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { print("[PASS] test_string_advanced") }
+else { print("[FAIL] test_string_advanced") }

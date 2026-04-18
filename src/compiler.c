@@ -96,6 +96,22 @@ static Value *try_constant_fold(ASTNode *node) {
     ASTNode *R = node->binop.right;
     const char *op = node->binop.op;
 
+    /* Fold string + string concatenation */
+    bool L_str = (L->type == NODE_STRING_LIT);
+    bool R_str = (R->type == NODE_STRING_LIT);
+    if (L_str && R_str && strcmp(op, "+") == 0) {
+        const char *ls = L->string_lit.value;
+        const char *rs = R->string_lit.value;
+        size_t llen = strlen(ls), rlen = strlen(rs);
+        char *buf = malloc(llen + rlen + 1);
+        memcpy(buf, ls, llen);
+        memcpy(buf + llen, rs, rlen);
+        buf[llen + rlen] = '\0';
+        Value *v = value_string(buf);
+        free(buf);
+        return v;
+    }
+
     /* Only fold pure int/float literals */
     bool L_int   = (L->type == NODE_INT_LIT);
     bool L_float = (L->type == NODE_FLOAT_LIT);
@@ -620,8 +636,35 @@ static void compile_expr(Compiler *c, ASTNode *node) {
 
     /* ---- unary ops ---- */
     case NODE_UNOP: {
-        compile_expr(c, node->unop.operand);
         const char *op = node->unop.op;
+        ASTNode *operand = node->unop.operand;
+
+        /* Compile-time folding for unary on literal operands */
+        if (strcmp(op, "-") == 0) {
+            if (operand->type == NODE_INT_LIT) {
+                emit_int(c, -operand->int_lit.value, ln);
+                break;
+            }
+            if (operand->type == NODE_FLOAT_LIT) {
+                Value *v = value_float(-operand->float_lit.value);
+                emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, v), ln);
+                value_release(v);
+                break;
+            }
+        }
+        if (strcmp(op, "~") == 0 && operand->type == NODE_INT_LIT) {
+            emit_int(c, ~operand->int_lit.value, ln);
+            break;
+        }
+        if ((strcmp(op, "not") == 0 || strcmp(op, "!") == 0) &&
+            operand->type == NODE_BOOL_LIT) {
+            Value *v = value_bool(operand->bool_lit.value ? 0 : 1);
+            emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, v), ln);
+            value_release(v);
+            break;
+        }
+
+        compile_expr(c, operand);
         if      (strcmp(op, "-")   == 0) emit1(c, OP_NEG, ln);
         else if (strcmp(op, "+")   == 0) emit1(c, OP_POS, ln);
         else if (strcmp(op, "!")   == 0) emit1(c, OP_NOT, ln);

@@ -1,0 +1,182 @@
+/* tests/test_closures_advanced.pr — advanced closure and higher-order function tests */
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if got == expected {
+        pass += 1
+    } else {
+        print("FAIL:", label, "| got:", got, "expected:", expected)
+        fail += 1
+    }
+}
+
+func assert_true(label, cond) {
+    if cond { pass += 1 }
+    else { print("FAIL:", label); fail += 1 }
+}
+
+/* ── Counter factory (mutable closure state) ─────────────── */
+func make_counter(start) {
+    let count = start
+    func inc() { count = count + 1; return count }
+    func dec() { count = count - 1; return count }
+    func get() { return count }
+    return [inc, dec, get]
+}
+
+let ctr = make_counter(10)
+let inc = ctr[0]
+let dec = ctr[1]
+let get = ctr[2]
+assert("counter start",  get(),  10)
+assert("counter inc",    inc(),  11)
+assert("counter inc",    inc(),  12)
+assert("counter dec",    dec(),  11)
+assert("counter get",    get(),  11)
+
+/* ── Two independent counters don't share state ─────────────── */
+let ctr2 = make_counter(0)
+let inc2 = ctr2[0]
+let get2 = ctr2[2]
+inc2(); inc2(); inc2()
+assert("counter2 independent", get2(), 3)
+assert("counter1 unchanged",   get(),  11)
+
+/* ── Memoization via closure ─────────────────────────────────── */
+func make_memoized_fib() {
+    let memo = {}
+    func fib(n) {
+        if n <= 1 { return n }
+        if memo[str(n)] != null { return memo[str(n)] }
+        let result = fib(n-1) + fib(n-2)
+        memo[str(n)] = result
+        return result
+    }
+    return fib
+}
+
+let mfib = make_memoized_fib()
+assert("mfib(0)",  mfib(0),  0)
+assert("mfib(1)",  mfib(1),  1)
+assert("mfib(10)", mfib(10), 55)
+assert("mfib(20)", mfib(20), 6765)
+
+/* ── Partial application (currying) ─────────────────────────── */
+func partial(f, a) {
+    func inner(b) { return f(a, b) }
+    return inner
+}
+
+func add(a, b) { return a + b }
+func mul(a, b) { return a * b }
+
+let add5  = partial(add, 5)
+let times3 = partial(mul, 3)
+assert("partial add5(10)", add5(10), 15)
+assert("partial times3(7)", times3(7), 21)
+
+let add10 = partial(add, 10)   /* partial(add, 10) -> inner(b) { return add(10, b) } */
+assert("chained partial", add10(10), 20)
+
+/* ── Function composition ────────────────────────────────────── */
+func compose(f, g) {
+    func composed(x) { return f(g(x)) }
+    return composed
+}
+
+func double(x) { return x * 2 }
+func inc_one(x) { return x + 1 }
+
+let double_then_inc = compose(inc_one, double)
+let inc_then_double = compose(double, inc_one)
+assert("double_then_inc(3)", double_then_inc(3), 7)
+assert("inc_then_double(3)", inc_then_double(3), 8)
+
+/* ── Recursive closure (Y-combinator style) ──────────────────── */
+func make_factorial() {
+    func fact(n) {
+        if n <= 1 { return 1 }
+        return n * fact(n - 1)
+    }
+    return fact
+}
+let fact = make_factorial()
+assert("closure factorial(5)",  fact(5),  120)
+assert("closure factorial(10)", fact(10), 3628800)
+
+/* ── Higher-order: map/filter/reduce ────────────────────────── */
+func my_map(arr, f) {
+    let result = []
+    for x in arr { push(result, f(x)) }
+    return result
+}
+
+func my_filter(arr, pred) {
+    let result = []
+    for x in arr { if pred(x) { push(result, x) } }
+    return result
+}
+
+func my_reduce(arr, f, init) {
+    let acc = init
+    for x in arr { acc = f(acc, x) }
+    return acc
+}
+
+let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+let doubled = my_map(nums, func(x) { return x * 2 })
+assert("map double[0]",  doubled[0], 2)
+assert("map double[4]",  doubled[4], 10)
+assert("map double len", len(doubled), 10)
+
+let evens = my_filter(nums, func(x) { return x % 2 == 0 })
+assert("filter evens len",  len(evens), 5)
+assert("filter evens[0]",   evens[0], 2)
+assert("filter evens[-1]",  evens[-1], 10)
+
+let sum = my_reduce(nums, func(acc, x) { return acc + x }, 0)
+assert("reduce sum", sum, 55)
+
+let product = my_reduce([1,2,3,4,5], func(acc, x) { return acc * x }, 1)
+assert("reduce product", product, 120)
+
+/* ── Closure capturing loop variable ────────────────────────── */
+let fns = []
+let i = 0
+while i < 5 {
+    let captured = i
+    push(fns, func() { return captured })
+    i = i + 1
+}
+assert("closure loop[0]", fns[0](), 0)
+assert("closure loop[2]", fns[2](), 2)
+assert("closure loop[4]", fns[4](), 4)
+
+/* ── Once function (call-once wrapper) ───────────────────────── */
+func once(f) {
+    let called = false
+    let result = null
+    func wrapper() {
+        if called { return result }
+        called = true
+        result = f()
+        return result
+    }
+    return wrapper
+}
+
+let expensive_count = 0
+let get_value = once(func() {
+    expensive_count = expensive_count + 1
+    return 42
+})
+assert("once first call",  get_value(), 42)
+assert("once second call", get_value(), 42)
+assert("once side effect called once", expensive_count, 1)
+
+print("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { print("[PASS] test_closures_advanced") }
+else { print("[FAIL] test_closures_advanced") }

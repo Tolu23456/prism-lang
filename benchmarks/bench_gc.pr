@@ -1,0 +1,117 @@
+/* benchmarks/bench_gc.pr — Garbage collector throughput and pause benchmarks
+ *
+ * Tests GC performance under various allocation patterns:
+ * - Young-generation allocation pressure
+ * - Long-lived object promotion
+ * - String interning benefits
+ * - Large object churn
+ */
+
+print("=== GC Benchmark Suite ===")
+print("")
+
+func bench(name, f, iters) {
+    let t0 = clock()
+    let i = 0
+    while i < iters { f(); i = i + 1 }
+    let elapsed = clock() - t0
+    print(name + ": " + str(round(elapsed * 1000.0, 2)) + " ms")
+}
+
+/* ── Short-lived allocation (tests young-gen throughput) ─────── */
+func alloc_pressure() {
+    let i = 0
+    while i < 1000 {
+        let tmp = [i, i*2, i*3]   /* allocate, then die immediately */
+        i = i + 1
+    }
+}
+
+/* ── Dict allocation churn ──────────────────────────────────── */
+func dict_churn() {
+    let i = 0
+    while i < 200 {
+        let d = {"x": i, "y": i*2, "z": i*3, "w": i*4}
+        i = i + 1
+    }
+}
+
+/* ── Survivor objects (promote to old-gen) ───────────────────── */
+func survivors() {
+    let long_lived = []
+    let i = 0
+    while i < 100 {
+        push(long_lived, {"id": i, "data": i * 100})
+        i = i + 1
+    }
+    /* Process and discard refs, but array stays live */
+    let sum = 0
+    for item in long_lived { sum = sum + item["id"] }
+    return sum
+}
+
+/* ── String allocation churn ─────────────────────────────────── */
+func string_alloc() {
+    let i = 0
+    while i < 500 {
+        let s = "prefix_" + str(i) + "_suffix"
+        i = i + 1
+    }
+}
+
+/* ── Recursive allocation ────────────────────────────────────── */
+func build_tree(depth) {
+    if depth <= 0 { return {"val": 0, "left": null, "right": null} }
+    return {
+        "val": depth,
+        "left": build_tree(depth - 1),
+        "right": build_tree(depth - 1)
+    }
+}
+
+func tree_sum(node) {
+    if node == null { return 0 }
+    return node["val"] + tree_sum(node["left"]) + tree_sum(node["right"])
+}
+
+func tree_bench() {
+    let tree = build_tree(10)
+    return tree_sum(tree)
+}
+
+/* ── Array growth ────────────────────────────────────────────── */
+func array_growth() {
+    let arr = []
+    let i = 0
+    while i < 10000 { push(arr, i); i = i + 1 }
+    return len(arr)
+}
+
+/* ── GC stress: many tiny allocations ───────────────────────── */
+func gc_stress() {
+    let total = 0
+    let i = 0
+    while i < 5000 {
+        let x = [i]
+        total = total + x[0]
+        i = i + 1
+    }
+    return total
+}
+
+print("--- Allocation benchmarks ---")
+bench("short-lived arrays (1000 iters)", alloc_pressure, 100)
+bench("dict churn (200 dicts/iter)",     dict_churn,     100)
+bench("survivor promotion (100 objs)",   survivors,      100)
+bench("string alloc (500/iter)",         string_alloc,   100)
+bench("recursive tree depth=10",         tree_bench,     20)
+bench("array growth to 10000",           array_growth,   100)
+bench("gc stress (5000 tiny/iter)",      gc_stress,      10)
+
+print("")
+print("--- GC Statistics ---")
+print("(Run with --mem-report for full GC stats from the runtime)")
+print("  Example: ./prism --mem-report benchmarks/bench_gc.pr")
+
+print("")
+print("=== GC benchmark complete ===")

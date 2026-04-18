@@ -1,0 +1,149 @@
+/* examples/game_of_life.pr — Conway's Game of Life */
+
+print("=== Conway's Game of Life ===")
+
+/* Create grid: rows x cols of zeros */
+func grid_new(rows, cols) {
+    let g = []
+    let r = 0
+    while r < rows {
+        let row = []
+        let c = 0
+        while c < cols { push(row, 0); c = c + 1 }
+        push(g, row)
+        r = r + 1
+    }
+    return g
+}
+
+func grid_rows(g) { return len(g) }
+func grid_cols(g) { return len(g[0]) }
+
+/* Get cell with wrapping (toroidal) */
+func grid_get(g, r, c) {
+    let rows = grid_rows(g)
+    let cols = grid_cols(g)
+    r = ((r % rows) + rows) % rows
+    c = ((c % cols) + cols) % cols
+    return g[r][c]
+}
+
+func grid_set(g, r, c, v) {
+    g[r][c] = v
+}
+
+/* Count live neighbors */
+func count_neighbors(g, r, c) {
+    let count = 0
+    let dr = -1
+    while dr <= 1 {
+        let dc = -1
+        while dc <= 1 {
+            if not (dr == 0 and dc == 0) {
+                count = count + grid_get(g, r + dr, c + dc)
+            }
+            dc = dc + 1
+        }
+        dr = dr + 1
+    }
+    return count
+}
+
+/* Advance one generation */
+func grid_step(g) {
+    let rows = grid_rows(g)
+    let cols = grid_cols(g)
+    let next = grid_new(rows, cols)
+    let r = 0
+    while r < rows {
+        let c = 0
+        while c < cols {
+            let neighbors = count_neighbors(g, r, c)
+            let alive = g[r][c]
+            if alive == 1 {
+                /* Live cell: survives with 2 or 3 neighbors */
+                if neighbors == 2 or neighbors == 3 {
+                    grid_set(next, r, c, 1)
+                }
+            } else {
+                /* Dead cell: born with exactly 3 neighbors */
+                if neighbors == 3 {
+                    grid_set(next, r, c, 1)
+                }
+            }
+            c = c + 1
+        }
+        r = r + 1
+    }
+    return next
+}
+
+/* Count live cells */
+func grid_population(g) {
+    let count = 0
+    for row in g {
+        for cell in row { count = count + cell }
+    }
+    return count
+}
+
+/* Print grid */
+func grid_print(g, gen, pop) {
+    print("Generation " + str(gen) + " | Population: " + str(pop))
+    for row in g {
+        let s = ""
+        for cell in row {
+            if cell == 1 { s = s + "█" }
+            else { s = s + "·" }
+        }
+        print(s)
+    }
+    print("")
+}
+
+/* Place a pattern at (r0, c0) */
+func grid_place(g, r0, c0, pattern) {
+    let r = 0
+    for row in pattern {
+        let c = 0
+        for cell in row {
+            g[r0 + r][c0 + c] = cell
+            c = c + 1
+        }
+        r = r + 1
+    }
+}
+
+/* ── Run simulation ─────────────────────────────────────────── */
+let ROWS = 20
+let COLS = 40
+let g = grid_new(ROWS, COLS)
+
+/* Glider */
+let glider = [[0, 1, 0],
+              [0, 0, 1],
+              [1, 1, 1]]
+grid_place(g, 1, 1, glider)
+
+/* Blinker */
+let blinker = [[1, 1, 1]]
+grid_place(g, 10, 20, blinker)
+
+/* R-pentomino */
+let rpent = [[0, 1, 1],
+             [1, 1, 0],
+             [0, 1, 0]]
+grid_place(g, 5, 30, rpent)
+
+let gen = 0
+grid_print(g, gen, grid_population(g))
+
+/* Run 10 generations */
+while gen < 10 {
+    g = grid_step(g)
+    gen = gen + 1
+    grid_print(g, gen, grid_population(g))
+}
+
+print("Simulation complete!")
+print("Final population:", grid_population(g))
