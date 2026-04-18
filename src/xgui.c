@@ -33,6 +33,7 @@
 /* ------------------------------------------------------------------ constants */
 
 #define MAX_INPUTS       64
+#define MAX_ANIMS        256
 #define INPUT_BUF        1024
 #define KEY_BUF          64
 #define WIDGET_GAP       10
@@ -51,6 +52,12 @@ enum { MASK_FILL = 0, MASK_OUTLINE = 1 };
 /* ------------------------------------------------------------------ types */
 
 typedef struct { char id[64]; char buf[INPUT_BUF]; } InputState;
+typedef struct {
+    char  id[64];
+    float val;
+    float vel;
+    int   age;
+} AnimState;
 typedef struct { char key[164]; XftFont *font; } FCacheEntry;
 
 typedef struct {
@@ -140,6 +147,10 @@ struct XGui {
     char       focused_id[64];
     char       active_id[64];  /* widget being dragged/pressed */
 
+    /* Animation state tracker */
+    AnimState  anims[MAX_ANIMS];
+    int        anim_count;
+
     /* Font LRU cache */
     FCacheEntry fcache[FONT_CACHE_MAX];
     int         fcache_n;
@@ -169,7 +180,63 @@ struct XGui {
     bool  running;
 };
 
-/* ------------------------------------------------------------------ color */
+/* ------------------------------------------------------------------ animation system */
+
+static float spring_interp(float *val, float *vel, float target, float dt, float omega) {
+    if (dt <= 0) return *val;
+    float exp_term = expf(-omega * dt);
+    float diff = *val - target;
+    float n1 = *vel + omega * diff;
+    *val = target + (diff + n1 * dt) * exp_term;
+    *vel = (*vel - omega * n1 * dt) * exp_term;
+    if (fabsf(*val - target) < 0.001f && fabsf(*vel) < 0.001f) {
+        *val = target;
+        *vel = 0;
+    }
+    return *val;
+}
+
+static float xgui_anim(XGui *g, const char *id, float target, float omega) {
+    AnimState *res = NULL;
+    for (int i = 0; i < g->anim_count; i++) {
+        if (strcmp(g->anims[i].id, id) == 0) {
+            res = &g->anims[i];
+            break;
+        }
+    }
+    if (!res) {
+        if (g->anim_count < MAX_ANIMS) {
+            res = &g->anims[g->anim_count++];
+            strncpy(res->id, id, sizeof(res->id)-1);
+            res->val = target;
+            res->vel = 0;
+        } else {
+            int oldest = 0;
+            for (int i = 1; i < MAX_ANIMS; i++)
+                if (g->anims[i].age < g->anims[oldest].age) oldest = i;
+            res = &g->anims[oldest];
+            strncpy(res->id, id, sizeof(res->id)-1);
+            res->val = target;
+            res->vel = 0;
+        }
+    }
+    res->age = g->frame;
+    float dt = g->delta_ms / 1000.0f;
+    if (dt > 0.1f) dt = 0.1f;
+    return spring_interp(&res->val, &res->vel, target, dt, omega);
+}
+
+/* ------------------------------------------------------------------ color utilities */
+
+static uint32_t lerp_color(uint32_t c1, uint32_t c2, float t) {
+    if (t <= 0) return c1;
+    if (t >= 1) return c2;
+    int r1 = (c1 >> 16) & 0xff, g1 = (c1 >> 8) & 0xff, b1 = c1 & 0xff;
+    int r2 = (c2 >> 16) & 0xff, g2 = (c2 >> 8) & 0xff, b2 = c2 & 0xff;
+    return (uint32_t)((int)(r1 + (r2 - r1) * t) << 16 |
+                      (int)(g1 + (g2 - g1) * t) << 8 |
+                      (int)(b1 + (b2 - b1) * t));
+}
 
 static unsigned long alloc_color(XGui *g, uint32_t rgb) {
     XColor c;
@@ -405,6 +472,31 @@ static void draw_outline(XGui *g, int x, int y, int w, int h,
     XRenderFreePicture(g->dpy, src);
 }
 
+static void fill_rect_grad(XGui *g, int x, int y, int w, int h, uint32_t c1, uint32_t c2, bool vert) {
+    if (w <= 0 || h <= 0) return;
+    if (!g->backbuf_pic) { fill_rect(g, x, y, w, h, c1); return; }
+
+    XRenderColor xr1, xr2;
+    xr_color(c1, 0xffff, &xr1);
+    xr_color(c2, 0xffff, &xr2);
+
+    XLinearGradient grad;
+    if (vert) {
+        grad.p1.x = 0; grad.p1.y = 0;
+        grad.p2.x = 0; grad.p2.y = (double)h * 65536.0;
+    } else {
+        grad.p1.x = 0; grad.p1.y = 0;
+        grad.p2.x = (double)w * 65536.0; grad.p2.y = 0;
+    }
+
+    XFixed stops[2] = { 0, 65536 };
+    XRenderColor colors[2] = { xr1, xr2 };
+
+    Picture grad_pic = XRenderCreateLinearGradient(g->dpy, &grad, stops, colors, 2);
+    XRenderComposite(g->dpy, PictOpSrc, grad_pic, None, g->backbuf_pic, 0, 0, 0, 0, x, y, (unsigned)w, (unsigned)h);
+    XRenderFreePicture(g->dpy, grad_pic);
+}
+
 /* Perfect AA circle via IQ SDF on a circle mask */
 static void fill_circle(XGui *g, int x, int y, int r, uint32_t rgb) {
     int d = 2 * r;
@@ -421,10 +513,13 @@ static void fill_circle(XGui *g, int x, int y, int r, uint32_t rgb) {
 /* Multi-layer soft drop shadow using cached AA rounded rects */
 static void draw_shadow(XGui *g, int x, int y, int w, int h, int r) {
     typedef struct { int exp, dy, a; } L;
-    static const L layers[SHADOW_LAYERS] = {
-        {10,9,8},{7,7,12},{5,5,18},{3,3,24},{2,2,30},{1,1,35}
+    /* High-quality 8-layer shadow */
+    static const L layers[] = {
+        {14,12,4}, {10,9,7}, {7,7,11}, {5,5,15},
+        {3,3,20}, {2,2,25}, {1,1,30}, {0,1,35}
     };
-    for (int i = 0; i < SHADOW_LAYERS; i++)
+    int count = sizeof(layers)/sizeof(layers[0]);
+    for (int i = 0; i < count; i++)
         fill_rounded_rect_alpha(g,
             x - layers[i].exp, y + layers[i].dy - layers[i].exp,
             w + 2*layers[i].exp, h + 2*layers[i].exp,
@@ -1042,6 +1137,23 @@ void xgui_label(XGui *g, const char *text) {
     advance(g, tw + 2*s->padding_x, bh);
 }
 
+void xgui_markdown(XGui *g, const char *text) {
+    if (!g || !text) return;
+    if (text[0] == '#' && text[1] == ' ') {
+        xgui_title(g, text + 2);
+    } else if (text[0] == '#' && text[1] == '#' && text[2] == ' ') {
+        xgui_subtitle(g, text + 3);
+    } else if (text[0] == '-' && text[1] == ' ') {
+        int x_old = g->cx;
+        xgui_draw_icon(g, "check", g->cx, g->cy + 4, 12, g->theme.button.background);
+        g->cx += 20;
+        xgui_label(g, text + 2);
+        g->cx = x_old;
+    } else {
+        xgui_label(g, text);
+    }
+}
+
 void xgui_title(XGui *g, const char *text) {
     if (!g || !text) return;
     PssStyle *s = &g->theme.title;
@@ -1128,24 +1240,42 @@ bool xgui_button(XGui *g, const char *text) {
     if (g->in_grid) bw = g->grid_col_w;
 
     bool hov  = (g->mx >= x && g->mx < x+bw && g->my >= y && g->my < y+bh);
-    bool held = hov && g->mouse_down;
-    bool clicked = hov && g->mouse_released;
+    bool active = (strcmp(g->active_id, text) == 0);
+
+    if (hov && g->mouse_down && g->active_id[0] == '\0') {
+        strncpy(g->active_id, text, sizeof(g->active_id)-1);
+        active = true;
+    }
+
+    bool held = active && g->mouse_down;
+    bool clicked = hov && g->mouse_released && active;
+
+    char id_hov[128], id_held[128];
+    snprintf(id_hov, sizeof(id_hov), "btn_hov:%s", text);
+    snprintf(id_held, sizeof(id_held), "btn_held:%s", text);
+    float hov_t  = xgui_anim(g, id_hov, hov ? 1.0f : 0.0f, 18.0f);
+    float held_t = xgui_anim(g, id_held, held ? 1.0f : 0.0f, 24.0f);
 
     if (vis(g, y, bh)) {
-        PssStyle *ds = held ? &g->theme.button_active
-                     : hov  ? &g->theme.button_hover : s;
-        int r  = ds->border_radius > 0 ? ds->border_radius : 8;
-        int dy = held ? 1 : 0;
+        uint32_t bg = lerp_color(s->background ? s->background : 0x0078d4,
+                                 g->theme.button_hover.background ? g->theme.button_hover.background : 0x106ebe,
+                                 hov_t);
+        bg = lerp_color(bg, g->theme.button_active.background ? g->theme.button_active.background : 0x005fa3, held_t);
 
-        fill_rounded_rect(g, x, y+dy, bw, bh, r, ds->background ? ds->background : 0x0078d4);
-        if (!held) /* top shine */
-            fill_rounded_rect_alpha(g, x+1, y+1, bw-2, bh/3, r-1, 0xffffff, 18);
-        if (ds->border_width > 0)
-            draw_outline(g, x, y+dy, bw, bh, r, ds->border_width, ds->border_color);
+        int r = s->border_radius > 0 ? s->border_radius : 8;
+        float scale = 1.0f - (held_t * 0.05f);
+        int sw = (int)(bw * scale), sh = (int)(bh * scale);
+        int sx = x + (bw - sw)/2, sy = y + (bh - sh)/2;
 
-        int tx = x + (bw - tw) / 2;
-        draw_text(g, f, text, tx, y+dy + (bh - th)/2 + f->ascent,
-                  ds->color ? ds->color : 0xffffff);
+        fill_rounded_rect(g, sx, sy, sw, sh, r, bg);
+        if (held_t < 0.5f) {
+            /* top shine */
+            fill_rounded_rect_alpha(g, sx+1, sy+1, sw-2, sh/2, r-1, 0xffffff, (int)(15 * (1.0f - held_t)));
+        }
+
+        int tx = sx + (sw - (int)(tw * scale)) / 2;
+        draw_text(g, f, text, tx, sy + (sh - (int)(th * scale))/2 + f->ascent,
+                  s->color ? s->color : 0xffffff);
     }
     advance(g, bw, bh);
     return clicked;
@@ -1311,6 +1441,9 @@ bool xgui_toggle(XGui *g, const char *id, bool value, const char *label) {
         on = !on; inp->buf[0] = on ? '1' : '0'; inp->buf[1] = '\0';
     }
 
+    char id_anim[128]; snprintf(id_anim, sizeof(id_anim), "tog:%s", id);
+    float t = xgui_anim(g, id_anim, on ? 1.0f : 0.0f, 20.0f);
+
     XftFont *f = get_font(g, g->theme.label.font[0] ? g->theme.label.font : "sans",
                           g->theme.label.font_size > 0 ? g->theme.label.font_size : 13, 400);
     int lw = 0, lh = th_px;
@@ -1319,14 +1452,17 @@ bool xgui_toggle(XGui *g, const char *id, bool value, const char *label) {
 
     if (vis(g, y, total_h)) {
         int ty = y + (total_h - th_px)/2;
-        uint32_t track_c = on ? (g->theme.button.background ? g->theme.button.background : 0x0078d4)
-                              : (g->theme.checkbox.border_color ? g->theme.checkbox.border_color : 0xbcbcbc);
+        uint32_t off_c = g->theme.checkbox.border_color ? g->theme.checkbox.border_color : 0xbcbcbc;
+        uint32_t on_c  = g->theme.button.background ? g->theme.button.background : 0x0078d4;
+        uint32_t track_c = lerp_color(off_c, on_c, t);
         fill_rounded_rect(g, x, ty, tw_px, th_px, th_px/2, track_c);
 
         /* thumb — animates position */
         int thumb_r = th_px/2 - 2;
-        int thumb_x = on ? (x + tw_px - th_px/2 - 2) : (x + th_px/2);
-        fill_circle(g, thumb_x - thumb_r, ty + 2, thumb_r, 0xffffff);
+        int x0 = x + th_px/2;
+        int x1 = x + tw_px - th_px/2;
+        int thumb_cx = (int)(x0 + (x1 - x0) * t);
+        fill_circle(g, thumb_cx - thumb_r, ty + 2, thumb_r, 0xffffff);
 
         if (f && label)
             draw_text(g, f, label, x + tw_px + 10, y + (total_h - lh)/2 + f->ascent,
@@ -1388,7 +1524,10 @@ float xgui_slider(XGui *g, const char *id, float min_v, float max_v, float cur) 
         snprintf(inp->buf, sizeof(inp->buf), "%f", val);
     }
 
-    float t = (range > 0) ? (val - min_v) / range : 0.0f;
+    char id_anim[128]; snprintf(id_anim, sizeof(id_anim), "sld:%s", id);
+    float val_anim = xgui_anim(g, id_anim, val, 25.0f);
+
+    float t = (range > 0) ? (val_anim - min_v) / range : 0.0f;
     if (t < 0.0f) t = 0.0f;
     if (t > 1.0f) t = 1.0f;
     int thumb_cx = x + (int)(t * (float)(usable - 2*thumb_r)) + thumb_r;
@@ -1396,7 +1535,7 @@ float xgui_slider(XGui *g, const char *id, float min_v, float max_v, float cur) 
     if (vis(g, y, 2*thumb_r)) {
         uint32_t tc  = 0xe0e0e0;
         uint32_t fc  = g->theme.progressbar_fill.background ? g->theme.progressbar_fill.background : 0x0078d4;
-        uint32_t thc = hov ? 0x005fa3 : fc;
+        uint32_t thc = (hov || active) ? 0x005fa3 : fc;
         fill_rounded_rect(g, x, track_y, usable, tr, tr/2, tc);
         if (thumb_cx - x > 0)
             fill_rounded_rect(g, x, track_y, thumb_cx - x, tr, tr/2, fc);
@@ -1683,6 +1822,62 @@ bool xgui_list_item(XGui *g, const char *title, const char *subtitle, const char
     return clicked;
 }
 
+/* ------------------------------------------------------------------ table */
+
+static struct {
+    int  cols;
+    int  cw;
+    int  rh;
+    int  x0, y0;
+    bool active;
+} g_tbl;
+
+void xgui_table_begin(XGui *g, const char *id, int cols, const char **headers) {
+    if (!g || cols <= 0) return;
+    (void)id;
+    int usable = g->width - 2*g->margin;
+    g_tbl.active = true;
+    g_tbl.cols   = cols;
+    g_tbl.cw     = usable / cols;
+    g_tbl.rh     = 32;
+    g_tbl.x0     = g->cx;
+    g_tbl.y0     = g->cy;
+
+    /* Draw Header */
+    if (vis(g, g->cy, g_tbl.rh)) {
+        fill_rounded_rect(g, g->cx, g->cy, usable, g_tbl.rh, 4, 0xe0e0e0);
+        XftFont *f = get_font(g, "sans", 12, 700);
+        for (int i = 0; i < cols; i++) {
+            if (headers && headers[i])
+                draw_text(g, f, headers[i], g->cx + i*g_tbl.cw + 8, g->cy + 20, 0x333333);
+        }
+    }
+    g->cy += g_tbl.rh;
+}
+
+void xgui_table_row(XGui *g, int count, const char **cells) {
+    if (!g || !g_tbl.active) return;
+    int usable = g->width - 2*g->margin;
+    if (vis(g, g->cy, g_tbl.rh)) {
+        if ((g->cy / g_tbl.rh) % 2 == 0)
+            fill_rect(g, g_tbl.x0, g->cy, usable, g_tbl.rh, 0xf9f9f9);
+        XftFont *f = get_font(g, "sans", 12, 400);
+        for (int i = 0; i < g_tbl.cols && i < count; i++) {
+            if (cells && cells[i])
+                draw_text(g, f, cells[i], g_tbl.x0 + i*g_tbl.cw + 8, g->cy + 20, 0x444444);
+        }
+        /* divider */
+        fill_rect(g, g_tbl.x0, g->cy + g_tbl.rh - 1, usable, 1, 0xeeeeee);
+    }
+    g->cy += g_tbl.rh;
+}
+
+void xgui_table_end(XGui *g) {
+    if (!g) return;
+    g_tbl.active = false;
+    g->cy += WIDGET_GAP;
+}
+
 /* ------------------------------------------------------------------ card */
 
 void xgui_card_begin(XGui *g) {
@@ -1761,7 +1956,7 @@ void xgui_grid_end(XGui *g) {
     g->grid_row_h = 0;
 }
 
-/* ------------------------------------------------------------------ row layout */
+/* ------------------------------------------------------------------ flex / row layout */
 
 void xgui_row_begin(XGui *g) {
     if (!g) return;
@@ -1771,9 +1966,24 @@ void xgui_row_begin(XGui *g) {
 void xgui_row_end(XGui *g) {
     if (!g) return;
     g->in_row = false;
-    g->cx     = g->theme.window.padding_x;
+    g->cx     = g->theme.window.padding_x - g->hscroll_x;
     g->cy    += g->row_max_h + WIDGET_GAP;
     g->row_max_h = 0;
+}
+
+void xgui_flex_begin(XGui *g, bool horizontal, int gap) {
+    if (!g) return;
+    if (horizontal) {
+        g->in_row = true;
+    } else {
+        g->in_row = false;
+    }
+    (void)gap; /* use fixed WIDGET_GAP for now to match system */
+}
+
+void xgui_flex_end(XGui *g) {
+    if (!g) return;
+    if (g->in_row) xgui_row_end(g);
 }
 
 /* ------------------------------------------------------------------ toast */
@@ -1805,6 +2015,11 @@ void xgui_fill_rect_at(XGui *g, int x, int y, int w, int h, int r, uint32_t colo
     fill_rounded_rect(g, x, y, w, h, r, color);
 }
 
+void xgui_fill_rect_grad_at(XGui *g, int x, int y, int w, int h, uint32_t c1, uint32_t c2, bool vertical) {
+    if (!g) return;
+    fill_rect_grad(g, x, y, w, h, c1, c2, vertical);
+}
+
 void xgui_fill_circle_at(XGui *g, int cx2, int cy2, int r, uint32_t color) {
     if (!g || r <= 0) return;
     fill_circle(g, cx2 - r, cy2 - r, r, color);
@@ -1834,6 +2049,41 @@ void xgui_draw_text_centered(XGui *g, int cx2, int cy2, const char *text,
     if (!f) return;
     int tw, th; text_size(g, f, text, &tw, &th);
     draw_text(g, f, text, cx2 - tw/2, cy2 - th/2 + f->ascent, color);
+}
+
+void xgui_draw_icon(XGui *g, const char *name, int x, int y, int sz, uint32_t color) {
+    if (!g || !name) return;
+    int t = sz / 10; if (t < 1) t = 1;
+    if (strcmp(name, "close") == 0) {
+        xgui_draw_line_at(g, x, y, x+sz, y+sz, t, color);
+        xgui_draw_line_at(g, x+sz, y, x, y+sz, t, color);
+    } else if (strcmp(name, "menu") == 0) {
+        xgui_draw_line_at(g, x, y+sz*0.2, x+sz, y+sz*0.2, t, color);
+        xgui_draw_line_at(g, x, y+sz*0.5, x+sz, y+sz*0.5, t, color);
+        xgui_draw_line_at(g, x, y+sz*0.8, x+sz, y+sz*0.8, t, color);
+    } else if (strcmp(name, "search") == 0) {
+        int r = sz * 0.35;
+        xgui_fill_circle_at(g, x+r, y+r, r, color);
+        xgui_fill_circle_at(g, x+r, y+r, r-t, g->theme.window.background);
+        xgui_draw_line_at(g, x+r*1.5, y+r*1.5, x+sz, y+sz, t, color);
+    } else if (strcmp(name, "arrow-left") == 0) {
+        xgui_draw_line_at(g, x, y+sz/2, x+sz, y+sz/2, t, color);
+        xgui_draw_line_at(g, x, y+sz/2, x+sz/3, y+sz/4, t, color);
+        xgui_draw_line_at(g, x, y+sz/2, x+sz/3, y+sz*0.75, t, color);
+    } else if (strcmp(name, "arrow-right") == 0) {
+        xgui_draw_line_at(g, x, y+sz/2, x+sz, y+sz/2, t, color);
+        xgui_draw_line_at(g, x+sz, y+sz/2, x+sz*0.66, y+sz/4, t, color);
+        xgui_draw_line_at(g, x+sz, y+sz/2, x+sz*0.66, y+sz*0.75, t, color);
+    } else if (strcmp(name, "check") == 0) {
+        xgui_draw_line_at(g, x+sz*0.1, y+sz*0.5, x+sz*0.4, y+sz*0.8, t, color);
+        xgui_draw_line_at(g, x+sz*0.4, y+sz*0.8, x+sz*0.9, y+sz*0.1, t, color);
+    } else if (strcmp(name, "plus") == 0) {
+        xgui_draw_line_at(g, x+sz/2, y, x+sz/2, y+sz, t, color);
+        xgui_draw_line_at(g, x, y+sz/2, x+sz, y+sz/2, t, color);
+    } else if (strcmp(name, "settings") == 0) {
+        xgui_fill_circle_at(g, x+sz/2, y+sz/2, sz/2, color);
+        xgui_fill_circle_at(g, x+sz/2, y+sz/2, sz/4, g->theme.window.background);
+    }
 }
 
 void xgui_draw_text_bold_at(XGui *g, int x, int y, const char *text,

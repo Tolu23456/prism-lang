@@ -125,6 +125,27 @@ while xgui_running() {
     xgui_label(f"Y: {xgui_get_scroll()}")
     xgui_row_end()
 
+    # ── Icons ─────────────────────────────────────────────────────────
+    xgui_separator()
+    xgui_spacer(4)
+    xgui_subtitle("Vector Icons")
+    xgui_row_begin()
+    xgui_draw_icon("search",   0, 0, 24, 0x555555)
+    xgui_draw_icon("settings", 0, 0, 24, 0x555555)
+    xgui_draw_icon("check",    0, 0, 24, 0x2E7D32)
+    xgui_draw_icon("plus",     0, 0, 24, 0x1565C0)
+    xgui_row_end()
+
+    # ── Table ─────────────────────────────────────────────────────────
+    xgui_separator()
+    xgui_spacer(4)
+    xgui_subtitle("Data Table")
+    xgui_table_begin("demo_table", 3, ["ID", "Name", "Status"])
+    xgui_table_row(["001", "Alice", "Active"])
+    xgui_table_row(["002", "Bob", "Pending"])
+    xgui_table_row(["003", "Charlie", "Offline"])
+    xgui_table_end()
+
     # ── Counter ───────────────────────────────────────────────────────
     xgui_separator()
     xgui_spacer(4)

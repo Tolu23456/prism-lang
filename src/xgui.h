@@ -25,6 +25,7 @@ void        xgui_end(XGui *g);
 
 /* ── text / display ─────────────────────────────────────────────── */
 void        xgui_label(XGui *g, const char *text);
+void        xgui_markdown(XGui *g, const char *text);
 void        xgui_title(XGui *g, const char *text);
 void        xgui_subtitle(XGui *g, const char *text);
 void        xgui_separator(XGui *g);
@@ -47,6 +48,9 @@ int         xgui_tabs(XGui *g, const char *id, const char **labels, int count);
 int         xgui_select(XGui *g, const char *id, const char **options, int count, int current);
 void        xgui_spinner(XGui *g, int size);
 bool        xgui_list_item(XGui *g, const char *title, const char *subtitle, const char *trailing);
+void        xgui_table_begin(XGui *g, const char *id, int cols, const char **headers);
+void        xgui_table_row(XGui *g, int count, const char **cells);
+void        xgui_table_end(XGui *g);
 
 /* ── overlay ────────────────────────────────────────────────────── */
 void        xgui_show_toast(XGui *g, const char *text, int duration_frames);
@@ -56,6 +60,8 @@ void        xgui_tooltip(XGui *g, const char *text);
 void        xgui_spacer(XGui *g, int pixels);
 void        xgui_row_begin(XGui *g);
 void        xgui_row_end(XGui *g);
+void        xgui_flex_begin(XGui *g, bool horizontal, int gap);
+void        xgui_flex_end(XGui *g);
 
 /* ── advanced scroll ────────────────────────────────────────────── */
 void        xgui_set_scroll(XGui *g, int y);
@@ -74,12 +80,14 @@ void        xgui_group_end(XGui *g);
 /* ── raw drawing (game mode) ────────────────────────────────────── */
 void        xgui_clear_bg(XGui *g, uint32_t color);
 void        xgui_fill_rect_at(XGui *g, int x, int y, int w, int h, int r, uint32_t color);
+void        xgui_fill_rect_grad_at(XGui *g, int x, int y, int w, int h, uint32_t c1, uint32_t c2, bool vertical);
 void        xgui_fill_circle_at(XGui *g, int cx, int cy, int radius, uint32_t color);
 void        xgui_draw_line_at(XGui *g, int x1, int y1, int x2, int y2, int thickness, uint32_t color);
 void        xgui_draw_text_at(XGui *g, int x, int y, const char *text, int size, uint32_t color);
 void        xgui_draw_text_centered(XGui *g, int cx, int cy, const char *text, int size, uint32_t color);
 void        xgui_draw_text_bold_at(XGui *g, int x, int y, const char *text, int size, uint32_t color);
 void        xgui_draw_text_bold_centered(XGui *g, int cx, int cy, const char *text, int size, uint32_t color);
+void        xgui_draw_icon(XGui *g, const char *name, int x, int y, int size, uint32_t color);
 
 /* ── key-hold state (game mode) ─────────────────────────────────── */
 bool        xgui_key_held_char(XGui *g, char c);

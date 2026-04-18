@@ -437,6 +437,10 @@ static Value *builtin_assert(Value **args, int argc) {
     return value_null();
 }
 
+
+
+
+
 static Value *builtin_assert_eq(Value **args, int argc) {
     if (argc < 2) {
         fprintf(stderr, "[FAIL] assert_eq requires 2 arguments\n");
@@ -1152,6 +1156,12 @@ static Value *bi_xgui_label(Value **args, int argc) {
     return value_null();
 }
 
+static Value *bi_xgui_markdown(Value **args, int argc) {
+    if (g_xgui && argc > 0 && args[0]->type == VAL_STRING)
+        xgui_markdown(g_xgui, args[0]->str_val);
+    return value_null();
+}
+
 static Value *bi_xgui_button(Value **args, int argc) {
     if (!g_xgui || argc < 1 || args[0]->type != VAL_STRING)
         return value_bool(0);
@@ -1365,6 +1375,38 @@ static Value *bi_xgui_list_item(Value **args, int argc) {
     const char *trailing = (argc >= 3 && args[2]->type == VAL_STRING) ? args[2]->str_val : NULL;
     return value_bool(xgui_list_item(g_xgui, title, subtitle, trailing) ? 1 : 0);
 }
+
+static Value *bi_xgui_table_begin(Value **args, int argc) {
+    if (!g_xgui || argc < 2) return value_null();
+    const char *id = args[0]->str_val;
+    int cols = (int)args[1]->int_val;
+    const char **headers = NULL;
+    if (argc > 2 && args[2]->type == VAL_ARRAY) {
+        headers = calloc(cols, sizeof(char*));
+        for (int i = 0; i < cols && i < args[2]->array.len; i++)
+            headers[i] = args[2]->array.items[i]->str_val;
+    }
+    xgui_table_begin(g_xgui, id, cols, headers);
+    if (headers) free(headers);
+    return value_null();
+}
+
+static Value *bi_xgui_table_row(Value **args, int argc) {
+    if (!g_xgui || argc < 1 || args[0]->type != VAL_ARRAY) return value_null();
+    int count = args[0]->array.len;
+    const char **cells = calloc(count, sizeof(char*));
+    for (int i = 0; i < count; i++)
+        cells[i] = args[0]->array.items[i]->str_val;
+    xgui_table_row(g_xgui, count, cells);
+    free(cells);
+    return value_null();
+}
+
+static Value *bi_xgui_table_end(Value **args, int argc) {
+    (void)args; (void)argc;
+    if (g_xgui) xgui_table_end(g_xgui);
+    return value_null();
+}
 static Value *bi_xgui_show_toast(Value **args, int argc) {
     if (!g_xgui || argc < 1) return value_null();
     const char *text = (args[0]->type == VAL_STRING) ? args[0]->str_val : "";
@@ -1420,6 +1462,17 @@ static Value *bi_xgui_fill_rect_at(Value **args, int argc) {
     xgui_fill_rect_at(g_xgui, x, y, w, h, r, c);
     return value_null();
 }
+
+static Value *bi_xgui_fill_rect_grad_at(Value **args, int argc) {
+    if (!g_xgui || argc < 6) return value_null();
+    int x = val_to_int(args[0]), y = val_to_int(args[1]);
+    int w = val_to_int(args[2]), h = val_to_int(args[3]);
+    uint32_t c1 = (uint32_t)args[4]->int_val;
+    uint32_t c2 = (uint32_t)args[5]->int_val;
+    bool vert = (argc > 6) ? value_truthy(args[6]) : true;
+    xgui_fill_rect_grad_at(g_xgui, x, y, w, h, c1, c2, vert);
+    return value_null();
+}
 static Value *bi_xgui_fill_circle_at(Value **args, int argc) {
     if (!g_xgui || argc < 4) return value_null();
     xgui_fill_circle_at(g_xgui, (int)args[0]->int_val, (int)args[1]->int_val,
@@ -1460,6 +1513,14 @@ static Value *bi_xgui_draw_text_bold_centered(Value **args, int argc) {
     const char *t = (args[2]->type == VAL_STRING) ? args[2]->str_val : "";
     xgui_draw_text_bold_centered(g_xgui, (int)args[0]->int_val, (int)args[1]->int_val,
                                   t, (int)args[3]->int_val, (uint32_t)args[4]->int_val);
+    return value_null();
+}
+
+static Value *bi_xgui_draw_icon(Value **args, int argc) {
+    if (g_xgui && argc >= 5) {
+        xgui_draw_icon(g_xgui, args[0]->str_val, val_to_int(args[1]), val_to_int(args[2]),
+                       val_to_int(args[3]), (uint32_t)args[4]->int_val);
+    }
     return value_null();
 }
 /* ── key-hold queries ────────────────────────────────────────── */
@@ -1609,6 +1670,7 @@ static void register_builtins(Interpreter *interp) {
         {"xgui_begin",     bi_xgui_begin},
         {"xgui_end",       bi_xgui_end},
         {"xgui_label",     bi_xgui_label},
+        {"xgui_markdown",  bi_xgui_markdown},
         {"xgui_button",    bi_xgui_button},
         {"xgui_input",     bi_xgui_input},
         {"xgui_spacer",    bi_xgui_spacer},
@@ -1640,6 +1702,9 @@ static void register_builtins(Interpreter *interp) {
         {"xgui_select",              bi_xgui_select},
         {"xgui_spinner",             bi_xgui_spinner},
         {"xgui_list_item",           bi_xgui_list_item},
+        {"xgui_table_begin",         bi_xgui_table_begin},
+        {"xgui_table_row",           bi_xgui_table_row},
+        {"xgui_table_end",           bi_xgui_table_end},
         {"xgui_show_toast",          bi_xgui_show_toast},
         {"xgui_section",             bi_xgui_section},
         {"xgui_icon_button",         bi_xgui_icon_button},
@@ -1650,12 +1715,14 @@ static void register_builtins(Interpreter *interp) {
         /* game-mode raw drawing */
         {"xgui_clear_bg",            bi_xgui_clear_bg},
         {"xgui_fill_rect_at",        bi_xgui_fill_rect_at},
+        {"xgui_fill_rect_grad_at",   bi_xgui_fill_rect_grad_at},
         {"xgui_fill_circle_at",      bi_xgui_fill_circle_at},
         {"xgui_draw_line_at",        bi_xgui_draw_line_at},
         {"xgui_draw_text_at",        bi_xgui_draw_text_at},
         {"xgui_draw_text_centered",  bi_xgui_draw_text_centered},
         {"xgui_draw_text_bold_at",   bi_xgui_draw_text_bold_at},
         {"xgui_draw_text_bold_centered", bi_xgui_draw_text_bold_centered},
+        {"xgui_draw_icon",           bi_xgui_draw_icon},
         /* key-hold queries */
         {"xgui_key_w",       bi_xgui_key_w},
         {"xgui_key_s",       bi_xgui_key_s},
