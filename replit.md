@@ -19,14 +19,14 @@ src/
   transpiler.h / transpiler.c — AST → standalone C transpiler (--emit-c)
   pss.h / pss.c           — PSS stylesheet parser (CSS-like); v2: 40+ widget types, :root vars, var(), rgb(), shadow, opacity, margin, font-weight, text-decoration, cursor, per-side borders
   xgui.h / xgui.c         — Native X11 GUI engine (Xlib + Xft)
-  gui_native.h / gui_native.c — PGUI GTK-style toolkit (legacy)
+  gui_native.h / gui_native.c — Native canvas GUI helper (pixel framebuffer, HTTP frame server)
   formatter.h / formatter.c — Built-in Prism source formatter
   main.c                  — Entry point: REPL, formatter, and file execution
 
 examples/
   hello.pr                — Comprehensive feature demo
   gui_demo.pr             — Original GUI helper demo
-  pgui_demo.pr            — PGUI GTK-style native toolkit demo
+  xgui_demo.pr            — Comprehensive xgui widget gallery demo
   new_features.pr         — New language features demo
   default.pss             — Default PSS style sheet for XGUI
 
@@ -186,8 +186,7 @@ for f in edgecase/*.pr; do echo -n "$(basename $f): "; ./prism "$f" 2>&1 | tail 
 - **Numeric literals**: `1_000_000` (underscore separators), `0x1F` (hex), `0b1010` (binary), `0o17` (octal), `3.5j` (complex)
 - **Assertions**: `assert(cond, msg)` / `assert_eq(a, b, msg)` — used by `make test`
 - **Memory tools**: `memory.stats()`, `memory.collect()`, `memory.limit("512mb")`, `memory.profile()`
-- **PGUI**: legacy web-rendered GUI helpers `gui_window`, `gui_label`, `gui_button`, `gui_input`, `gui_run`
-- **XGUI**: native X11 desktop GUI — `xgui_init(w,h,title)`, etc.
+- **XGUI**: native X11 desktop GUI — `xgui_init(w,h,title)`, `xgui_title`, `xgui_subtitle`, `xgui_label`, `xgui_separator`, `xgui_badge`, `xgui_input`, `xgui_textarea`, `xgui_button`, `xgui_checkbox`, `xgui_slider`, `xgui_progress`, `xgui_spacer`, `xgui_row_begin/end`, `xgui_close`
 - **Operators**: arithmetic `+ - * / % **`, comparison, logical `&& || !`, bitwise `& | ^ ~`
 - **Membership**: `x in arr`, `x not in arr`
 - **Slicing**: `s[start:stop:step]` for strings, arrays, tuples
@@ -216,5 +215,5 @@ The GC is a generational mark-and-sweep collector layered on top of reference co
 - **Compiler**: GCC
 - **Architecture**: Tree-walking interpreter (Lexer → Parser → AST → Interpreter)
 - **Memory**: Reference-counted values
-- **GUI**: PGUI is implemented in Prism's C core as a GTK3-style renderer without linking GTK3, third-party modules, or language bindings.
+- **GUI**: xgui is Prism's native X11 desktop GUI toolkit (Xlib + Xft). Low-level `__gui_*` builtins provide a pixel framebuffer with an HTTP frame server for headless/browser rendering.
 - **AGC Roadmap**: `pipeline.md` describes the planned Adaptive Memory Engine. Current code includes an AGC scaffold that tracks runtime `Value` allocations, audits roots, and reports memory statistics while remaining compatible with existing reference counting.

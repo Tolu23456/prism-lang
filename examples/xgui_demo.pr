@@ -1,48 +1,149 @@
-# xgui_demo.pm — Native X11 GUI demo for Prism
-# Run on a desktop with an X11 display: ./prism examples/xgui_demo.pm
+# xgui_demo.pr — Comprehensive Native X11 GUI demo for Prism
+# Demonstrates every xgui widget: title, subtitle, label, separator,
+# badge, input, textarea, checkbox, slider, progress, button, spacer,
+# and row layout.
+#
+# Run on a desktop with an X11 display:
+#   ./prism examples/xgui_demo.pr
 
-xgui_init(460, 400, "Prism — Native GUI")
+xgui_init(560, 640, "Prism — xgui Widget Gallery")
 xgui_style("examples/default.pss")
 
-let clicks = 0
-let name   = ""
+# --- state ---
+let name       = ""
+let message    = ""
+let dark_mode  = false
+let show_info  = true
+let volume     = 50.0
+let brightness = 75.0
+let progress   = 0
+let log_text   = ""
+let click_count = 0
 
 while xgui_running() {
     xgui_begin()
 
-    xgui_label("Welcome to Prism Native GUI")
-    xgui_spacer(8)
+    # ── Header ──────────────────────────────────────────────────────────
+    xgui_title("xgui Widget Gallery")
+    xgui_subtitle("Prism's native X11 GUI toolkit — no GTK, no dependencies")
+    xgui_separator()
+    xgui_spacer(6)
 
-    xgui_label("Enter your name:")
+    # ── Identity section ─────────────────────────────────────────────────
+    xgui_label("Your name:")
     name = xgui_input("name_field", "e.g. Alice")
     xgui_spacer(4)
+
+    xgui_label("Leave a message:")
+    message = xgui_textarea("msg_field", "Write something here…")
+    xgui_spacer(6)
 
     xgui_row_begin()
     if xgui_button("Greet") {
         if name != "" {
-            output(f"Hello, {name}!")
+            log_text = f"Hello, {name}!"
         } else {
-            output("Please enter a name first.")
+            log_text = "Please enter your name first."
         }
     }
-    if xgui_button("Count +1") {
-        clicks += 1
+    if xgui_button("Log Message") {
+        if message != "" {
+            log_text = f"Message: {message}"
+        } else {
+            log_text = "(no message typed)"
+        }
     }
     xgui_row_end()
 
-    xgui_spacer(8)
-    xgui_label(f"Button presses: {clicks}")
-
-    if name != "" {
-        xgui_label(f"Typing: {name}")
+    if log_text != "" {
+        xgui_spacer(4)
+        xgui_label(f"> {log_text}")
     }
 
-    xgui_spacer(16)
+    xgui_spacer(10)
+    xgui_separator()
+    xgui_spacer(6)
+
+    # ── Toggles / checkboxes ─────────────────────────────────────────────
+    xgui_subtitle("Options")
+    dark_mode = xgui_checkbox("dark_mode", "Dark mode (cosmetic demo)")
+    show_info = xgui_checkbox("show_info", "Show system info panel")
+    xgui_spacer(6)
+
+    if show_info {
+        xgui_label("Prism v0.2.0  |  xgui X11 backend  |  tree-walking interpreter")
+        xgui_row_begin()
+        xgui_badge("stable", 0x2E7D32)
+        xgui_badge("X11", 0x1565C0)
+        xgui_badge("MIT licence", 0x6A1B9A)
+        xgui_row_end()
+        xgui_spacer(4)
+    }
+
+    xgui_separator()
+    xgui_spacer(6)
+
+    # ── Sliders ──────────────────────────────────────────────────────────
+    xgui_subtitle("Controls")
+
+    xgui_label(f"Volume: {volume}")
+    volume = xgui_slider("volume", 0.0, 100.0, volume)
+    xgui_spacer(4)
+
+    xgui_label(f"Brightness: {brightness}")
+    brightness = xgui_slider("brightness", 0.0, 100.0, brightness)
+    xgui_spacer(6)
+
+    # ── Progress bar ─────────────────────────────────────────────────────
+    xgui_label(f"Task progress: {progress}%")
+    xgui_progress(progress, 100)
+    xgui_spacer(4)
+
+    xgui_row_begin()
+    if xgui_button("Advance +10%") {
+        progress += 10
+        if progress > 100 {
+            progress = 100
+        }
+    }
+    if xgui_button("Reset") {
+        progress = 0
+    }
+    xgui_row_end()
+
+    xgui_spacer(10)
+    xgui_separator()
+    xgui_spacer(6)
+
+    # ── Click counter ─────────────────────────────────────────────────────
+    xgui_subtitle("Counter")
+    xgui_label(f"Clicks: {click_count}")
+    xgui_row_begin()
+    if xgui_button("Click me!") {
+        click_count += 1
+        output(f"[xgui] click #{click_count}")
+    }
+    if xgui_button("Reset counter") {
+        click_count = 0
+    }
+    xgui_row_end()
+
+    xgui_spacer(10)
+    xgui_separator()
+    xgui_spacer(6)
+
+    # ── Footer / quit ────────────────────────────────────────────────────
+    xgui_row_begin()
+    xgui_badge("xgui demo", 0x37474F)
+    xgui_row_end()
+    xgui_spacer(8)
+
     if xgui_button("Quit") {
+        output("Goodbye from xgui!")
         xgui_close()
     }
 
     xgui_end()
 }
 
-output("Window closed. Goodbye!")
+output("Window closed.")
