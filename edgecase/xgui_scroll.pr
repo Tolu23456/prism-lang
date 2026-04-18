@@ -1,0 +1,62 @@
+# edgecase/xgui_scroll.pr
+# Tests spring-physics scroll with a very long content list.
+# Exercises: viewport clipping, scrollbar drag, spring overshoot.
+# Run with: ./prism edgecase/xgui_scroll.pr
+
+let g = xgui_init(600, 500, "xgui Edge Case – Scrolling")
+xgui_set_dark(g, true)
+
+let ITEM_COUNT = 60
+
+let colors = [
+    0xf38ba8, 0xfab387, 0xf9e2af, 0xa6e3a1,
+    0x94e2d5, 0x89dceb, 0x89b4fa, 0xb4befe,
+    0xcba6f7, 0xf5c2e7
+]
+
+let click_log = "No item clicked yet"
+
+repeat while xgui_running(g) {
+    xgui_begin(g)
+
+    xgui_title(g, "Spring Scroll Edge Cases")
+    xgui_subtitle(g, str(ITEM_COUNT) + " items — scrollbar drag + mouse-wheel")
+    xgui_separator(g)
+    xgui_label(g, click_log)
+    xgui_spacer(g, 6)
+
+    # Render a large list — off-screen items are viewport-clipped
+    let i = 0
+    repeat while i < ITEM_COUNT {
+        let ci = i % 10
+        let col = colors[ci]
+        let label = "List item #" + str(i + 1) + "  —  " + str(col)
+
+        xgui_card_begin(g)
+        xgui_row_begin(g)
+        xgui_badge(g, str(i + 1), col)
+        xgui_spacer(g, 8)
+        xgui_label(g, label)
+        xgui_row_end(g)
+        xgui_card_end(g)
+
+        i = i + 1
+    }
+
+    # Edge case: empty-string section title
+    xgui_section(g, "")
+    # Edge case: zero-length spacer
+    xgui_spacer(g, 0)
+    # Edge case: label with empty string
+    xgui_label(g, "")
+    # Edge case: negative progress
+    xgui_progress(g, -5, 100)
+    # Edge case: progress > max
+    xgui_progress(g, 150, 100)
+
+    xgui_label(g, "End of scroll test")
+
+    xgui_end(g)
+}
+
+xgui_destroy(g)

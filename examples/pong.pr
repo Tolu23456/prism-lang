@@ -1,0 +1,365 @@
+# ============================================================
+#  pong.pr — Prism Pong with full menu & game-over system
+#  Controls:
+#    Player 1 (left):  W / S
+#    Player 2 (right): Up / Down arrow  (or AI in 1P mode)
+#  Menu:      Enter to confirm, Esc to go back
+#  In-game:   Esc to pause, Space to resume
+# ============================================================
+
+let g = xgui_init(800, 600, "Pong — Prism")
+xgui_set_dark(g, true)
+
+# ──── colours ────────────────────────────────────────────────
+let C_BG     = 0x0a0a1a
+let C_NET    = 0x1e1e40
+let C_WHITE  = 0xe8e8f0
+let C_BALL   = 0xf5a623
+let C_P1     = 0x89b4fa
+let C_P2     = 0xa6e3a1
+let C_ACCENT = 0xcba6f7
+let C_DIM    = 0x585b70
+let C_HIT    = 0xf38ba8
+
+# ──── game constants ──────────────────────────────────────────
+let WIN_W  = 800
+let WIN_H  = 600
+let PW     = 12     # paddle width
+let PH     = 80     # paddle height
+let BR     = 8      # ball radius
+let PAD_X  = 20     # paddle x offset from wall
+let SPEED  = 5      # initial ball speed (px/frame)
+let WIN_TO = 7      # points to win
+
+# ──── game state ─────────────────────────────────────────────
+let state      = "menu"   # "menu" | "select" | "playing" | "paused" | "gameover"
+let mode       = "2P"     # "1P" | "2P"
+let menu_sel   = 0        # 0=1P, 1=2P, 2=quit
+
+let score_l    = 0
+let score_r    = 0
+
+let p1_y       = 260.0
+let p2_y       = 260.0
+let PSPEED     = 5.0
+
+let ball_x     = 400.0
+let ball_y     = 300.0
+let ball_vx    = 0.0
+let ball_vy    = 0.0
+
+let last_scorer = 0     # 0=none, 1=left, 2=right
+let flash       = 0     # hit-flash countdown
+
+func clamp(v, lo, hi) {
+    if v < lo { return lo }
+    if v > hi { return hi }
+    return v
+}
+
+func sign(v) {
+    if v > 0 { return 1 }
+    if v < 0 { return -1 }
+    return 0
+}
+
+func launch_ball() {
+    ball_x = 400.0
+    ball_y = 300.0
+    # Aim toward last scorer (or random at start)
+    let dir = 1
+    if last_scorer == 1 { dir = 1 }
+    if last_scorer == 2 { dir = -1 }
+    if last_scorer == 0 { dir = 1 }
+    ball_vx = SPEED * dir
+    # Random-ish vertical angle using score sum
+    let sv = (score_l + score_r) % 5 - 2
+    ball_vy = (sv + 1) * 1.0
+    if ball_vy == 0.0 { ball_vy = 1.5 }
+}
+
+func reset_game() {
+    score_l = 0
+    score_r = 0
+    p1_y    = 260.0
+    p2_y    = 260.0
+    last_scorer = 0
+    flash = 0
+    launch_ball()
+}
+
+# ──── draw helpers ────────────────────────────────────────────
+func draw_net() {
+    let i = 0
+    repeat while i < WIN_H {
+        xgui_fill_rect_at(g, 396, i, 8, 14, 0, C_NET)
+        i = i + 22
+    }
+}
+
+func draw_paddle(x, y, color) {
+    xgui_fill_rect_at(g, x, int(y), PW, PH, 6, color)
+    # top shine
+    xgui_fill_rect_at(g, x+2, int(y)+2, PW-4, PH/3, 4, 0xffffff)
+}
+
+func draw_score_board() {
+    let s1 = str(score_l)
+    let s2 = str(score_r)
+    xgui_draw_text_bold_centered(g, 250, 50, s1, 52, C_P1)
+    xgui_draw_text_bold_centered(g, 550, 50, s2, 52, C_P2)
+    xgui_draw_text_centered(g, 400, 34, ":", 36, C_DIM)
+}
+
+func draw_win_bar(to_win) {
+    let i = 0
+    repeat while i < to_win {
+        let dot_c = C_DIM
+        if i < score_l { dot_c = C_P1 }
+        xgui_fill_circle_at(g, 260 + i * 18, 86, 5, dot_c)
+        let j_c = C_DIM
+        if i < score_r { j_c = C_P2 }
+        xgui_fill_circle_at(g, 540 - i * 18, 86, 5, j_c)
+        i = i + 1
+    }
+}
+
+func draw_controls_hint() {
+    xgui_draw_text_centered(g, 150, WIN_H - 22, "W/S", 11, C_DIM)
+    xgui_draw_text_centered(g, 650, WIN_H - 22, "↑↓", 11, C_DIM)
+    if mode == "1P" {
+        xgui_draw_text_centered(g, 650, WIN_H - 22, "CPU", 11, C_ACCENT)
+    }
+}
+
+# ──── menu drawing ────────────────────────────────────────────
+func draw_menu() {
+    xgui_clear_bg(g, C_BG)
+
+    # Title glow effect (multiple offset shadows)
+    xgui_draw_text_bold_centered(g, WIN_W/2 + 2, 130 + 2, "PONG", 86, 0x1a1a30)
+    xgui_draw_text_bold_centered(g, WIN_W/2,     130,     "PONG", 86, C_WHITE)
+
+    xgui_draw_text_centered(g, WIN_W/2, 200, "Prism xgui Edition", 16, C_ACCENT)
+
+    # Menu options
+    let opts = ["1 Player  (vs CPU)", "2 Players", "Quit"]
+    let i = 0
+    repeat while i < 3 {
+        let oy = 280 + i * 56
+        let oc = C_DIM
+        let bw = 240
+        let bh = 40
+        let bx = WIN_W/2 - bw/2
+        if i == menu_sel {
+            xgui_fill_rect_at(g, bx, oy - 8, bw, bh, 20, C_ACCENT)
+            oc = 0x1a1a2e
+        }
+        xgui_draw_text_centered(g, WIN_W/2, oy + 10, opts[i], 18, oc)
+        i = i + 1
+    }
+
+    xgui_draw_text_centered(g, WIN_W/2, WIN_H - 30, "↑↓ select  •  Enter confirm", 12, C_DIM)
+}
+
+# ──── pause overlay ────────────────────────────────────────────
+func draw_pause() {
+    # Semi-transparent overlay
+    xgui_fill_rect_at(g, 200, 180, 400, 240, 16, 0x0a0a1a)
+    xgui_fill_rect_at(g, 202, 182, 396, 236, 14, 0x1a1a2e)
+    xgui_draw_text_bold_centered(g, WIN_W/2, 250, "PAUSED", 40, C_WHITE)
+    xgui_draw_text_centered(g, WIN_W/2, 308, "Space / P  — resume", 14, C_DIM)
+    xgui_draw_text_centered(g, WIN_W/2, 334, "Esc  — back to menu", 14, C_DIM)
+}
+
+# ──── game-over screen ─────────────────────────────────────────
+func draw_gameover() {
+    xgui_clear_bg(g, C_BG)
+    let winner = "Player 1"
+    let wcolor = C_P1
+    if score_r >= WIN_TO {
+        winner = "Player 2"
+        wcolor = C_P2
+        if mode == "1P" { winner = "CPU" }
+    }
+    xgui_draw_text_bold_centered(g, WIN_W/2 + 2, 162, winner, 44, 0x1a1a2e)
+    xgui_draw_text_bold_centered(g, WIN_W/2,     160, winner, 44, wcolor)
+    xgui_draw_text_bold_centered(g, WIN_W/2, 220, "WINS!", 44, C_WHITE)
+
+    let fs1 = str(score_l) + " — " + str(score_r)
+    xgui_draw_text_centered(g, WIN_W/2, 286, fs1, 28, C_DIM)
+
+    xgui_fill_rect_at(g, WIN_W/2-130, 330, 260, 44, 22, C_ACCENT)
+    xgui_draw_text_centered(g, WIN_W/2, 358, "Play Again  [Enter]", 16, 0x1a1a2e)
+
+    xgui_fill_rect_at(g, WIN_W/2-130, 390, 260, 44, 22, C_DIM)
+    xgui_draw_text_centered(g, WIN_W/2, 418, "Main Menu  [Esc]", 16, C_WHITE)
+}
+
+# ──── main loop ───────────────────────────────────────────────
+repeat while xgui_running(g) {
+    let t0 = xgui_clock_ms(g)
+
+    xgui_begin(g)
+
+    # ─── MENU ───
+    if state == "menu" {
+        draw_menu()
+
+        if xgui_key_up(g)    { menu_sel = clamp(menu_sel - 1, 0, 2) }
+        if xgui_key_down(g)  { menu_sel = clamp(menu_sel + 1, 0, 2) }
+
+        if xgui_key_enter_held(g) {
+            if menu_sel == 0 { mode = "1P"; reset_game(); state = "playing" }
+            if menu_sel == 1 { mode = "2P"; reset_game(); state = "playing" }
+            if menu_sel == 2 { xgui_close(g) }
+        }
+    }
+
+    # ─── PLAYING ───
+    if state == "playing" {
+
+        # Player 1 (W/S)
+        if xgui_key_w(g) { p1_y = p1_y - PSPEED }
+        if xgui_key_s(g) { p1_y = p1_y + PSPEED }
+        p1_y = clamp(p1_y, 0.0, WIN_H - PH)
+
+        # Player 2 (arrows) or AI
+        if mode == "2P" {
+            if xgui_key_up(g)   { p2_y = p2_y - PSPEED }
+            if xgui_key_down(g) { p2_y = p2_y + PSPEED }
+        } else {
+            # Simple AI: track ball with slight delay
+            let ai_cy = p2_y + PH/2
+            let target = ball_y
+            let diff = target - ai_cy
+            let ai_speed = 3.5
+            if diff > ai_speed  { p2_y = p2_y + ai_speed }
+            if diff < -ai_speed { p2_y = p2_y - ai_speed }
+        }
+        p2_y = clamp(p2_y, 0.0, WIN_H - PH)
+
+        # Ball movement
+        ball_x = ball_x + ball_vx
+        ball_y = ball_y + ball_vy
+
+        # Wall bounce (top / bottom)
+        if ball_y - BR <= 0 {
+            ball_y = BR
+            ball_vy = -ball_vy
+        }
+        if ball_y + BR >= WIN_H {
+            ball_y = WIN_H - BR
+            ball_vy = -ball_vy
+        }
+
+        # Paddle 1 collision (left)
+        let p1_right = PAD_X + PW
+        if ball_x - BR <= p1_right && ball_x - BR >= PAD_X {
+            if ball_y + BR >= p1_y && ball_y - BR <= p1_y + PH {
+                ball_x  = p1_right + BR
+                ball_vx = -ball_vx + 0.3
+                # Deflect based on hit position
+                let rel = (ball_y - p1_y - PH/2) / (PH/2)
+                ball_vy = rel * 4.5
+                flash = 6
+            }
+        }
+
+        # Paddle 2 collision (right)
+        let p2_left = WIN_W - PAD_X - PW
+        if ball_x + BR >= p2_left && ball_x + BR <= WIN_W - PAD_X {
+            if ball_y + BR >= p2_y && ball_y - BR <= p2_y + PH {
+                ball_x  = p2_left - BR
+                ball_vx = -ball_vx - 0.3
+                let rel = (ball_y - p2_y - PH/2) / (PH/2)
+                ball_vy = rel * 4.5
+                flash = 6
+            }
+        }
+
+        # Score: left wall
+        if ball_x - BR <= 0 {
+            score_r = score_r + 1
+            last_scorer = 2
+            if score_r >= WIN_TO {
+                state = "gameover"
+            } else {
+                launch_ball()
+            }
+        }
+
+        # Score: right wall
+        if ball_x + BR >= WIN_W {
+            score_l = score_l + 1
+            last_scorer = 1
+            if score_l >= WIN_TO {
+                state = "gameover"
+            } else {
+                launch_ball()
+            }
+        }
+
+        # Clamp ball speed
+        if ball_vx > 12.0  { ball_vx = 12.0  }
+        if ball_vx < -12.0 { ball_vx = -12.0 }
+        if ball_vy > 9.0   { ball_vy = 9.0   }
+        if ball_vy < -9.0  { ball_vy = -9.0  }
+
+        if flash > 0 { flash = flash - 1 }
+
+        # ─── Draw playing ───
+        xgui_clear_bg(g, C_BG)
+        draw_net()
+        draw_score_board()
+        draw_win_bar(WIN_TO)
+        draw_controls_hint()
+
+        # Paddles
+        draw_paddle(PAD_X, p1_y, C_P1)
+        draw_paddle(WIN_W - PAD_X - PW, p2_y, C_P2)
+
+        # Ball
+        let bc = C_BALL
+        if flash > 0 { bc = C_HIT }
+        xgui_fill_circle_at(g, int(ball_x), int(ball_y), BR, bc)
+        # Ball glow
+        xgui_fill_rect_at(g, int(ball_x) - BR - 2, int(ball_y) - BR - 2, BR*2+4, BR*2+4, BR+2, bc)
+        xgui_fill_circle_at(g, int(ball_x), int(ball_y), BR, bc)
+
+        # Pause on Escape / P
+        if xgui_key_escape(g) { state = "paused" }
+    }
+
+    # ─── PAUSED ───
+    if state == "paused" {
+        xgui_clear_bg(g, C_BG)
+        draw_net()
+        draw_score_board()
+        draw_win_bar(WIN_TO)
+        draw_paddle(PAD_X, p1_y, C_P1)
+        draw_paddle(WIN_W - PAD_X - PW, p2_y, C_P2)
+        xgui_fill_circle_at(g, int(ball_x), int(ball_y), BR, C_BALL)
+        draw_pause()
+
+        if xgui_key_space(g)  { state = "playing" }
+        if xgui_key_escape(g) { state = "menu"; menu_sel = 0 }
+    }
+
+    # ─── GAME OVER ───
+    if state == "gameover" {
+        draw_gameover()
+        if xgui_key_enter_held(g) { reset_game(); state = "playing" }
+        if xgui_key_escape(g)     { state = "menu"; menu_sel = 0 }
+    }
+
+    xgui_end(g)
+
+    # Cap at ~60fps
+    let elapsed = xgui_clock_ms(g) - t0
+    if elapsed < 16 {
+        xgui_sleep_ms(g, 16 - elapsed)
+    }
+}
+
+xgui_destroy(g)

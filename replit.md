@@ -136,7 +136,7 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 
 ## Edge Case Test Files (edgecase/)
 
-14 `.pr` files exercising every major syntax and runtime feature. All 14 pass as of the current build:
+17 `.pr` files exercising every major syntax and runtime feature. 14 CLI-only tests pass via `./prism`; 3 xgui tests require X11 display:
 
 | File | Coverage |
 |---|---|
@@ -154,6 +154,10 @@ This is a CLI/interpreter project, not a web application. It does not require a 
 | `tuples.pr` | creation, indexing, nesting, iteration |
 | `types.pr` | `type()` built-in, `is`/`is not`, typecasting |
 | `variables.pr` | let, const, walrus, shadowing, null safety `?.` and `??` |
+| `xgui_widgets.pr` | all 15+ xgui v4 widgets: toggle, chip, tabs, select, spinner, list_item, toast, grid, group, card, badge, checkbox, slider, progress — requires X11 |
+| `xgui_scroll.pr` | spring-physics scroll stress: 60 list items, scrollbar drag, edge values (negative progress, progress > max, empty label) — requires X11 |
+| `xgui_dark.pr` | dark/light mode hot-swap, all widget themed states, duplicate widget ids, boundary slider values — requires X11 |
+| `xgui_game.pr` | raw-drawing game loop: fill_rect_at, fill_circle_at, draw_line_at, draw_text_at, key_held_char, delta_ms, clock_ms, sleep_ms, edge clipping — requires X11 |
 
 Run individually with `./prism edgecase/<file>.pr` or all at once:
 
@@ -186,7 +190,7 @@ for f in edgecase/*.pr; do echo -n "$(basename $f): "; ./prism "$f" 2>&1 | tail 
 - **Numeric literals**: `1_000_000` (underscore separators), `0x1F` (hex), `0b1010` (binary), `0o17` (octal), `3.5j` (complex)
 - **Assertions**: `assert(cond, msg)` / `assert_eq(a, b, msg)` — used by `make test`
 - **Memory tools**: `memory.stats()`, `memory.collect()`, `memory.limit("512mb")`, `memory.profile()`
-- **XGUI**: native X11 desktop GUI — `xgui_init(w,h,title)`, `xgui_title`, `xgui_subtitle`, `xgui_label`, `xgui_separator`, `xgui_badge`, `xgui_input`, `xgui_textarea`, `xgui_button`, `xgui_checkbox`, `xgui_slider`, `xgui_progress`, `xgui_spacer`, `xgui_row_begin/end`, `xgui_card_begin/end`, `xgui_tooltip`, `xgui_set_dark`, `xgui_close`. v3 improvements: XRender SDF alpha-mask AA for all rounded rects/circles/outlines; 24-entry font LRU cache; smooth lerp scroll animation; draggable scrollbar with hover; soft multi-layer card shadows; blinking text cursor; button pressed visual state; viewport clipping; PSS-themed scrollbar.
+- **XGUI v4**: native X11 desktop GUI toolkit — full widget set: `xgui_init`, `xgui_title`, `xgui_subtitle`, `xgui_label`, `xgui_separator`, `xgui_badge`, `xgui_input`, `xgui_textarea`, `xgui_button`, `xgui_icon_button`, `xgui_checkbox`, `xgui_slider`, `xgui_progress`, `xgui_spacer`, `xgui_row_begin/end`, `xgui_card_begin/end`, `xgui_section`, `xgui_tooltip`, `xgui_set_dark`, `xgui_close`, `xgui_running`, `xgui_begin/end`. v4 new widgets: `xgui_toggle` (iOS-style switch), `xgui_chip` (with removable), `xgui_tabs` (tab bar), `xgui_select` (dropdown), `xgui_spinner` (loading), `xgui_list_item` (Flutter ListTile), `xgui_show_toast`, `xgui_grid_begin/end`, `xgui_group_begin/end`. v4 raw-drawing APIs: `xgui_clear_bg`, `xgui_fill_rect_at`, `xgui_fill_circle_at`, `xgui_draw_line_at`, `xgui_draw_text_at`, `xgui_draw_text_bold_at`, `xgui_draw_text_centered`, `xgui_win_w`, `xgui_win_h`. v4 input APIs: `xgui_key_left/right/up/down`, `xgui_key_space`, `xgui_key_enter`, `xgui_key_escape`, `xgui_key_held_char`, `xgui_delta_ms`, `xgui_clock_ms`, `xgui_sleep_ms`. v4 internals: 64-entry alpha-mask LRU cache; IQ SDF rounded shapes (very smooth); spring-physics scroll (stiffness 0.24 / damping 0.74); 24-entry font LRU cache; PSS-themed; Catppuccin Latte/Mocha palettes.
 - **Operators**: arithmetic `+ - * / % **`, comparison, logical `&& || !`, bitwise `& | ^ ~`
 - **Membership**: `x in arr`, `x not in arr`
 - **Slicing**: `s[start:stop:step]` for strings, arrays, tuples

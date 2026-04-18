@@ -1,0 +1,164 @@
+# edgecase/xgui_widgets.pr
+# Exercises every xgui v4 widget in isolation.
+# Run with: ./prism edgecase/xgui_widgets.pr
+# (requires X11 display — will open a GUI window)
+
+let g = xgui_init(700, 900, "xgui Edge Cases – Widgets")
+xgui_set_dark(g, false)
+
+# State
+let toggle_a = false
+let toggle_b = true
+let slider_val = 0.5
+let check_a = false
+let check_b = true
+let tab_idx = 0
+let sel_idx = 0
+let progress_v = 35
+let fruits = ["Apple", "Banana", "Cherry", "Dragonfruit", "Elderberry"]
+let tab_labels = ["Overview", "Settings", "About"]
+
+let frame = 0
+
+repeat while xgui_running(g) {
+    xgui_begin(g)
+    frame = frame + 1
+
+    # ── Title ─────────────────────────────────────────────────
+    xgui_title(g, "xgui Widget Gallery v4")
+    xgui_subtitle(g, "Edge-case test — all widgets exercised once")
+    xgui_separator(g)
+
+    # ── Section: Buttons ──────────────────────────────────────
+    xgui_section(g, "BUTTONS")
+    xgui_row_begin(g)
+    if xgui_button(g, "Normal") { xgui_show_toast(g, "Normal clicked!", 60) }
+    if xgui_icon_button(g, "+", "Add Item") { xgui_show_toast(g, "Add Item clicked!", 60) }
+    if xgui_icon_button(g, "x", "Delete") { xgui_show_toast(g, "Delete clicked!", 60) }
+    xgui_row_end(g)
+
+    # ── Section: Toggle switches ───────────────────────────────
+    xgui_section(g, "TOGGLES")
+    toggle_a = xgui_toggle(g, "tog_a", toggle_a, "Dark mode")
+    toggle_b = xgui_toggle(g, "tog_b", toggle_b, "Notifications")
+    if toggle_a {
+        xgui_set_dark(g, true)
+    } else {
+        xgui_set_dark(g, false)
+    }
+
+    # ── Section: Checkboxes ────────────────────────────────────
+    xgui_section(g, "CHECKBOXES")
+    check_a = xgui_checkbox(g, "chk_a", "Enable feature A")
+    check_b = xgui_checkbox(g, "chk_b", "Enable feature B (pre-checked)")
+    let status = "A=" + str(check_a) + "  B=" + str(check_b)
+    xgui_label(g, status)
+
+    # ── Section: Input fields ──────────────────────────────────
+    xgui_section(g, "INPUTS")
+    let name_val = xgui_input(g, "name_field", "Enter your name...")
+    let email_val = xgui_input(g, "email_field", "Enter email address...")
+    let notes_val = xgui_textarea(g, "notes_field", "Multi-line text here...")
+
+    if name_val != "" {
+        xgui_label(g, "Name: " + name_val)
+    }
+
+    # ── Section: Slider & Progress ────────────────────────────
+    xgui_section(g, "SLIDER & PROGRESS")
+    slider_val = xgui_slider(g, "vol", 0.0, 100.0, slider_val)
+    let sl_label = "Volume: " + str(int(slider_val)) + "%"
+    xgui_label(g, sl_label)
+    progress_v = int(slider_val)
+    xgui_progress(g, progress_v, 100)
+
+    # ── Section: Tabs ──────────────────────────────────────────
+    xgui_section(g, "TAB BAR")
+    tab_idx = xgui_tabs(g, "main_tabs", tab_labels, 3)
+    if tab_idx == 0 { xgui_label(g, "Tab content: Overview") }
+    if tab_idx == 1 { xgui_label(g, "Tab content: Settings panel") }
+    if tab_idx == 2 { xgui_label(g, "Tab content: About page") }
+
+    # ── Section: Dropdown / Select ────────────────────────────
+    xgui_section(g, "DROPDOWN SELECT")
+    sel_idx = xgui_select(g, "fruit_sel", fruits, 5, sel_idx)
+    xgui_label(g, "Selected: " + fruits[sel_idx])
+
+    # ── Section: Chips ────────────────────────────────────────
+    xgui_section(g, "CHIPS")
+    xgui_row_begin(g)
+    xgui_chip(g, "Design", false)
+    xgui_chip(g, "Frontend", false)
+    xgui_chip(g, "Prism", false)
+    let removed = xgui_chip(g, "Remove me", true)
+    if removed { xgui_show_toast(g, "Chip removed!", 50) }
+    xgui_row_end(g)
+
+    # ── Section: Badges ───────────────────────────────────────
+    xgui_section(g, "BADGES")
+    xgui_row_begin(g)
+    xgui_badge(g, "NEW",  0x89b4fa)
+    xgui_badge(g, "HOT",  0xf38ba8)
+    xgui_badge(g, "BETA", 0xa6e3a1)
+    xgui_badge(g, "99+",  0xf9e2af)
+    xgui_row_end(g)
+
+    # ── Section: Spinner ──────────────────────────────────────
+    xgui_section(g, "SPINNER (LOADING)")
+    xgui_row_begin(g)
+    xgui_spinner(g, 28)
+    xgui_spinner(g, 40)
+    xgui_spinner(g, 56)
+    xgui_spacer(g, 8)
+    xgui_label(g, "Loading...")
+    xgui_row_end(g)
+
+    # ── Section: List items (Flutter ListTile) ────────────────
+    xgui_section(g, "LIST ITEMS")
+    xgui_card_begin(g)
+    if xgui_list_item(g, "Alice Johnson", "alice@example.com", ">") {
+        xgui_show_toast(g, "Selected: Alice", 60)
+    }
+    if xgui_list_item(g, "Bob Smith", "bob@example.com", ">") {
+        xgui_show_toast(g, "Selected: Bob", 60)
+    }
+    if xgui_list_item(g, "Carol White", null, "Admin") {
+        xgui_show_toast(g, "Selected: Carol", 60)
+    }
+    xgui_card_end(g)
+
+    # ── Section: Cards ────────────────────────────────────────
+    xgui_section(g, "CARDS WITH SHADOW")
+    xgui_card_begin(g)
+    xgui_subtitle(g, "Card Header")
+    xgui_label(g, "This is content inside a card container with")
+    xgui_label(g, "a multi-layer soft drop shadow below it.")
+    xgui_button(g, "Card Action")
+    xgui_card_end(g)
+
+    # ── Section: Grid layout ─────────────────────────────────
+    xgui_section(g, "GRID (3 COLUMNS)")
+    xgui_grid_begin(g, 3)
+    xgui_button(g, "Cell 1")
+    xgui_button(g, "Cell 2")
+    xgui_button(g, "Cell 3")
+    xgui_button(g, "Cell 4")
+    xgui_button(g, "Cell 5")
+    xgui_button(g, "Cell 6")
+    xgui_grid_end(g)
+
+    # ── Section: Group box (Qt QGroupBox style) ────────────────
+    xgui_section(g, "GROUP BOX")
+    xgui_group_begin(g, "Connection Settings")
+    xgui_input(g, "host_inp", "Hostname or IP")
+    xgui_input(g, "port_inp", "Port number")
+    xgui_group_end(g)
+
+    # ── Section: Section divider test ─────────────────────────
+    xgui_section(g, "END OF TESTS")
+    xgui_label(g, "All widgets rendered successfully on this frame.")
+
+    xgui_end(g)
+}
+
+xgui_destroy(g)

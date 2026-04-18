@@ -618,6 +618,175 @@ static Value *vm_bi_xgui_tooltip(Value **args, int argc) {
     return value_null();
 }
 
+/* ── new v4 widgets ─────────────────────────────────────────── */
+static Value *vm_bi_xgui_toggle(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 3) return value_bool(0);
+    const char *id  = (args[0]->type == VAL_STRING) ? args[0]->str_val : "toggle";
+    bool        v   = (args[1]->type == VAL_BOOL)   ? (args[1]->bool_val != 0)
+                    : (args[1]->type == VAL_INT)    ? (args[1]->int_val  != 0) : false;
+    const char *lbl = (args[2]->type == VAL_STRING) ? args[2]->str_val : "";
+    return value_bool(xgui_toggle(g_vm_xgui, id, v, lbl) ? 1 : 0);
+}
+static Value *vm_bi_xgui_chip(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_bool(0);
+    const char *text = (args[0]->type == VAL_STRING) ? args[0]->str_val : "";
+    bool removable   = (argc >= 2 && args[1]->type == VAL_BOOL) ? (args[1]->bool_val != 0) : false;
+    return value_bool(xgui_chip(g_vm_xgui, text, removable) ? 1 : 0);
+}
+static Value *vm_bi_xgui_tabs(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 2) return value_int(0);
+    const char *id = (args[0]->type == VAL_STRING) ? args[0]->str_val : "tabs";
+    const char *labels_arr[16]; int n = 0;
+    if (args[1]->type == VAL_ARRAY) {
+        for (int i = 0; i < args[1]->array.len && i < 16; i++) {
+            Value *lv = args[1]->array.items[i];
+            labels_arr[n++] = (lv->type == VAL_STRING) ? lv->str_val : "";
+        }
+    }
+    return value_int(xgui_tabs(g_vm_xgui, id, labels_arr, n));
+}
+static Value *vm_bi_xgui_select(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 3) return value_int(0);
+    const char *id  = (args[0]->type == VAL_STRING) ? args[0]->str_val : "sel";
+    int         cur = (args[2]->type == VAL_INT)    ? (int)args[2]->int_val : 0;
+    const char *opts[32]; int n = 0;
+    if (args[1]->type == VAL_ARRAY) {
+        for (int i = 0; i < args[1]->array.len && i < 32; i++) {
+            Value *ov = args[1]->array.items[i];
+            opts[n++] = (ov->type == VAL_STRING) ? ov->str_val : "";
+        }
+    }
+    return value_int(xgui_select(g_vm_xgui, id, opts, n, cur));
+}
+static Value *vm_bi_xgui_spinner(Value **args, int argc) {
+    int sz = (argc >= 1 && args[0]->type == VAL_INT) ? (int)args[0]->int_val : 32;
+    if (g_vm_xgui) xgui_spinner(g_vm_xgui, sz);
+    return value_null();
+}
+static Value *vm_bi_xgui_list_item(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_bool(0);
+    const char *title    = (args[0]->type == VAL_STRING) ? args[0]->str_val : "";
+    const char *subtitle = (argc >= 2 && args[1]->type == VAL_STRING) ? args[1]->str_val : NULL;
+    const char *trailing = (argc >= 3 && args[2]->type == VAL_STRING) ? args[2]->str_val : NULL;
+    return value_bool(xgui_list_item(g_vm_xgui, title, subtitle, trailing) ? 1 : 0);
+}
+static Value *vm_bi_xgui_show_toast(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_null();
+    const char *text = (args[0]->type == VAL_STRING) ? args[0]->str_val : "";
+    int dur = (argc >= 2 && args[1]->type == VAL_INT) ? (int)args[1]->int_val : 90;
+    xgui_show_toast(g_vm_xgui, text, dur);
+    return value_null();
+}
+static Value *vm_bi_xgui_section(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_null();
+    xgui_section(g_vm_xgui, (args[0]->type == VAL_STRING) ? args[0]->str_val : "");
+    return value_null();
+}
+static Value *vm_bi_xgui_icon_button(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 2) return value_bool(0);
+    const char *icon  = (args[0]->type == VAL_STRING) ? args[0]->str_val : "";
+    const char *label = (args[1]->type == VAL_STRING) ? args[1]->str_val : "";
+    return value_bool(xgui_icon_button(g_vm_xgui, icon, label) ? 1 : 0);
+}
+static Value *vm_bi_xgui_group_begin(Value **args, int argc) {
+    if (!g_vm_xgui) return value_null();
+    const char *t = (argc >= 1 && args[0]->type == VAL_STRING) ? args[0]->str_val : "";
+    xgui_group_begin(g_vm_xgui, t);
+    return value_null();
+}
+static Value *vm_bi_xgui_group_end(Value **args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) xgui_group_end(g_vm_xgui);
+    return value_null();
+}
+static Value *vm_bi_xgui_grid_begin(Value **args, int argc) {
+    int cols = (argc >= 1 && args[0]->type == VAL_INT) ? (int)args[0]->int_val : 2;
+    if (g_vm_xgui) xgui_grid_begin(g_vm_xgui, cols);
+    return value_null();
+}
+static Value *vm_bi_xgui_grid_end(Value **args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) xgui_grid_end(g_vm_xgui);
+    return value_null();
+}
+static Value *vm_bi_xgui_clear_bg(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_null();
+    xgui_clear_bg(g_vm_xgui, (uint32_t)args[0]->int_val);
+    return value_null();
+}
+static Value *vm_bi_xgui_fill_rect_at(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 5) return value_null();
+    int r = (argc >= 6 && args[4]->type == VAL_INT) ? (int)args[4]->int_val : 0;
+    uint32_t c = (argc >= 6) ? (uint32_t)args[5]->int_val : (uint32_t)args[4]->int_val;
+    xgui_fill_rect_at(g_vm_xgui, (int)args[0]->int_val, (int)args[1]->int_val,
+                      (int)args[2]->int_val, (int)args[3]->int_val, r, c);
+    return value_null();
+}
+static Value *vm_bi_xgui_fill_circle_at(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 4) return value_null();
+    xgui_fill_circle_at(g_vm_xgui, (int)args[0]->int_val, (int)args[1]->int_val,
+                        (int)args[2]->int_val, (uint32_t)args[3]->int_val);
+    return value_null();
+}
+static Value *vm_bi_xgui_draw_line_at(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 5) return value_null();
+    int thick = (argc >= 6) ? (int)args[4]->int_val : 1;
+    uint32_t c = (argc >= 6) ? (uint32_t)args[5]->int_val : (uint32_t)args[4]->int_val;
+    xgui_draw_line_at(g_vm_xgui, (int)args[0]->int_val, (int)args[1]->int_val,
+                      (int)args[2]->int_val, (int)args[3]->int_val, thick, c);
+    return value_null();
+}
+static Value *vm_bi_xgui_draw_text_at(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 5) return value_null();
+    const char *t = (args[2]->type == VAL_STRING) ? args[2]->str_val : "";
+    xgui_draw_text_at(g_vm_xgui, (int)args[0]->int_val, (int)args[1]->int_val,
+                      t, (int)args[3]->int_val, (uint32_t)args[4]->int_val);
+    return value_null();
+}
+static Value *vm_bi_xgui_draw_text_centered(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 5) return value_null();
+    const char *t = (args[2]->type == VAL_STRING) ? args[2]->str_val : "";
+    xgui_draw_text_centered(g_vm_xgui, (int)args[0]->int_val, (int)args[1]->int_val,
+                            t, (int)args[3]->int_val, (uint32_t)args[4]->int_val);
+    return value_null();
+}
+static Value *vm_bi_xgui_draw_text_bold_at(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 5) return value_null();
+    const char *t = (args[2]->type == VAL_STRING) ? args[2]->str_val : "";
+    xgui_draw_text_bold_at(g_vm_xgui, (int)args[0]->int_val, (int)args[1]->int_val,
+                           t, (int)args[3]->int_val, (uint32_t)args[4]->int_val);
+    return value_null();
+}
+static Value *vm_bi_xgui_draw_text_bold_centered(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 5) return value_null();
+    const char *t = (args[2]->type == VAL_STRING) ? args[2]->str_val : "";
+    xgui_draw_text_bold_centered(g_vm_xgui, (int)args[0]->int_val, (int)args[1]->int_val,
+                                  t, (int)args[3]->int_val, (uint32_t)args[4]->int_val);
+    return value_null();
+}
+static Value *vm_bi_xgui_key_w(Value **args, int argc)      { (void)args;(void)argc; return value_bool(xgui_key_w(g_vm_xgui)      ? 1:0); }
+static Value *vm_bi_xgui_key_s(Value **args, int argc)      { (void)args;(void)argc; return value_bool(xgui_key_s(g_vm_xgui)      ? 1:0); }
+static Value *vm_bi_xgui_key_a(Value **args, int argc)      { (void)args;(void)argc; return value_bool(xgui_key_a(g_vm_xgui)      ? 1:0); }
+static Value *vm_bi_xgui_key_d(Value **args, int argc)      { (void)args;(void)argc; return value_bool(xgui_key_d(g_vm_xgui)      ? 1:0); }
+static Value *vm_bi_xgui_key_up(Value **args, int argc)     { (void)args;(void)argc; return value_bool(xgui_key_up(g_vm_xgui)     ? 1:0); }
+static Value *vm_bi_xgui_key_down(Value **args, int argc)   { (void)args;(void)argc; return value_bool(xgui_key_down(g_vm_xgui)   ? 1:0); }
+static Value *vm_bi_xgui_key_left(Value **args, int argc)   { (void)args;(void)argc; return value_bool(xgui_key_left(g_vm_xgui)   ? 1:0); }
+static Value *vm_bi_xgui_key_right(Value **args, int argc)  { (void)args;(void)argc; return value_bool(xgui_key_right(g_vm_xgui)  ? 1:0); }
+static Value *vm_bi_xgui_key_space(Value **args, int argc)  { (void)args;(void)argc; return value_bool(xgui_key_space(g_vm_xgui)  ? 1:0); }
+static Value *vm_bi_xgui_key_escape(Value **args, int argc) { (void)args;(void)argc; return value_bool(xgui_key_escape(g_vm_xgui) ? 1:0); }
+static Value *vm_bi_xgui_mouse_down(Value **args, int argc) { (void)args;(void)argc; return value_bool(xgui_mouse_down(g_vm_xgui) ? 1:0); }
+static Value *vm_bi_xgui_mouse_x(Value **args, int argc)    { (void)args;(void)argc; return value_int(xgui_mouse_x(g_vm_xgui));  }
+static Value *vm_bi_xgui_mouse_y(Value **args, int argc)    { (void)args;(void)argc; return value_int(xgui_mouse_y(g_vm_xgui));  }
+static Value *vm_bi_xgui_win_w(Value **args, int argc)      { (void)args;(void)argc; return value_int(xgui_win_w(g_vm_xgui));    }
+static Value *vm_bi_xgui_win_h(Value **args, int argc)      { (void)args;(void)argc; return value_int(xgui_win_h(g_vm_xgui));    }
+static Value *vm_bi_xgui_delta_ms(Value **args, int argc)   { (void)args;(void)argc; return value_float(xgui_delta_ms(g_vm_xgui)); }
+static Value *vm_bi_xgui_clock_ms(Value **args, int argc)   { (void)args;(void)argc; return value_int((int64_t)xgui_clock_ms(g_vm_xgui)); }
+static Value *vm_bi_xgui_sleep_ms(Value **args, int argc) {
+    int ms = (argc >= 1 && args[0]->type == VAL_INT) ? (int)args[0]->int_val : 0;
+    xgui_sleep_ms(g_vm_xgui, ms);
+    return value_null();
+}
+
 #else /* !HAVE_X11 — graceful stubs */
 
 static Value *vm_bi_xgui_no_x11(Value **args, int argc) {
@@ -682,6 +851,48 @@ void vm_register_builtins(VM *vm) {
         {"xgui_card_begin",  vm_bi_xgui_card_begin},
         {"xgui_card_end",    vm_bi_xgui_card_end},
         {"xgui_tooltip",     vm_bi_xgui_tooltip},
+        /* v4 new widgets */
+        {"xgui_toggle",              vm_bi_xgui_toggle},
+        {"xgui_chip",                vm_bi_xgui_chip},
+        {"xgui_tabs",                vm_bi_xgui_tabs},
+        {"xgui_select",              vm_bi_xgui_select},
+        {"xgui_spinner",             vm_bi_xgui_spinner},
+        {"xgui_list_item",           vm_bi_xgui_list_item},
+        {"xgui_show_toast",          vm_bi_xgui_show_toast},
+        {"xgui_section",             vm_bi_xgui_section},
+        {"xgui_icon_button",         vm_bi_xgui_icon_button},
+        {"xgui_group_begin",         vm_bi_xgui_group_begin},
+        {"xgui_group_end",           vm_bi_xgui_group_end},
+        {"xgui_grid_begin",          vm_bi_xgui_grid_begin},
+        {"xgui_grid_end",            vm_bi_xgui_grid_end},
+        /* game-mode raw drawing */
+        {"xgui_clear_bg",            vm_bi_xgui_clear_bg},
+        {"xgui_fill_rect_at",        vm_bi_xgui_fill_rect_at},
+        {"xgui_fill_circle_at",      vm_bi_xgui_fill_circle_at},
+        {"xgui_draw_line_at",        vm_bi_xgui_draw_line_at},
+        {"xgui_draw_text_at",        vm_bi_xgui_draw_text_at},
+        {"xgui_draw_text_centered",  vm_bi_xgui_draw_text_centered},
+        {"xgui_draw_text_bold_at",   vm_bi_xgui_draw_text_bold_at},
+        {"xgui_draw_text_bold_centered", vm_bi_xgui_draw_text_bold_centered},
+        /* key-hold queries */
+        {"xgui_key_w",       vm_bi_xgui_key_w},
+        {"xgui_key_s",       vm_bi_xgui_key_s},
+        {"xgui_key_a",       vm_bi_xgui_key_a},
+        {"xgui_key_d",       vm_bi_xgui_key_d},
+        {"xgui_key_up",      vm_bi_xgui_key_up},
+        {"xgui_key_down",    vm_bi_xgui_key_down},
+        {"xgui_key_left",    vm_bi_xgui_key_left},
+        {"xgui_key_right",   vm_bi_xgui_key_right},
+        {"xgui_key_space",   vm_bi_xgui_key_space},
+        {"xgui_key_escape",  vm_bi_xgui_key_escape},
+        {"xgui_mouse_down",  vm_bi_xgui_mouse_down},
+        {"xgui_mouse_x",     vm_bi_xgui_mouse_x},
+        {"xgui_mouse_y",     vm_bi_xgui_mouse_y},
+        {"xgui_win_w",       vm_bi_xgui_win_w},
+        {"xgui_win_h",       vm_bi_xgui_win_h},
+        {"xgui_delta_ms",    vm_bi_xgui_delta_ms},
+        {"xgui_clock_ms",    vm_bi_xgui_clock_ms},
+        {"xgui_sleep_ms",    vm_bi_xgui_sleep_ms},
 #else
         {"xgui_init",        vm_bi_xgui_no_x11},
         {"xgui_style",       vm_bi_xgui_no_x11},

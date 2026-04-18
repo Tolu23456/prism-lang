@@ -1,0 +1,147 @@
+# edgecase/xgui_game.pr
+# Tests raw-drawing game-mode APIs: fill_rect_at, fill_circle_at,
+# draw_line_at, draw_text_at/centered, key-hold state, delta_ms,
+# clock_ms, sleep_ms, clear_bg, win_w, win_h.
+# Run with: ./prism edgecase/xgui_game.pr
+# Press Q to quit.  Arrow keys move the ball.
+
+let g = xgui_init(700, 500, "xgui Edge Case – Game Mode Raw Drawing")
+
+let W = xgui_win_w(g)
+let H = xgui_win_h(g)
+
+let bx = 350.0
+let by = 250.0
+let spd = 200.0     # px per second
+
+let frame = 0
+let score = 0
+let particles_x = [0, 0, 0, 0, 0, 0, 0, 0]
+let particles_y = [0, 0, 0, 0, 0, 0, 0, 0]
+let particles_vx = [80, -60, 40, -90, 70, -50, 30, -80]
+let particles_vy = [-80, -70, -90, -60, -80, -70, -90, -60]
+let particles_life = [0, 0, 0, 0, 0, 0, 0, 0]
+
+func spawn_particles(x, y) {
+    let i = 0
+    repeat while i < 8 {
+        particles_x[i] = x
+        particles_y[i] = y
+        particles_life[i] = 40
+        i = i + 1
+    }
+}
+
+repeat while xgui_running(g) {
+    let t0 = xgui_clock_ms(g)
+    xgui_begin(g)
+
+    let dt = xgui_delta_ms(g) / 1000.0
+    frame = frame + 1
+
+    # ── Input ───────────────────────────────────────────────
+    if xgui_key_left(g)  { bx = bx - spd * dt }
+    if xgui_key_right(g) { bx = bx + spd * dt }
+    if xgui_key_up(g)    { by = by - spd * dt }
+    if xgui_key_down(g)  { by = by + spd * dt }
+    if xgui_key_escape(g) { xgui_close(g) }
+    if xgui_key_held_char(g, 'q') { xgui_close(g) }
+
+    # Wrap around edges
+    if bx < 0.0   { bx = W + bx }
+    if bx > W     { bx = bx - W }
+    if by < 0.0   { by = H + by }
+    if by > H     { by = by - H }
+
+    # Spawn particles on space
+    if xgui_key_space(g) {
+        spawn_particles(int(bx), int(by))
+        score = score + 10
+    }
+
+    # ── Draw ────────────────────────────────────────────────
+    xgui_clear_bg(g, 0x0a0a1a)
+
+    # Grid background
+    let gx = 0
+    repeat while gx < W {
+        xgui_draw_line_at(g, gx, 0, gx, H, 1, 0x141428)
+        gx = gx + 40
+    }
+    let gy = 0
+    repeat while gy < H {
+        xgui_draw_line_at(g, 0, gy, W, gy, 1, 0x141428)
+        gy = gy + 40
+    }
+
+    # Crosshair at center
+    xgui_draw_line_at(g, W/2 - 20, H/2, W/2 + 20, H/2, 1, 0x2a2a4a)
+    xgui_draw_line_at(g, W/2, H/2 - 20, W/2, H/2 + 20, 1, 0x2a2a4a)
+
+    # Ball shadow
+    xgui_fill_circle_at(g, int(bx) + 4, int(by) + 4, 18, 0x000000)
+
+    # Ball glow ring
+    xgui_fill_circle_at(g, int(bx), int(by), 22, 0x2244aa)
+
+    # Ball body
+    xgui_fill_circle_at(g, int(bx), int(by), 18, 0x89b4fa)
+
+    # Ball shine
+    xgui_fill_circle_at(g, int(bx) - 5, int(by) - 5, 6, 0xffffff)
+
+    # Particles
+    let i = 0
+    repeat while i < 8 {
+        if particles_life[i] > 0 {
+            particles_x[i] = particles_x[i] + particles_vx[i] * dt
+            particles_y[i] = particles_y[i] + particles_vy[i] * dt
+            particles_vy[i] = particles_vy[i] + 180 * dt
+            particles_life[i] = particles_life[i] - 1
+            let pr = 2 + particles_life[i] / 8
+            let pa = particles_life[i] * 6
+            xgui_fill_circle_at(g, int(particles_x[i]), int(particles_y[i]), pr, 0xf9e2af)
+        }
+        i = i + 1
+    }
+
+    # HUD
+    xgui_draw_text_bold_at(g, 12, 12, "GAME MODE TEST", 13, 0x89b4fa)
+    xgui_draw_text_at(g, 12, 32, "Arrow keys: move  |  Space: burst  |  Q/Esc: quit", 11, 0x585b70)
+
+    let fps_label = "Score: " + str(score)
+    xgui_draw_text_bold_at(g, W - 120, 12, fps_label, 13, 0xa6e3a1)
+
+    let pos_label = "x=" + str(int(bx)) + " y=" + str(int(by))
+    xgui_draw_text_at(g, W/2 - 60, H - 22, pos_label, 11, 0x585b70)
+
+    # Edge case: draw at negative coords (should be clipped)
+    xgui_fill_rect_at(g, -50, -50, 40, 40, 8, 0xff0000)
+
+    # Edge case: draw outside right/bottom (should be clipped)
+    xgui_fill_rect_at(g, W + 10, H + 10, 50, 50, 0, 0x00ff00)
+
+    # Edge case: zero-size shapes
+    xgui_fill_rect_at(g, 100, 100, 0, 0, 0, 0xff00ff)
+    xgui_fill_circle_at(g, 100, 100, 0, 0xff00ff)
+
+    # Edge case: draw_text_at with empty string
+    xgui_draw_text_at(g, 200, 200, "", 14, 0xffffff)
+
+    # Edge case: very large radius (should clamp)
+    xgui_fill_rect_at(g, 300, 300, 20, 20, 9999, 0xcba6f7)
+
+    # Edge case: win_w / win_h match expected
+    let dim_label = "Window: " + str(xgui_win_w(g)) + "x" + str(xgui_win_h(g))
+    xgui_draw_text_centered(g, W/2, H - 8, dim_label, 10, 0x45475a)
+
+    xgui_end(g)
+
+    # Cap at 60fps
+    let elapsed = xgui_clock_ms(g) - t0
+    if elapsed < 16 {
+        xgui_sleep_ms(g, 16 - elapsed)
+    }
+}
+
+xgui_destroy(g)

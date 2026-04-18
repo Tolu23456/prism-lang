@@ -1,0 +1,109 @@
+# edgecase/xgui_dark.pr
+# Tests dark-mode toggling, PSS theme hot-swap, and all
+# themed widget states (hover, active, focus, checked).
+# Run with: ./prism edgecase/xgui_dark.pr
+
+let g = xgui_init(600, 700, "xgui Edge Case – Dark Mode & Themes")
+
+let is_dark = false
+let notify_count = 0
+let slider_v = 50.0
+let progress_v = 72
+
+repeat while xgui_running(g) {
+    xgui_begin(g)
+
+    xgui_title(g, "Dark Mode & Theme Edge Cases")
+    xgui_subtitle(g, "Toggle below — every widget reflects the theme change")
+    xgui_separator(g)
+
+    # ── Theme toggle ──────────────────────────────────────────
+    is_dark = xgui_toggle(g, "dark_mode", is_dark, "Dark mode  (Catppuccin Mocha)")
+    xgui_set_dark(g, is_dark)
+    xgui_spacer(g, 4)
+
+    # ── Buttons in both states ────────────────────────────────
+    xgui_section(g, "BUTTONS")
+    xgui_row_begin(g)
+    if xgui_button(g, "Primary") {
+        notify_count = notify_count + 1
+        xgui_show_toast(g, "Clicked " + str(notify_count) + "x", 70)
+    }
+    if xgui_button(g, "Secondary") { }
+    if xgui_button(g, "Action") { }
+    xgui_row_end(g)
+
+    # ── Input focus state ─────────────────────────────────────
+    xgui_section(g, "FOCUSED INPUT")
+    xgui_label(g, "Click in the fields to see focus ring:")
+    xgui_input(g, "inp_a", "Field A (click me)")
+    xgui_input(g, "inp_b", "Field B — separate focus state")
+    xgui_textarea(g, "ta", "Multi-line input...")
+
+    # ── Checkbox checked state ────────────────────────────────
+    xgui_section(g, "CHECKBOX STATES")
+    xgui_checkbox(g, "cb_off", "Unchecked (default)")
+    xgui_checkbox(g, "cb_on",  "Pre-checked")
+
+    # ── Progress and slider at boundary values ─────────────────
+    xgui_section(g, "BOUNDARY VALUES")
+    xgui_label(g, "Progress 0%:")
+    xgui_progress(g, 0, 100)
+    xgui_label(g, "Progress 100%:")
+    xgui_progress(g, 100, 100)
+    xgui_label(g, "Slider:")
+    slider_v = xgui_slider(g, "sl", 0.0, 100.0, slider_v)
+    xgui_label(g, "Slider value: " + str(int(slider_v)))
+
+    # ── Card in both themes ───────────────────────────────────
+    xgui_section(g, "CARD SHADOW")
+    xgui_card_begin(g)
+    xgui_subtitle(g, "Themed card")
+    xgui_label(g, "Shadow layers adapt to light vs dark background.")
+    xgui_row_begin(g)
+    xgui_badge(g, "Light", 0x89b4fa)
+    xgui_badge(g, "Dark",  0xcba6f7)
+    xgui_row_end(g)
+    xgui_card_end(g)
+
+    # ── Many badges to stress color system ────────────────────
+    xgui_section(g, "BADGE PALETTE STRESS")
+    xgui_row_begin(g)
+    xgui_badge(g, "Red",    0xf38ba8)
+    xgui_badge(g, "Orange", 0xfab387)
+    xgui_badge(g, "Yellow", 0xf9e2af)
+    xgui_badge(g, "Green",  0xa6e3a1)
+    xgui_badge(g, "Cyan",   0x94e2d5)
+    xgui_badge(g, "Blue",   0x89b4fa)
+    xgui_badge(g, "Mauve",  0xcba6f7)
+    xgui_row_end(g)
+
+    # ── Grid in dark mode ─────────────────────────────────────
+    xgui_section(g, "GRID 2x2")
+    xgui_grid_begin(g, 2)
+    xgui_button(g, "Top Left")
+    xgui_button(g, "Top Right")
+    xgui_button(g, "Bottom Left")
+    xgui_button(g, "Bottom Right")
+    xgui_grid_end(g)
+
+    # ── Spinner in both themes ────────────────────────────────
+    xgui_section(g, "SPINNERS")
+    xgui_row_begin(g)
+    xgui_spinner(g, 24)
+    xgui_spinner(g, 36)
+    xgui_spinner(g, 48)
+    xgui_label(g, "Animated spinners")
+    xgui_row_end(g)
+
+    # ── Edge case: toggle with same id multiple times ──────────
+    xgui_section(g, "EDGE: DUPLICATE IDS (ignored)")
+    xgui_toggle(g, "dark_mode", false, "Same id as above — reads persisted state")
+
+    xgui_separator(g)
+    xgui_label(g, "No crashes = pass")
+
+    xgui_end(g)
+}
+
+xgui_destroy(g)
