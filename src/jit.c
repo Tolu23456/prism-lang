@@ -52,6 +52,7 @@ static int hot_increment(JIT *jit, int ip) {
 }
 
 /* Return counter for ip (0 if not found). */
+static int hot_count(JIT *jit, int ip) __attribute__((unused));
 static int hot_count(JIT *jit, int ip) {
     int key = ip + 1;
     int s   = hot_slot(ip);
@@ -545,6 +546,7 @@ static void x64_setcc(X64B *b, uint8_t cc) {
 static void x64_test_rax(X64B *b) { b1(b,0x48);b1(b,0x85);b1(b,0xC0); }
 
 /* mov rdx, rax */
+static void x64_mov_rdx_rax(X64B *b) __attribute__((unused));
 static void x64_mov_rdx_rax(X64B *b) { b1(b,0x48);b1(b,0x89);b1(b,0xC2); }
 
 /* mov rax, rdx */
@@ -1082,8 +1084,9 @@ void jit_emit_llvm_ir(JitTrace *trace, const char *chunk_name, FILE *out) {
                     ins->dst, tmp_ver[ins->dst]+1, pred,
                     ins->src1, tmp_ver[ins->src1],
                     ins->src2, tmp_ver[ins->src2]);
+            tmp_ver[ins->dst]++;
             fprintf(out, "  %%t%d_%d = zext i1 %%cmp%d_%d to i64\n",
-                    ins->dst, ++tmp_ver[ins->dst], ins->dst, tmp_ver[ins->dst]);
+                    ins->dst, tmp_ver[ins->dst], ins->dst, tmp_ver[ins->dst]);
             break;
         }
         case JIR_STORE_LOCAL: {

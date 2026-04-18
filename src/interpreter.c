@@ -527,12 +527,6 @@ static Value *builtin_hypot(Value **a, int n) {
     return value_float(hypot(x,y));
 }
 
-static double _to_double(Value *v) {
-    if (v->type == VAL_INT)   return (double)v->int_val;
-    if (v->type == VAL_FLOAT) return v->float_val;
-    if (v->type == VAL_STRING) { char *e; double d=strtod(v->str_val,&e); return (e!=v->str_val)?d:0.0; }
-    return 0.0;
-}
 
 static Value *builtin_min(Value **a, int n) {
     if (n == 0) return value_null();
@@ -972,16 +966,6 @@ static Value *builtin_enumerate(Value **a, int n) {
         value_release(pair);
     }
     return result;
-}
-static Value *builtin_map_fn(Value **a, int n) {
-    /* map(fn, arr) */
-    if (n < 2 || a[1]->type != VAL_ARRAY) return value_array_new();
-    /* Note: to call fn we'd need interpreter context; return stub array for now */
-    return value_retain(a[1]);
-}
-static Value *builtin_filter_fn(Value **a, int n) {
-    if (n < 2 || a[1]->type != VAL_ARRAY) return value_array_new();
-    return value_retain(a[1]);
 }
 static Value *builtin_copy(Value **a, int n) {
     if (n < 1) return value_null();
@@ -1723,7 +1707,6 @@ static Value *string_method(Interpreter *interp, Value *obj, const char *method,
         int ai = 0;
         while (*p) {
             if (*p == '{' && *(p+1) == '}') {
-                const char *sub = (ai < argc) ? (args[ai]->type == VAL_STRING ? args[ai]->str_val : "") : "";
                 char *vsub = (ai < argc) ? value_to_string(args[ai]) : strdup("");
                 size_t vlen = strlen(vsub);
                 while (sz + (int)vlen + 1 >= cap) { cap *= 2; buf = realloc(buf, cap); }
@@ -2358,7 +2341,7 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         ASTNode *prog = parser_parse_source(src, errbuf, sizeof(errbuf));
         free(src);
         if (!prog) {
-            char msg[512];
+            char msg[1024];
             snprintf(msg, sizeof(msg), "import '%s': %s", raw_path, errbuf);
             runtime_error(interp, msg, node->line);
             return value_null();
@@ -2416,10 +2399,10 @@ static Value *eval_node(Interpreter *interp, ASTNode *node, Env *env) {
 
             /* Derive binding name from the last path component, stripped of
              * any extension: "lib/math.pr" → "math", "utils" → "utils" */
-            char mod_name[256];
+            char mod_name[512];
             const char *base = strrchr(resolved, '/');
             base = base ? base + 1 : resolved;
-            snprintf(mod_name, sizeof(mod_name), "%s", base);
+            snprintf(mod_name, sizeof(mod_name), "%.511s", base);
             char *dot = strrchr(mod_name, '.');
             if (dot) *dot = '\0';
 

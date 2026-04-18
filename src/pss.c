@@ -342,9 +342,11 @@ static uint32_t parse_rgb(const char *s) {
     if (*p == 'a') p++;   /* rgba */
     if (*p == '(') p++;
     int r = atoi(p);
-    while (*p && *p != ',') p++; if (*p) p++;
+    while (*p && *p != ',') p++;
+    if (*p) p++;
     int g = atoi(p);
-    while (*p && *p != ',') p++; if (*p) p++;
+    while (*p && *p != ',') p++;
+    if (*p) p++;
     int b = atoi(p);
     return (uint32_t)(((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff));
 }
@@ -494,7 +496,8 @@ static void apply_property(PssTheme *t, PssStyle *s, const char *prop, const cha
     } else if (strcmp(prop, "font") == 0 || strcmp(prop, "font-family") == 0) {
         const char *name = tok1;
         if (*name == '"' || *name == '\'') name++;
-        snprintf(s->font, sizeof(s->font), "%s", name);
+        strncpy(s->font, name, sizeof(s->font) - 1);
+        s->font[sizeof(s->font) - 1] = '\0';
         size_t l = strlen(s->font);
         if (l > 0 && (s->font[l-1] == '"' || s->font[l-1] == '\'')) s->font[l-1] = '\0';
     } else if (strcmp(prop, "font-weight") == 0) {
@@ -544,7 +547,8 @@ static void apply_property(PssTheme *t, PssStyle *s, const char *prop, const cha
 
     /* ── Misc ─────────────────────────────────────────────── */
     } else if (strcmp(prop, "cursor") == 0) {
-        snprintf(s->cursor, sizeof(s->cursor), "%s", tok1);
+        strncpy(s->cursor, tok1, sizeof(s->cursor) - 1);
+        s->cursor[sizeof(s->cursor) - 1] = '\0';
     }
     /* Unknown properties are silently ignored for forward-compatibility */
     (void)t;
@@ -667,8 +671,8 @@ bool pss_theme_load(PssTheme *t, const char *path) {
                         /* trim trailing whitespace from varname */
                         int nl = (int)strlen(varname);
                         while (nl > 0 && isspace((unsigned char)varname[nl-1])) varname[--nl] = '\0';
-                        snprintf(t->vars[t->var_count][0], 128, "%s", varname);
-                        snprintf(t->vars[t->var_count][1], 128, "%s", varval);
+                        { size_t n_ = strnlen(varname, 127); memcpy(t->vars[t->var_count][0], varname, n_); t->vars[t->var_count][0][n_] = '\0'; }
+                        { size_t n_ = strnlen(varval,  127); memcpy(t->vars[t->var_count][1], varval,  n_); t->vars[t->var_count][1][n_] = '\0'; }
                         t->var_count++;
                     }
                 } else {

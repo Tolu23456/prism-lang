@@ -265,11 +265,6 @@ static int int_arg(Value **args, int argc, int idx, int def) {
     return def;
 }
 
-static const char *str_arg(Value **args, int argc, int idx, const char *def) {
-    if (idx >= argc || args[idx]->type != VAL_STRING) return def;
-    return args[idx]->str_val;
-}
-
 static Value *bi_gui_create(Value **args, int argc) {
     int w = int_arg(args, argc, 0, 640);
     int h = int_arg(args, argc, 1, 480);

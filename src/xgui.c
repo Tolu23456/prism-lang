@@ -721,7 +721,8 @@ float xgui_slider(XGui *g, const char *id, float min_v, float max_v, float curre
 
     float range = max_v - min_v;
     float t = (range > 0) ? (val - min_v) / range : 0.0f;
-    if (t < 0) t = 0; if (t > 1) t = 1;
+    if (t < 0) t = 0;
+    if (t > 1) t = 1;
     int thumb_x = x + (int)(t * (usable - 2 * thumb_r)) + thumb_r;
     int thumb_y = y + thumb_r;
 
@@ -730,7 +731,8 @@ float xgui_slider(XGui *g, const char *id, float min_v, float max_v, float curre
                     g->my >= y && g->my < y + 2 * thumb_r);
     if (hovered && g->mouse_down) {
         t = (float)(g->mx - x) / (float)(usable - 2 * thumb_r);
-        if (t < 0) t = 0; if (t > 1) t = 1;
+        if (t < 0) t = 0;
+        if (t > 1) t = 1;
         val = min_v + t * range;
         thumb_x = x + (int)(t * (usable - 2 * thumb_r)) + thumb_r;
         snprintf(inp->buf, sizeof(inp->buf), "%f", val);

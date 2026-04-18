@@ -179,17 +179,6 @@ static char *read_string(Lexer *l, char quote, bool verbatim, bool fstr) {
     return buf;
 }
 
-/* Strip underscore separators from a numeric string (modifies copy) */
-static char *strip_underscores(const char *src) {
-    char *buf = malloc(strlen(src) + 1);
-    char *dst = buf;
-    for (const char *p = src; *p; p++) {
-        if (*p != '_') *dst++ = *p;
-    }
-    *dst = '\0';
-    return buf;
-}
-
 /* ------------------------------------------------------------------ main tokenizer */
 
 Token *lexer_next(Lexer *l) {
@@ -229,12 +218,11 @@ Token *lexer_next(Lexer *l) {
         int   cap = 64, sz = 0;
         char *buf = malloc(cap);
         bool  is_float = false, is_complex = false;
-        bool  is_hex = false, is_bin = false, is_oct = false;
+        bool  is_oct = false;
 
         if (c == '0' && peek1(l) == 'x') { /* hex */
             buf[sz++] = cur(l); advance(l);
             buf[sz++] = cur(l); advance(l);
-            is_hex = true;
             while (isxdigit(cur(l)) || cur(l) == '_') {
                 if (cur(l) != '_') buf[sz++] = cur(l);
                 advance(l);
@@ -242,7 +230,6 @@ Token *lexer_next(Lexer *l) {
         } else if (c == '0' && peek1(l) == 'b') { /* binary */
             buf[sz++] = cur(l); advance(l);
             buf[sz++] = cur(l); advance(l);
-            is_bin = true;
             while (cur(l) == '0' || cur(l) == '1' || cur(l) == '_') {
                 if (cur(l) != '_') buf[sz++] = cur(l);
                 advance(l);

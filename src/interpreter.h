@@ -24,7 +24,7 @@ typedef struct Env {
 typedef struct {
     Env        *globals;
     int         had_error;
-    char        error_msg[512];
+    char        error_msg[2048];
     Value      *return_val;
     bool        returning;
     bool        breaking;

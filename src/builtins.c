@@ -235,22 +235,6 @@ static Value *bi_type_fn(Value **args, int argc) {
     return value_string(value_type_name(args[0]->type));
 }
 
-static Value *bi_repr(Value **args, int argc) {
-    if (argc < 1) return value_string("null");
-    char *s = value_to_string(args[0]);
-    return value_string_take(s);
-}
-
-static Value *bi_copy(Value **args, int argc) {
-    if (argc < 1) return value_null();
-    return value_copy(args[0]);
-}
-
-static Value *bi_id(Value **args, int argc) {
-    if (argc < 1) return value_int(0);
-    return value_int((long long)(uintptr_t)args[0]);
-}
-
 /* ================================================================== assertions */
 
 static Value *bi_assert(Value **args, int argc) {
@@ -710,7 +694,8 @@ static Value *bi_reverse(Value **a, int n) {
     if(a[0]->type==VAL_STRING){
         const char *s=a[0]->str_val; size_t len=strlen(s);
         char *r=malloc(len+1);
-        for(size_t i=0;i<len;i++) r[i]=s[len-1-i]; r[len]='\0';
+        for(size_t i=0;i<len;i++) r[i]=s[len-1-i];
+        r[len]='\0';
         return value_string_take(r);
     }
     return value_retain(a[0]);
@@ -721,16 +706,20 @@ static Value *bi_slice(Value **a, int n) {
     if(a[0]->type==VAL_STRING){
         const char *s=a[0]->str_val; long long slen=(long long)strlen(s);
         long long end=(n>=3&&a[2]->type==VAL_INT)?a[2]->int_val:slen;
-        if(start<0)start=slen+start; if(end<0)end=slen+end;
-        if(start<0)start=0; if(end>slen)end=slen;
+        if(start<0)start=slen+start;
+        if(end<0)end=slen+end;
+        if(start<0)start=0;
+        if(end>slen)end=slen;
         if(start>=end)return value_string("");
         return value_string(strndup(s+(size_t)start,(size_t)(end-start)));
     }
     if(a[0]->type==VAL_ARRAY){
         long long alen=a[0]->array.len;
         long long end=(n>=3&&a[2]->type==VAL_INT)?a[2]->int_val:alen;
-        if(start<0)start=alen+start; if(end<0)end=alen+end;
-        if(start<0)start=0; if(end>alen)end=alen;
+        if(start<0)start=alen+start;
+        if(end<0)end=alen+end;
+        if(start<0)start=0;
+        if(end>alen)end=alen;
         Value *arr=value_array_new();
         for(long long i=start;i<end;i++) value_array_push(arr,a[0]->array.items[i]);
         return arr;

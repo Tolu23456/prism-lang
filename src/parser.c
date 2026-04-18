@@ -130,12 +130,6 @@ static ASTNode **parse_arg_list(Parser *p, int *out_count) {
     return args;
 }
 
-static ASTNode *parse_fstring(Parser *p, const char *raw, int line) {
-    ASTNode *n = ast_node_new(NODE_FSTRING_LIT, line);
-    n->string_lit.value = strdup(raw);
-    return n;
-}
-
 static ASTNode *parse_array_literal(Parser *p, int line, bool use_arr_kw) {
     /* opening '[' already consumed */
     (void)use_arr_kw;
@@ -672,7 +666,7 @@ static ASTNode *parse_unary(Parser *p) {
         op[7] = '\0';
         advance(p);
         ASTNode *n = ast_node_new(NODE_UNOP, line);
-        strncpy(n->unop.op, op, 3);
+        strncpy(n->unop.op, op, 3); n->unop.op[3] = '\0';
         n->unop.operand = parse_unary(p);
         return n;
     }
@@ -712,7 +706,7 @@ static ASTNode *parse_mul(Parser *p) {
         advance(p); skip_newlines(p);
         ASTNode *right = parse_power(p);
         ASTNode *n = ast_node_new(NODE_BINOP, line);
-        strncpy(n->binop.op, op, 3);
+        strncpy(n->binop.op, op, 3); n->binop.op[3] = '\0';
         n->binop.left  = left;
         n->binop.right = right;
         left = n;
@@ -731,7 +725,7 @@ static ASTNode *parse_add(Parser *p) {
         advance(p); skip_newlines(p);
         ASTNode *right = parse_mul(p);
         ASTNode *n = ast_node_new(NODE_BINOP, line);
-        strncpy(n->binop.op, op, 3);
+        strncpy(n->binop.op, op, 3); n->binop.op[3] = '\0';
         n->binop.left  = left;
         n->binop.right = right;
         left = n;
@@ -827,7 +821,7 @@ static ASTNode *parse_compare(Parser *p) {
         !check(p, TOKEN_LE) && !check(p, TOKEN_GE)) {
         /* simple binary comparison */
         ASTNode *n = ast_node_new(NODE_BINOP, line);
-        strncpy(n->binop.op, first_op, 3);
+        strncpy(n->binop.op, first_op, 3); n->binop.op[3] = '\0';
         n->binop.left  = left;
         n->binop.right = right;
         return n;
@@ -868,7 +862,7 @@ static ASTNode *parse_equality(Parser *p) {
         advance(p); skip_newlines(p);
         ASTNode *right = parse_compare(p);
         ASTNode *n = ast_node_new(NODE_BINOP, line);
-        strncpy(n->binop.op, op, 3);
+        strncpy(n->binop.op, op, 3); n->binop.op[3] = '\0';
         n->binop.left  = left;
         n->binop.right = right;
         left = n;
