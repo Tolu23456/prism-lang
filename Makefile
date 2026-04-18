@@ -4,8 +4,8 @@ PREFIX  = /usr/local
 BINDIR  = $(DESTDIR)$(PREFIX)/bin
 
 # Detect X11 / Xft availability via pkg-config
-X11_CFLAGS  := $(shell pkg-config --cflags x11 xft fontconfig 2>/dev/null)
-X11_LDFLAGS := $(shell pkg-config --libs   x11 xft fontconfig 2>/dev/null)
+X11_CFLAGS  := $(shell pkg-config --cflags x11 xft xrender fontconfig 2>/dev/null)
+X11_LDFLAGS := $(shell pkg-config --libs   x11 xft xrender fontconfig 2>/dev/null)
 
 ifneq ($(X11_CFLAGS),)
   CFLAGS  += -DHAVE_X11 $(X11_CFLAGS)

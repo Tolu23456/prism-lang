@@ -7,10 +7,12 @@
 #include <X11/Xutil.h>
 #include <X11/keysym.h>
 #include <X11/Xft/Xft.h>
+#include <X11/extensions/Xrender.h>
 
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 
 /* ------------------------------------------------------------------ types */
 
@@ -28,9 +30,10 @@ struct XGui {
     Display   *dpy;
     int        screen;
     Window     win;
-    Pixmap     backbuf;   /* double-buffer pixmap */
+    Pixmap     backbuf;       /* double-buffer pixmap */
     GC         gc;
-    XftDraw   *xft;       /* Xft draw context for backbuf */
+    XftDraw   *xft;           /* Xft draw context for backbuf */
+    Picture    backbuf_pic;   /* XRender picture for AA compositing */
     Atom       wm_delete;
     int        width, height;
 
@@ -186,6 +189,79 @@ static void draw_rounded_outline(XGui *g, int x, int y, int w, int h,
     XDrawLine(g->dpy, g->backbuf, g->gc, x+w-1, y+r,   x+w-1, y+h-r);   /* right */
 }
 
+/* Anti-aliased filled circle using XRender + software alpha mask */
+static void fill_circle_aa(XGui *g, int x, int y, int r, uint32_t rgb) {
+    int d = 2 * r;
+    if (d <= 0) return;
+
+    XRenderPictFormat *a8fmt = XRenderFindStandardFormat(g->dpy, PictStandardA8);
+    if (!a8fmt || !g->backbuf_pic) {
+        /* Fallback to plain X11 arc */
+        XSetForeground(g->dpy, g->gc, alloc_x11_color(g, rgb));
+        XFillArc(g->dpy, g->backbuf, g->gc, x, y, (unsigned)d, (unsigned)d, 0, 360*64);
+        return;
+    }
+
+    /* Build 8-bit alpha mask in software using distance field */
+    int stride = (d + 3) & ~3;
+    unsigned char *data = calloc((size_t)(stride * d), 1);
+    if (!data) return;
+
+    float fr = (float)r;
+    for (int py = 0; py < d; py++) {
+        for (int px = 0; px < d; px++) {
+            float dx = (float)px - fr + 0.5f;
+            float dy = (float)py - fr + 0.5f;
+            float dist = sqrtf(dx*dx + dy*dy);
+            float edge = fr - dist + 0.5f;
+            if (edge >= 1.0f)
+                data[py * stride + px] = 255;
+            else if (edge > 0.0f)
+                data[py * stride + px] = (unsigned char)(edge * 255.0f + 0.5f);
+        }
+    }
+
+    /* Upload alpha data via XImage into a depth-8 pixmap */
+    Pixmap mask_pix = XCreatePixmap(g->dpy, g->win, (unsigned)d, (unsigned)d, 8);
+    GC mask_gc = XCreateGC(g->dpy, mask_pix, 0, NULL);
+
+    XImage xi;
+    memset(&xi, 0, sizeof(xi));
+    xi.width            = d;
+    xi.height           = d;
+    xi.format           = ZPixmap;
+    xi.data             = (char *)data;
+    xi.byte_order       = LSBFirst;
+    xi.bitmap_bit_order = LSBFirst;
+    xi.bitmap_pad       = 8;
+    xi.depth            = 8;
+    xi.bytes_per_line   = stride;
+    xi.bits_per_pixel   = 8;
+    XInitImage(&xi);
+    XPutImage(g->dpy, mask_pix, mask_gc, &xi, 0, 0, 0, 0, (unsigned)d, (unsigned)d);
+    XFreeGC(g->dpy, mask_gc);
+    free(data);
+
+    XRenderPictureAttributes pa;
+    memset(&pa, 0, sizeof(pa));
+    Picture mask_pic = XRenderCreatePicture(g->dpy, mask_pix, a8fmt, 0, &pa);
+
+    XRenderColor src_color = {
+        .red   = (unsigned short)(((rgb >> 16) & 0xff) * 0x101),
+        .green = (unsigned short)(((rgb >>  8) & 0xff) * 0x101),
+        .blue  = (unsigned short)(( rgb        & 0xff) * 0x101),
+        .alpha = 0xffff
+    };
+    Picture src_pic = XRenderCreateSolidFill(g->dpy, &src_color);
+
+    XRenderComposite(g->dpy, PictOpOver, src_pic, mask_pic, g->backbuf_pic,
+                     0, 0, 0, 0, x, y, (unsigned)d, (unsigned)d);
+
+    XRenderFreePicture(g->dpy, mask_pic);
+    XRenderFreePicture(g->dpy, src_pic);
+    XFreePixmap(g->dpy, mask_pix);
+}
+
 /* ------------------------------------------------------------------ input state helpers */
 
 static InputState *find_or_create_input(XGui *g, const char *id) {
@@ -251,6 +327,16 @@ XGui *xgui_init(int width, int height, const char *title) {
         DefaultVisual(dpy, g->screen),
         DefaultColormap(dpy, g->screen));
 
+    /* XRender picture for anti-aliased compositing */
+    {
+        XRenderPictFormat *vfmt = XRenderFindVisualFormat(dpy, DefaultVisual(dpy, g->screen));
+        XRenderPictureAttributes rpa;
+        memset(&rpa, 0, sizeof(rpa));
+        g->backbuf_pic = vfmt
+            ? XRenderCreatePicture(dpy, g->backbuf, vfmt, 0, &rpa)
+            : None;
+    }
+
     XMapWindow(dpy, g->win);
     XFlush(dpy);
 
@@ -304,6 +390,7 @@ bool xgui_running(XGui *g) {
 
 void xgui_destroy(XGui *g) {
     if (!g) return;
+    if (g->backbuf_pic) XRenderFreePicture(g->dpy, g->backbuf_pic);
     XftDrawDestroy(g->xft);
     XFreePixmap(g->dpy, g->backbuf);
     XFreeGC(g->dpy, g->gc);
@@ -340,12 +427,12 @@ void xgui_begin(XGui *g) {
                 g->mx = e.xbutton.x;
                 g->my = e.xbutton.y;
             } else if (e.xbutton.button == Button4) { /* scroll up */
-                g->scroll_y -= 30;
+                g->scroll_y -= 60;
                 if (g->scroll_y < 0) g->scroll_y = 0;
             } else if (e.xbutton.button == Button5) { /* scroll down */
                 int max_scroll = g->content_h - g->height;
                 if (max_scroll < 0) max_scroll = 0;
-                g->scroll_y += 30;
+                g->scroll_y += 60;
                 if (g->scroll_y > max_scroll) g->scroll_y = max_scroll;
             }
             break;
@@ -385,11 +472,23 @@ void xgui_begin(XGui *g) {
                 e.xconfigure.height != g->height) {
                 g->width  = e.xconfigure.width;
                 g->height = e.xconfigure.height;
+                if (g->backbuf_pic) {
+                    XRenderFreePicture(g->dpy, g->backbuf_pic);
+                    g->backbuf_pic = None;
+                }
                 XFreePixmap(g->dpy, g->backbuf);
                 g->backbuf = XCreatePixmap(g->dpy, g->win,
                     (unsigned)g->width, (unsigned)g->height,
                     (unsigned)DefaultDepth(g->dpy, g->screen));
                 XftDrawChange(g->xft, g->backbuf);
+                XRenderPictFormat *vf = XRenderFindVisualFormat(
+                    g->dpy, DefaultVisual(g->dpy, g->screen));
+                if (vf) {
+                    XRenderPictureAttributes ra;
+                    memset(&ra, 0, sizeof(ra));
+                    g->backbuf_pic = XRenderCreatePicture(
+                        g->dpy, g->backbuf, vf, 0, &ra);
+                }
             }
             break;
 
@@ -425,6 +524,27 @@ void xgui_end(XGui *g) {
     if (!g) return;
     /* Record total content height for scroll clamping next frame */
     g->content_h = g->cy + g->scroll_y + g->theme.window.padding_y;
+
+    /* Draw scrollbar when content is taller than the window */
+    if (g->content_h > g->height) {
+        int sb_w    = 6;
+        int sb_x    = g->width - sb_w - 3;
+        int sb_h    = g->height - 6;
+
+        /* Track */
+        fill_rounded_rect(g, sb_x, 3, sb_w, sb_h, sb_w / 2, 0xe0e0e0);
+
+        /* Thumb */
+        float ratio    = (float)g->height / (float)g->content_h;
+        int   thumb_h  = (int)(ratio * (float)sb_h);
+        if (thumb_h < 20) thumb_h = 20;
+        int   max_scroll = g->content_h - g->height;
+        float t          = (max_scroll > 0)
+                           ? (float)g->scroll_y / (float)max_scroll : 0.0f;
+        int   thumb_y    = 3 + (int)(t * (float)(sb_h - thumb_h));
+        fill_rounded_rect(g, sb_x, thumb_y, sb_w, thumb_h, sb_w / 2, 0x9999bb);
+    }
+
     XCopyArea(g->dpy, g->backbuf, g->win, g->gc,
               0, 0, (unsigned)g->width, (unsigned)g->height, 0, 0);
     XFlush(g->dpy);
@@ -740,14 +860,11 @@ float xgui_slider(XGui *g, const char *id, float min_v, float max_v, float curre
 
     fill_rounded_rect(g, x, track_y, thumb_x - x, track_h, 3, 0x4a90e2);
 
-    XSetForeground(g->dpy, g->gc, alloc_x11_color(g, hovered ? 0x2970c2 : 0x4a90e2));
-    XFillArc(g->dpy, g->backbuf, g->gc,
-             thumb_x - thumb_r, thumb_y - thumb_r,
-             2 * thumb_r, 2 * thumb_r, 0, 360 * 64);
-    XSetForeground(g->dpy, g->gc, alloc_x11_color(g, 0xffffff));
-    XFillArc(g->dpy, g->backbuf, g->gc,
-             thumb_x - thumb_r + 3, thumb_y - thumb_r + 3,
-             2 * (thumb_r - 3), 2 * (thumb_r - 3), 0, 360 * 64);
+    /* Anti-aliased slider thumb circles */
+    fill_circle_aa(g, thumb_x - thumb_r, thumb_y - thumb_r,
+                   thumb_r, hovered ? 0x2970c2 : 0x4a90e2);
+    fill_circle_aa(g, thumb_x - thumb_r + 3, thumb_y - thumb_r + 3,
+                   thumb_r - 3, 0xffffff);
 
     int total_h = 2 * thumb_r;
     if (g->in_row) {
