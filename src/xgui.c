@@ -39,9 +39,8 @@
 #define FONT_CACHE_MAX   24
 #define MASK_CACHE_MAX   64     /* alpha-mask LRU cache entries */
 #define BLINK_HALF       26     /* frames per cursor-blink half-period */
-#define SCROLL_STEP      110    /* px per scroll-wheel click */
-#define SCROLL_SPRING    0.24f  /* spring constant  (higher = snappier) */
-#define SCROLL_DAMPING   0.74f  /* damping factor   (higher = less bounce) */
+#define SCROLL_STEP      60     /* px per scroll-wheel click */
+#define SCROLL_OMEGA     22.0f  /* spring frequency (higher = snappier, critically damped) */
 #define SNAP_THRESH      0.35f  /* px threshold to snap scroll to target */
 #define SB_MARGIN        4
 #define SHADOW_LAYERS    6
@@ -130,6 +129,7 @@ struct XGui {
     InputState inputs[MAX_INPUTS];
     int        input_count;
     char       focused_id[64];
+    char       active_id[64];  /* widget being dragged/pressed */
 
     /* Font LRU cache */
     FCacheEntry fcache[FONT_CACHE_MAX];
@@ -641,21 +641,29 @@ void xgui_begin(XGui *g) {
             if (e.xbutton.button == Button1) {
                 g->mouse_down = true;
                 g->mx = e.xbutton.x; g->my = e.xbutton.y;
-                if (sb_vis && e.xbutton.x >= sbx
-                           && e.xbutton.y >= thy
-                           && e.xbutton.y <  thy + thh) {
-                    g->sb_dragging = true;
-                    g->sb_drag_y0  = e.xbutton.y;
-                    g->sb_drag_s0  = g->scroll_target;
+                if (sb_vis && e.xbutton.x >= sbx) {
+                    if (e.xbutton.y >= thy && e.xbutton.y < thy + thh) {
+                        g->sb_dragging = true;
+                        g->sb_drag_y0  = e.xbutton.y;
+                        g->sb_drag_s0  = g->scroll_target;
+                    } else {
+                        /* Page up/down when clicking track */
+                        int ms = g->content_h - g->height;
+                        if (ms < 0) ms = 0;
+                        if (e.xbutton.y < thy) g->scroll_target -= (g->height - 40);
+                        else                   g->scroll_target += (g->height - 40);
+                        if (g->scroll_target < 0) g->scroll_target = 0;
+                        if (g->scroll_target > ms) g->scroll_target = ms;
+                    }
                 }
             } else if (e.xbutton.button == Button4) {
                 g->scroll_target -= SCROLL_STEP;
-                if (g->scroll_target < 0) g->scroll_target = 0;
+                if (g->scroll_target < -50) g->scroll_target = -50;
             } else if (e.xbutton.button == Button5) {
                 int ms = g->content_h - g->height;
                 if (ms < 0) ms = 0;
                 g->scroll_target += SCROLL_STEP;
-                if (g->scroll_target > ms) g->scroll_target = ms;
+                if (g->scroll_target > ms + 50) g->scroll_target = ms + 50;
             }
             break;
 
@@ -738,6 +746,10 @@ void xgui_begin(XGui *g) {
         }
     }
 
+    if (g->mouse_released) {
+        g->active_id[0] = '\0';
+    }
+
     /* Apply key events to focused input */
     if (g->focused_id[0]) {
         InputState *inp = find_input(g, g->focused_id);
@@ -748,12 +760,25 @@ void xgui_begin(XGui *g) {
         inp->buf[len] = '\0';
     }
 
-    /* Spring-physics smooth scroll */
+    /* Spring-physics smooth scroll (critically damped, framerate independent) */
     if (!g->sb_dragging) {
-        float diff   = (float)g->scroll_target - g->scroll_pos_f;
-        g->scroll_vel = g->scroll_vel * SCROLL_DAMPING + diff * SCROLL_SPRING;
-        g->scroll_pos_f += g->scroll_vel;
-        if (fabsf(diff) < SNAP_THRESH && fabsf(g->scroll_vel) < SNAP_THRESH) {
+        float dt = g->delta_ms / 1000.0f;
+        if (dt > 0.1f) dt = 0.1f; /* cap dt to avoid instability on huge lag */
+
+        float omega = SCROLL_OMEGA;
+        float exp_term = expf(-omega * dt);
+        float diff_pos = g->scroll_pos_f - (float)g->scroll_target;
+
+        /* Critically damped spring integration */
+        float n1 = g->scroll_vel + omega * diff_pos;
+        float next_pos = (float)g->scroll_target + (diff_pos + n1 * dt) * exp_term;
+        float next_vel = (g->scroll_vel - omega * n1 * dt) * exp_term;
+
+        g->scroll_pos_f = next_pos;
+        g->scroll_vel   = next_vel;
+
+        if (fabsf(g->scroll_pos_f - (float)g->scroll_target) < SNAP_THRESH &&
+            fabsf(g->scroll_vel) < SNAP_THRESH) {
             g->scroll_pos_f = (float)g->scroll_target;
             g->scroll_vel   = 0.0f;
         }
@@ -780,8 +805,12 @@ void xgui_end(XGui *g) {
     g->content_h = g->cy + g->scroll_y + g->theme.window.padding_y;
     int maxs = g->content_h - g->height;
     if (maxs < 0) maxs = 0;
-    if (g->scroll_target > maxs) g->scroll_target = maxs;
-    if (g->scroll_target < 0) g->scroll_target = 0;
+    if (g->scroll_target > maxs) {
+        g->scroll_target = maxs;
+    }
+    if (g->scroll_target < 0) {
+        g->scroll_target = 0;
+    }
 
     /* Draw deferred dropdown popup on top of everything */
     if (g->dd.active) {
@@ -1239,20 +1268,27 @@ float xgui_slider(XGui *g, const char *id, float min_v, float max_v, float cur) 
     int x = g->cx, y = g->cy;
     int track_y = y + thumb_r - tr/2;
     float range = max_v - min_v;
+
+    bool hov = (g->mx >= x && g->mx < x+usable && g->my >= y && g->my < y+2*thumb_r);
+    bool active = (strcmp(g->active_id, id) == 0);
+
+    if (hov && g->mouse_down && g->active_id[0] == '\0') {
+        strncpy(g->active_id, id, sizeof(g->active_id)-1);
+        active = true;
+    }
+
+    if (active) {
+        float t = (float)(g->mx - (x + thumb_r)) / (float)(usable - 2*thumb_r);
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        val = min_v + t * range;
+        snprintf(inp->buf, sizeof(inp->buf), "%f", val);
+    }
+
     float t = (range > 0) ? (val - min_v) / range : 0.0f;
     if (t < 0.0f) t = 0.0f;
     if (t > 1.0f) t = 1.0f;
     int thumb_cx = x + (int)(t * (float)(usable - 2*thumb_r)) + thumb_r;
-
-    bool hov = (g->mx >= x && g->mx < x+usable && g->my >= y && g->my < y+2*thumb_r);
-    if (hov && g->mouse_down) {
-        t = (float)(g->mx - x) / (float)(usable - 2*thumb_r);
-        if (t < 0.0f) t = 0.0f;
-        if (t > 1.0f) t = 1.0f;
-        val = min_v + t * range;
-        thumb_cx = x + (int)(t * (float)(usable - 2*thumb_r)) + thumb_r;
-        snprintf(inp->buf, sizeof(inp->buf), "%f", val);
-    }
 
     if (vis(g, y, 2*thumb_r)) {
         uint32_t tc  = 0xe0e0e0;
