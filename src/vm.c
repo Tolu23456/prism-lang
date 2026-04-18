@@ -593,6 +593,14 @@ static Value *vm_bi_xgui_badge(Value **args, int argc) {
     xgui_badge(g_vm_xgui, text, color);
     return value_null();
 }
+static Value *vm_bi_xgui_set_dark(Value **args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_null();
+    bool dark = false;
+    if (args[0]->type == VAL_BOOL)     dark = (args[0]->bool_val != 0);
+    else if (args[0]->type == VAL_INT) dark = (args[0]->int_val  != 0);
+    xgui_set_dark(g_vm_xgui, dark);
+    return value_null();
+}
 
 #else /* !HAVE_X11 — graceful stubs */
 
@@ -654,6 +662,7 @@ void vm_register_builtins(VM *vm) {
         {"xgui_slider",    vm_bi_xgui_slider},
         {"xgui_textarea",  vm_bi_xgui_textarea},
         {"xgui_badge",     vm_bi_xgui_badge},
+        {"xgui_set_dark",  vm_bi_xgui_set_dark},
 #else
         {"xgui_init",      vm_bi_xgui_no_x11},
         {"xgui_style",     vm_bi_xgui_no_x11},
@@ -675,6 +684,7 @@ void vm_register_builtins(VM *vm) {
         {"xgui_slider",    vm_bi_xgui_no_x11},
         {"xgui_textarea",  vm_bi_xgui_no_x11},
         {"xgui_badge",     vm_bi_xgui_no_x11},
+        {"xgui_set_dark",  vm_bi_xgui_no_x11},
 #endif
         {NULL, NULL}
     };
