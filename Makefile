@@ -30,7 +30,6 @@ SRCS = \
 	src/vm.c \
 	src/jit.c \
 	src/transpiler.c \
-	src/gui_native.c \
 	src/formatter.c \
 	$(X11_SRCS)
 
@@ -50,7 +49,6 @@ HEADERS = \
 	src/jit.h \
 	src/transpiler.h \
 	src/opcode.h \
-	src/gui_native.h \
 	src/formatter.h \
 	src/pss.h \
 	src/xgui.h

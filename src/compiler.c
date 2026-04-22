@@ -14,6 +14,14 @@
 #define MAX_BREAK_PATCHES    256
 #define MAX_CONTINUE_PATCHES 256
 
+typedef struct {
+    const char *name;
+    int depth;
+    bool is_const;
+} Local;
+
+#define MAX_LOCALS 256
+
 typedef struct LoopCtx {
     int break_patches[MAX_BREAK_PATCHES];
     int break_count;
@@ -28,8 +36,7 @@ struct Compiler {
     Chunk     *chunk;
     int        had_error;
     char       error_msg[512];
-    LoopCtx   *loop;
-};
+    LoopCtx   *loop; Local locals[MAX_LOCALS]; int local_count; int scope_depth; struct Compiler *outer; };
 
 static void compiler_error(Compiler *c, const char *msg, int line) {
     if (c->had_error) return;
@@ -75,30 +82,33 @@ static void emit_loop(Compiler *c, int target, int line) {
 }
 
 /* Add name string to constant pool; returns index. */
-static uint16_t name_const(Compiler *c, const char *name) {
-    return (uint16_t)chunk_add_const_str(c->chunk, name);
-}
+static uint16_t name_const(Compiler *c, const char *name) { return (uint16_t)chunk_add_const_str(c->chunk, name); }
+static int resolve_local(Compiler *c, const char *name) { for (int i = c->local_count - 1; i >= 0; i--) if (strcmp(c->locals[i].name, name) == 0) return i; return -1; }
+static int add_local(Compiler *c, const char *name, bool is_const) { if (c->local_count >= MAX_LOCALS) return -1; for (int i = c->local_count - 1; i >= 0; i--) { if (c->locals[i].depth != -1 && c->locals[i].depth < c->scope_depth) break; if (strcmp(c->locals[i].name, name) == 0) return -1; } Local *l = &c->locals[c->local_count++]; l->name = name; l->depth = c->scope_depth; l->is_const = is_const; return c->local_count - 1; }
+static void begin_scope(Compiler *c) { c->scope_depth++; }
+static void end_scope(Compiler *c, int ln) { (void)ln; c->scope_depth--; while (c->local_count > 0 && c->locals[c->local_count - 1].depth > c->scope_depth) c->local_count--; }
+
 
 /* ================================================================== Forward decl */
 static void compile_node(Compiler *c, ASTNode *node);
 static void compile_expr(Compiler *c, ASTNode *node);
-static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body);
+static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body, const char *name, Param *params, int param_count);
 
 /* ================================================================== Constant folding
  *
  * Tries to evaluate a binary expression at compile time if both operands are
  * integer or float literals.  Returns NULL when it cannot fold.
  */
-static Value *try_constant_fold(ASTNode *node) {
-    if (node->type != NODE_BINOP) return NULL;
+static Value try_constant_fold(ASTNode *node) {
+    if ((node)->type != NODE_BINOP) return TO_NULL();
 
     ASTNode *L = node->binop.left;
     ASTNode *R = node->binop.right;
     const char *op = node->binop.op;
 
     /* Fold string + string concatenation */
-    bool L_str = (L->type == NODE_STRING_LIT);
-    bool R_str = (R->type == NODE_STRING_LIT);
+    bool L_str = (L)->type == NODE_STRING_LIT;
+    bool R_str = (R)->type == NODE_STRING_LIT;
     if (L_str && R_str && strcmp(op, "+") == 0) {
         const char *ls = L->string_lit.value;
         const char *rs = R->string_lit.value;
@@ -107,23 +117,23 @@ static Value *try_constant_fold(ASTNode *node) {
         memcpy(buf, ls, llen);
         memcpy(buf + llen, rs, rlen);
         buf[llen + rlen] = '\0';
-        Value *v = value_string(buf);
+        Value v = value_string(buf);
         free(buf);
         return v;
     }
 
     /* Only fold pure int/float literals */
-    bool L_int   = (L->type == NODE_INT_LIT);
-    bool L_float = (L->type == NODE_FLOAT_LIT);
-    bool R_int   = (R->type == NODE_INT_LIT);
-    bool R_float = (R->type == NODE_FLOAT_LIT);
+    bool L_int   = (L)->type == NODE_INT_LIT;
+    bool L_float = (L)->type == NODE_FLOAT_LIT;
+    bool R_int   = (R)->type == NODE_INT_LIT;
+    bool R_float = (R)->type == NODE_FLOAT_LIT;
 
-    if (!((L_int || L_float) && (R_int || R_float))) return NULL;
+    if (!((L_int || L_float) && (R_int || R_float))) return TO_NULL();
 
     /* Avoid folding division by zero — leave it to runtime for proper error */
     if ((strcmp(op, "/") == 0 || strcmp(op, "%") == 0 || strcmp(op, "//") == 0) &&
         ((R_int && R->int_lit.value == 0) || (R_float && R->float_lit.value == 0.0)))
-        return NULL;
+        return TO_NULL();
 
     if (L_int && R_int) {
         long long a = L->int_lit.value;
@@ -150,7 +160,7 @@ static Value *try_constant_fold(ASTNode *node) {
         if      (strcmp(op, "^")  == 0) return value_int(a ^ b);
         if      (strcmp(op, "<<") == 0) return (b >= 0 && b < 64) ? value_int(a << b) : value_int(0);
         if      (strcmp(op, ">>") == 0) return (b >= 0 && b < 64) ? value_int(a >> b) : value_int(0);
-        return NULL;
+        return TO_NULL();
     }
 
     /* Mixed int/float */
@@ -168,7 +178,7 @@ static Value *try_constant_fold(ASTNode *node) {
     if      (strcmp(op, "<=") == 0) return value_bool(a <= b ? 1 : 0);
     if      (strcmp(op, ">")  == 0) return value_bool(a >  b ? 1 : 0);
     if      (strcmp(op, ">=") == 0) return value_bool(a >= b ? 1 : 0);
-    return NULL;
+    return TO_NULL();
 }
 
 /* Emit an integer value as efficiently as possible. */
@@ -177,22 +187,20 @@ static void emit_int(Compiler *c, long long v, int ln) {
         /* Small int: use 3-byte OP_PUSH_INT_IMM instead of a const pool entry */
         emit3(c, OP_PUSH_INT_IMM, (uint16_t)(int16_t)v, ln);
     } else {
-        Value *val = value_int(v);
+        Value val = value_int(v);
         emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, val), ln);
         value_release(val);
     }
 }
 
-static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body) {
-    Chunk *chunk = malloc(sizeof(Chunk));
-    Compiler c;
-    c.chunk = chunk;
-    c.had_error = 0;
-    c.error_msg[0] = '\0';
+static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body, const char *name, Param *params, int param_count) {
+    (void)name; Chunk *chunk = malloc(sizeof(Chunk));
+    Compiler c; memset(&c, 0, sizeof(c));
+    c.chunk = chunk; c.had_error = 0; c.error_msg[0] = '\0';
     c.loop = NULL;
 
     chunk_init(chunk);
-    if (body && (body->type == NODE_BLOCK || body->type == NODE_PROGRAM)) {
+    if (body && ((body)->type == NODE_BLOCK || (body)->type == NODE_PROGRAM)) {
         for (int i = 0; i < body->block.count; i++)
             compile_node(&c, body->block.stmts[i]);
     } else if (body) {
@@ -216,7 +224,7 @@ static void compile_node(Compiler *c, ASTNode *node) {
     if (!node || c->had_error) return;
     int ln = node->line;
 
-    switch (node->type) {
+    switch ((node)->type) {
 
     /* ---- program / block ---- */
     case NODE_PROGRAM:
@@ -224,12 +232,7 @@ static void compile_node(Compiler *c, ASTNode *node) {
             compile_node(c, node->block.stmts[i]);
         break;
 
-    case NODE_BLOCK:
-        emit1(c, OP_PUSH_SCOPE, ln);
-        for (int i = 0; i < node->block.count; i++)
-            compile_node(c, node->block.stmts[i]);
-        emit1(c, OP_POP_SCOPE, ln);
-        break;
+    case NODE_BLOCK: begin_scope(c); for (int i = 0; i < node->block.count; i++) compile_node(c, node->block.stmts[i]); end_scope(c, ln); break;
 
     /* ---- variable declaration ---- */
     case NODE_VAR_DECL: {
@@ -237,24 +240,19 @@ static void compile_node(Compiler *c, ASTNode *node) {
             compile_expr(c, node->var_decl.init);
         else
             emit1(c, OP_PUSH_NULL, ln);
-        uint16_t idx = name_const(c, node->var_decl.name);
-        emit3(c, node->var_decl.is_const ? OP_DEFINE_CONST : OP_DEFINE_NAME, idx, ln);
+        if (c->scope_depth > 0) { int slot = add_local(c, node->var_decl.name, node->var_decl.is_const); if (slot != -1) emit3(c, OP_DEFINE_LOCAL, (uint16_t)slot, ln); else compiler_error(c, "already defined", ln); } else { uint16_t idx = name_const(c, node->var_decl.name); emit3(c, node->var_decl.is_const ? OP_DEFINE_CONST : OP_DEFINE_NAME, idx, ln); }
         break;
     }
 
     /* ---- assignment ---- */
     case NODE_ASSIGN: {
         ASTNode *tgt = node->assign.target;
-        if (tgt->type == NODE_IDENT) {
-            compile_expr(c, node->assign.value);
-            uint16_t idx = name_const(c, tgt->ident.name);
-            emit3(c, OP_STORE_NAME, idx, ln);
-        } else if (tgt->type == NODE_INDEX) {
+        if ((tgt)->type == NODE_IDENT) { compile_expr(c, node->assign.value); int slot = resolve_local(c, tgt->ident.name); if (slot != -1) emit3(c, OP_STORE_LOCAL, (uint16_t)slot, ln); else { uint16_t idx = name_const(c, tgt->ident.name); emit3(c, OP_STORE_NAME, idx, ln); } } else if ((tgt)->type == NODE_INDEX) {
             compile_expr(c, tgt->index_expr.obj);
             compile_expr(c, tgt->index_expr.index);
             compile_expr(c, node->assign.value);
             emit1(c, OP_SET_INDEX, ln);
-        } else if (tgt->type == NODE_MEMBER) {
+        } else if ((tgt)->type == NODE_MEMBER) {
             compile_expr(c, tgt->member.obj);
             compile_expr(c, node->assign.value);
             uint16_t idx = name_const(c, tgt->member.name);
@@ -268,13 +266,12 @@ static void compile_node(Compiler *c, ASTNode *node) {
     /* ---- compound assignment (+=, -=, *=, /=) ---- */
     case NODE_COMPOUND_ASSIGN: {
         ASTNode *tgt = node->assign.target;
-        if (tgt->type != NODE_IDENT) {
+        if ((tgt)->type != NODE_IDENT) {
             compiler_error(c, "compound assignment only supported for simple names", ln);
             break;
         }
         /* load current value */
-        uint16_t idx = name_const(c, tgt->ident.name);
-        emit3(c, OP_LOAD_NAME, idx, ln);
+        int slot = resolve_local(c, tgt->ident.name); if (slot != -1) emit3(c, OP_LOAD_LOCAL, (uint16_t)slot, ln); else { uint16_t idx = name_const(c, tgt->ident.name); emit3(c, OP_LOAD_NAME, idx, ln); }
         compile_expr(c, node->assign.value);
         const char *op = node->assign.op;
         if      (op[0] == '+') emit1(c, OP_ADD, ln);
@@ -283,7 +280,7 @@ static void compile_node(Compiler *c, ASTNode *node) {
         else if (op[0] == '/') emit1(c, OP_DIV, ln);
         else if (op[0] == '%') emit1(c, OP_MOD, ln);
         else compiler_error(c, "unknown compound operator", ln);
-        emit3(c, OP_STORE_NAME, idx, ln);
+        if (slot != -1) { if (c->locals[slot].is_const) compiler_error(c, "const", ln); emit3(c, OP_STORE_LOCAL, (uint16_t)slot, ln); } else { uint16_t idx = name_const(c, tgt->ident.name); emit3(c, OP_STORE_NAME, idx, ln); }
         break;
     }
 
@@ -291,9 +288,9 @@ static void compile_node(Compiler *c, ASTNode *node) {
     case NODE_EXPR_STMT: {
         ASTNode *inner = node->expr_stmt.expr;
         /* Assignments are statements, not expressions — route to compile_node */
-        if (inner && (inner->type == NODE_ASSIGN ||
-                      inner->type == NODE_COMPOUND_ASSIGN ||
-                      inner->type == NODE_VAR_DECL)) {
+        if (inner && ((inner)->type == NODE_ASSIGN ||
+                      (inner)->type == NODE_COMPOUND_ASSIGN ||
+                      (inner)->type == NODE_VAR_DECL)) {
             compile_node(c, inner);
         } else {
             compile_expr(c, inner);
@@ -397,7 +394,7 @@ static void compile_node(Compiler *c, ASTNode *node) {
         emit1(c, OP_GET_ITER, ln);
 
         /* push index = 0 */
-        Value *zero = value_int(0);
+        Value zero = value_int(0);
         int zidx = chunk_add_const(c->chunk, zero);
         value_release(zero);
         emit3(c, OP_PUSH_CONST, (uint16_t)zidx, ln);
@@ -438,7 +435,7 @@ static void compile_node(Compiler *c, ASTNode *node) {
     /* ---- link statement: link style.pss or link style.pss, design.pss ---- */
     case NODE_LINK_STMT: {
         for (int i = 0; i < node->link_stmt.path_count; i++) {
-            Value *pv = value_string(node->link_stmt.paths[i]);
+            Value pv = value_string(node->link_stmt.paths[i]);
             uint16_t pi = (uint16_t)chunk_add_const(c->chunk, pv);
             value_release(pv);
             emit3(c, OP_LINK_STYLE, pi, ln);
@@ -457,17 +454,17 @@ static void compile_node(Compiler *c, ASTNode *node) {
 
     /* ---- function declaration ---- */
     case NODE_FUNC_DECL: {
-        Chunk *fn_chunk = compile_function_chunk(c, node->func_decl.body);
+        Chunk *fn_chunk = compile_function_chunk(c, node->func_decl.body, node->func_decl.name, node->func_decl.params, node->func_decl.param_count);
         if (!fn_chunk) break;
-        Value *fn = value_function(
+        Value fn = value_function(
             node->func_decl.name,
             node->func_decl.params,
             node->func_decl.param_count,
             node->func_decl.body,
             NULL  /* closure env set at runtime */
         );
-        fn->func.chunk = fn_chunk;
-        fn->func.owns_chunk = true;
+        AS_FUNC(fn).chunk = fn_chunk;
+        AS_FUNC(fn).owns_chunk = true;
         int idx = chunk_add_const(c->chunk, fn);
         value_release(fn);
         emit3(c, OP_MAKE_FUNCTION, (uint16_t)idx, ln);
@@ -490,7 +487,7 @@ static void compile_expr(Compiler *c, ASTNode *node) {
     if (!node || c->had_error) return;
     int ln = node->line;
 
-    switch (node->type) {
+    switch ((node)->type) {
 
     /* ---- literals ---- */
     case NODE_NULL_LIT:
@@ -508,21 +505,21 @@ static void compile_expr(Compiler *c, ASTNode *node) {
         break;
 
     case NODE_FLOAT_LIT: {
-        Value *v = value_float(node->float_lit.value);
+        Value v = value_float(node->float_lit.value);
         emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, v), ln);
         value_release(v);
         break;
     }
 
     case NODE_COMPLEX_LIT: {
-        Value *v = value_complex(node->complex_lit.real, node->complex_lit.imag);
+        Value v = value_complex(node->complex_lit.real, node->complex_lit.imag);
         emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, v), ln);
         value_release(v);
         break;
     }
 
     case NODE_STRING_LIT: {
-        Value *v = value_string(node->string_lit.value);
+        Value v = value_string(node->string_lit.value);
         emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, v), ln);
         value_release(v);
         break;
@@ -531,7 +528,7 @@ static void compile_expr(Compiler *c, ASTNode *node) {
     case NODE_FSTRING_LIT: {
         /* f-strings: push the raw template + emit OP_BUILD_FSTRING(1) so the VM
          * processes interpolations (just like the interpreter does). */
-        Value *v = value_string(node->string_lit.value);
+        Value v = value_string(node->string_lit.value);
         emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, v), ln);
         value_release(v);
         emit3(c, OP_BUILD_FSTRING, 1, ln);
@@ -539,9 +536,7 @@ static void compile_expr(Compiler *c, ASTNode *node) {
     }
 
     /* ---- identifiers ---- */
-    case NODE_IDENT:
-        emit3(c, OP_LOAD_NAME, name_const(c, node->ident.name), ln);
-        break;
+    case NODE_IDENT: { int slot = resolve_local(c, node->ident.name); if (slot != -1) emit3(c, OP_LOAD_LOCAL, (uint16_t)slot, ln); else emit3(c, OP_LOAD_NAME, name_const(c, node->ident.name), ln); break; }
 
     /* ---- binary ops ---- */
     case NODE_BINOP: {
@@ -568,10 +563,10 @@ static void compile_expr(Compiler *c, ASTNode *node) {
 
         /* Constant folding: evaluate int/float literal binops at compile time */
         {
-            Value *folded = try_constant_fold(node);
+            Value folded = try_constant_fold(node);
             if (folded) {
-                if (folded->type == VAL_INT)
-                    emit_int(c, folded->int_val, ln);
+                if (VAL_TYPE(folded) == VAL_INT)
+                    emit_int(c, AS_INT(folded), ln);
                 else
                     emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, folded), ln);
                 value_release(folded);
@@ -641,24 +636,24 @@ static void compile_expr(Compiler *c, ASTNode *node) {
 
         /* Compile-time folding for unary on literal operands */
         if (strcmp(op, "-") == 0) {
-            if (operand->type == NODE_INT_LIT) {
+            if ((operand)->type == NODE_INT_LIT) {
                 emit_int(c, -operand->int_lit.value, ln);
                 break;
             }
-            if (operand->type == NODE_FLOAT_LIT) {
-                Value *v = value_float(-operand->float_lit.value);
+            if ((operand)->type == NODE_FLOAT_LIT) {
+                Value v = value_float(-operand->float_lit.value);
                 emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, v), ln);
                 value_release(v);
                 break;
             }
         }
-        if (strcmp(op, "~") == 0 && operand->type == NODE_INT_LIT) {
+        if (strcmp(op, "~") == 0 && (operand)->type == NODE_INT_LIT) {
             emit_int(c, ~operand->int_lit.value, ln);
             break;
         }
         if ((strcmp(op, "not") == 0 || strcmp(op, "!") == 0) &&
-            operand->type == NODE_BOOL_LIT) {
-            Value *v = value_bool(operand->bool_lit.value ? 0 : 1);
+            (operand)->type == NODE_BOOL_LIT) {
+            Value v = value_bool(operand->bool_lit.value ? 0 : 1);
             emit3(c, OP_PUSH_CONST, (uint16_t)chunk_add_const(c->chunk, v), ln);
             value_release(v);
             break;
@@ -707,6 +702,19 @@ static void compile_expr(Compiler *c, ASTNode *node) {
         break;
 
     /* ---- collections ---- */
+
+    case NODE_RANGE:
+        compile_expr(c, node->range_lit.start);
+        compile_expr(c, node->range_lit.end);
+        if (node->range_lit.step) compile_expr(c, node->range_lit.step);
+        else emit1(c, OP_PUSH_NULL, ln);
+        {
+            uint16_t flags = 0;
+            if (node->range_lit.step) flags |= 1;
+            if (node->range_lit.inclusive) flags |= 2;
+            emit3(c, OP_MAKE_RANGE, flags, ln);
+        }
+        break;
     case NODE_ARRAY_LIT:
         for (int i = 0; i < node->list_lit.count; i++)
             compile_expr(c, node->list_lit.items[i]);
@@ -782,17 +790,17 @@ static void compile_expr(Compiler *c, ASTNode *node) {
 
     /* ---- anonymous function expression (fn or func without name) ---- */
     case NODE_FN_EXPR: {
-        Chunk *fn_chunk = compile_function_chunk(c, node->fn_expr.body);
+        Chunk *fn_chunk = compile_function_chunk(c, node->fn_expr.body, "<lambda>", node->fn_expr.params, node->fn_expr.param_count);
         if (!fn_chunk) break;
-        Value *fn = value_function(
+        Value fn = value_function(
             "<lambda>",
             node->fn_expr.params,
             node->fn_expr.param_count,
             node->fn_expr.body,
             NULL
         );
-        fn->func.chunk = fn_chunk;
-        fn->func.owns_chunk = true;
+        AS_FUNC(fn).chunk = fn_chunk;
+        AS_FUNC(fn).owns_chunk = true;
         int idx = chunk_add_const(c->chunk, fn);
         value_release(fn);
         emit3(c, OP_MAKE_FUNCTION, (uint16_t)idx, ln);
@@ -843,10 +851,7 @@ static void compile_expr(Compiler *c, ASTNode *node) {
 /* ================================================================== Entry point */
 
 int compile(ASTNode *program, Chunk *out, char *error_buf, int error_buf_len) {
-    Compiler c;
-    c.chunk      = out;
-    c.had_error  = 0;
-    c.error_msg[0] = '\0';
+    Compiler c; memset(&c, 0, sizeof(c)); c.chunk = out; c.had_error = 0; c.error_msg[0] = '\0';
     c.loop       = NULL;
 
     chunk_init(out);

@@ -233,18 +233,18 @@ static bool record_trace(JitTrace *trace, Chunk *chunk) {
             break;
         }
         case OP_PUSH_CONST: {
-            Value *c = chunk->constants[op16];
-            if (c->type == VAL_INT) {
+            Value c = chunk->constants[op16];
+            if (VAL_TYPE(c) == VAL_INT) {
                 int s = NEW_TEMP(); if (s < 0) return false;
                 JIRInstr *ins = EMT(JIR_LOAD_INT);
                 if (!ins) return false;
-                ins->dst = s; ins->imm = c->int_val;
+                ins->dst = s; ins->imm = AS_INT(c);
                 TS_PUSH(STACK_INT, s);
-            } else if (c->type == VAL_FLOAT) {
+            } else if (VAL_TYPE(c) == VAL_FLOAT) {
                 int s = NEW_TEMP(); if (s < 0) return false;
                 JIRInstr *ins = EMT(JIR_LOAD_FLOAT);
                 if (!ins) return false;
-                ins->dst = s; ins->fimm = c->float_val;
+                ins->dst = s; ins->fimm = AS_FLOAT(c);
                 TS_PUSH(STACK_FLOAT, s);
             } else {
                 return false; /* string / other constants: abort */
@@ -254,7 +254,7 @@ static bool record_trace(JitTrace *trace, Chunk *chunk) {
 
         /* ---- variables ---- */
         case OP_LOAD_NAME: {
-            const char *name = chunk->constants[op16]->str_val;
+            const char *name = AS_STR(chunk->constants[op16]);
             int s = var_slot_alloc(trace, name);
             if (s < 0) return false;
             JIRInstr *ins = EMT(JIR_LOAD_LOCAL);
@@ -267,7 +267,7 @@ static bool record_trace(JitTrace *trace, Chunk *chunk) {
         case OP_STORE_NAME:
         case OP_DEFINE_NAME:
         case OP_DEFINE_CONST: {
-            const char *name = chunk->constants[op16]->str_val;
+            const char *name = AS_STR(chunk->constants[op16]);
             TSItem top = TS_POP();
             if (top.type == STACK_OTHER) return false;
             int s = var_slot_alloc(trace, name);
@@ -1253,12 +1253,13 @@ int jit_execute(JitTrace *trace, VM *vm, Env *env) {
     memset(regs, 0, sizeof(regs));
 
     for (int i = 0; i < trace->var_count; i++) {
-        Value *v = env_get(env, trace->vars[i]);
-        if (!v || v->type != VAL_INT) {
+        Value *v_ptr = env_get(env, trace->vars[i]);
+        Value v = v_ptr ? *v_ptr : TO_NULL();
+        if (!v || VAL_TYPE(v) != VAL_INT) {
             trace->guard_fails++;
             return JIT_EXIT_GUARD_FAIL;
         }
-        regs[i] = v->int_val;
+        regs[i] = AS_INT(v);
     }
 
     /* Call the native trace function. */
@@ -1272,7 +1273,7 @@ int jit_execute(JitTrace *trace, VM *vm, Env *env) {
 
     /* Write back all traced variable values to the environment. */
     for (int i = 0; i < trace->var_count; i++) {
-        Value *nv = value_int(regs[i]);
+        Value nv = value_int(regs[i]);
         env_assign(env, trace->vars[i], nv);
         value_release(nv);
     }

@@ -37,17 +37,17 @@ void chunk_emit16(Chunk *c, uint16_t val, int line) {
     chunk_emit(c, (uint8_t)((val >> 8) & 0xFF), line);
 }
 
-int chunk_add_const(Chunk *c, Value *v) {
+int chunk_add_const(Chunk *c, Value v) {
     if (c->const_count >= c->const_cap) {
         c->const_cap  = c->const_cap < 8 ? 8 : c->const_cap * 2;
-        c->constants  = realloc(c->constants, c->const_cap * sizeof(Value *));
+        c->constants  = realloc(c->constants, c->const_cap * sizeof(Value ));
     }
     c->constants[c->const_count] = value_retain(v);
     return c->const_count++;
 }
 
 int chunk_add_const_str(Chunk *c, const char *s) {
-    Value *v = value_string(s);
+    Value v = value_string(s);
     int idx  = chunk_add_const(c, v);
     value_release(v);
     return idx;
@@ -107,30 +107,30 @@ int chunk_write_bytecode(Chunk *c, const char *path) {
 
     failed = failed || write_u32(f, (uint32_t)c->const_count);
     for (int i = 0; !failed && i < c->const_count; i++) {
-        Value *v = c->constants[i];
-        failed = failed || write_u8(f, (uint8_t)v->type);
-        switch (v->type) {
+        Value v = c->constants[i];
+        failed = failed || write_u8(f, (uint8_t)VAL_TYPE(v));
+        switch (VAL_TYPE(v)) {
             case VAL_INT:
-                failed = failed || write_i64(f, v->int_val);
+                failed = failed || write_i64(f, AS_INT(v));
                 break;
             case VAL_FLOAT:
-                failed = failed || write_double(f, v->float_val);
+                failed = failed || write_double(f, AS_FLOAT(v));
                 break;
             case VAL_COMPLEX:
-                failed = failed || write_double(f, v->complex_val.real);
-                failed = failed || write_double(f, v->complex_val.imag);
+                failed = failed || write_double(f, AS_COMPLEX(v)._real_);
+                failed = failed || write_double(f, AS_COMPLEX(v)._imag_);
                 break;
             case VAL_STRING:
-                failed = failed || write_string(f, v->str_val);
+                failed = failed || write_string(f, AS_STR(v));
                 break;
             case VAL_BOOL:
-                failed = failed || write_i64(f, v->bool_val);
+                failed = failed || write_i64(f, AS_BOOL(v));
                 break;
             case VAL_FUNCTION:
-                failed = failed || write_string(f, v->func.name);
-                failed = failed || write_u32(f, v->func.chunk ? (uint32_t)v->func.chunk->count : 0);
-                if (!failed && v->func.chunk && v->func.chunk->count > 0)
-                    failed = fwrite(v->func.chunk->code, 1, v->func.chunk->count, f) != (size_t)v->func.chunk->count;
+                failed = failed || write_string(f, AS_FUNC(v).name);
+                failed = failed || write_u32(f, AS_FUNC(v).chunk ? (uint32_t)AS_FUNC(v).chunk->count : 0);
+                if (!failed && AS_FUNC(v).chunk && AS_FUNC(v).chunk->count > 0)
+                    failed = fwrite(AS_FUNC(v).chunk->code, 1, AS_FUNC(v).chunk->count, f) != (size_t)AS_FUNC(v).chunk->count;
                 break;
             default:
                 break;

@@ -1,0 +1,58 @@
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -O3 -DNDEBUG -march=native -fomit-frame-pointer -o prism-release src/main.c src/lexer.c src/ast.c src/parser.c src/value.c src/gc.c src/builtins.c src/interpreter.c src/chunk.c src/compiler.c src/vm.c src/jit.c src/transpiler.c src/gui_native.c src/formatter.c src/pss.c src/xgui.c -lm -lXft -lXrender -lX11 -lfontconfig -lfreetype
+In function ‘env_rehash’,
+    inlined from ‘env_set’ at src/interpreter.c:165:9:
+src/interpreter.c:74:18: warning: argument 1 range [18446744072277895852, 18446744073709551615] exceeds maximum object size 9223372036854775807 [-Walloc-size-larger-than=]
+   74 |     env->slots = calloc((size_t)new_cap, sizeof(EnvSlot));
+      |                  ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from src/interpreter.c:3:
+/usr/include/stdlib.h: In function ‘env_set’:
+/usr/include/stdlib.h:675:14: note: in a call to allocation function ‘calloc’ declared here
+  675 | extern void *calloc (size_t __nmemb, size_t __size)
+      |              ^~~~~~
+src/compiler.c: In function ‘compile_function_chunk’:
+src/compiler.c:196:96: warning: unused parameter ‘params’ [-Wunused-parameter]
+  196 | static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body, const char *name, Param *params, int param_count) {
+      |                                                                                         ~~~~~~~^~~~~~
+src/compiler.c:196:108: warning: unused parameter ‘param_count’ [-Wunused-parameter]
+  196 | static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body, const char *name, Param *params, int param_count) {
+      |                                                                                                        ~~~~^~~~~~~~~~~
+src/compiler.c: In function ‘compile_function_chunk.isra’:
+src/compiler.c:44:60: warning: ‘%s’ directive output may be truncated writing up to 511 bytes into a region of size between 494 and 504 [-Wformat-truncation=]
+   44 |     snprintf(c->error_msg, sizeof(c->error_msg), "line %d: %s", line, msg);
+      |                                                            ^~
+......
+  212 |         compiler_error(parent, c.error_msg, body ? body->line : 0);
+      |                                ~~~~~~~~~~~
+In file included from /usr/include/stdio.h:980,
+                 from src/compiler.c:2:
+In function ‘snprintf’,
+    inlined from ‘compiler_error’ at src/compiler.c:44:5,
+    inlined from ‘compiler_error’ at src/compiler.c:41:13,
+    inlined from ‘compile_function_chunk.isra’ at src/compiler.c:212:9:
+/usr/include/x86_64-linux-gnu/bits/stdio2.h:54:10: note: ‘__builtin___snprintf_chk’ output between 9 and 530 bytes into a destination of size 512
+   54 |   return __builtin___snprintf_chk (__s, __n, __USE_FORTIFY_LEVEL - 1,
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   55 |                                    __glibc_objsize (__s), __fmt,
+      |                                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   56 |                                    __va_arg_pack ());
+      |                                    ~~~~~~~~~~~~~~~~~
+src/vm.c: In function ‘vm_run’:
+src/vm.c:2408:17: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+ 2408 |                 for (int i = 0; i < argc; i++) value_release(args[i]); if (argc > VM_CALL_STACK_BUF) free(args);
+      |                 ^~~
+src/vm.c:2408:72: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+ 2408 |                 for (int i = 0; i < argc; i++) value_release(args[i]); if (argc > VM_CALL_STACK_BUF) free(args);
+      |                                                                        ^~
+src/vm.c:3029:17: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+ 3029 |                 for (int i = 0; i < argc; i++) value_release(args[i]); if (argc > VM_CALL_STACK_BUF) free(args);
+      |                 ^~~
+src/vm.c:3029:72: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+ 3029 |                 for (int i = 0; i < argc; i++) value_release(args[i]); if (argc > VM_CALL_STACK_BUF) free(args);
+      |                                                                        ^~
+src/vm.c:3055:21: warning: this ‘for’ clause does not guard... [-Wmisleading-indentation]
+ 3055 |                     for (int i = 0; i < argc; i++) value_release(args[i]); if (argc > VM_CALL_STACK_BUF) free(args);
+      |                     ^~~
+src/vm.c:3055:76: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘for’
+ 3055 |                     for (int i = 0; i < argc; i++) value_release(args[i]); if (argc > VM_CALL_STACK_BUF) free(args);
+      |                                                                            ^~
+Release build: prism-release  (gcc -O3 -DNDEBUG -march=native)
