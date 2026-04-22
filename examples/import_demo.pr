@@ -1,0 +1,7 @@
+%greet
+output(HELLO)
+output(hi("world"))
+
+%greet as g
+output(g.BYE)
+output(g.bye("you"))

@@ -286,6 +286,13 @@ static ASTNode *parse_primary(Parser *p) {
     if (p->current->type == TOKEN_STRING_LIT) { ASTNode *n = ast_node_new(NODE_STRING_LIT, p->current->line); n->string_lit.value = strdup(p->current->value); advance(p); return n; }
     if (p->current->type == TOKEN_IDENT) {
         ASTNode *n = ast_node_new(NODE_IDENT, p->current->line); n->ident.name = strdup(p->current->value); advance(p);
+        while (p->current->type == TOKEN_DOT) {
+            advance(p);
+            if (p->current->type != TOKEN_IDENT) break;
+            ASTNode *m = ast_node_new(NODE_MEMBER, p->current->line);
+            m->member.obj = n; m->member.name = strdup(p->current->value);
+            advance(p); n = m;
+        }
         if (p->current->type == TOKEN_LPAREN) {
             advance(p); ASTNode *call = ast_node_new(NODE_FUNC_CALL, n->line); call->func_call.callee = n;
             call->func_call.args = malloc(sizeof(ASTNode*) * 64); int c = 0;
@@ -321,11 +328,67 @@ static ASTNode *parse_expr(Parser *p) {
 
 static ASTNode *parse_stmt(Parser *p) {
     while (p->current->type == TOKEN_NEWLINE) advance(p);
-    if (p->current->type == TOKEN_LET) {
+    if (p->current->type == TOKEN_PERCENT) {
+        int line = p->current->line; advance(p);
+        if (p->current->type != TOKEN_IDENT) return NULL;
+        char *path = strdup(p->current->value); advance(p);
+        char *alias = NULL;
+        if (p->current->type == TOKEN_AS) {
+            advance(p);
+            if (p->current->type == TOKEN_IDENT) { alias = strdup(p->current->value); advance(p); }
+        }
+        ASTNode *n = ast_node_new(NODE_IMPORT, line);
+        n->import_stmt.path = path; n->import_stmt.alias = alias; n->import_stmt.symbol = NULL;
+        return n;
+    }
+    if (p->current->type == TOKEN_LET || p->current->type == TOKEN_CONST) {
+        bool is_const = (p->current->type == TOKEN_CONST);
         advance(p); if (p->current->type != TOKEN_IDENT) return NULL;
         char *name = strdup(p->current->value); advance(p);
         if (p->current->type == TOKEN_EQ) advance(p);
-        ASTNode *n = ast_node_new(NODE_VAR_DECL, p->current->line); n->var_decl.name = name; n->var_decl.init = parse_expr(p); return n;
+        ASTNode *n = ast_node_new(NODE_VAR_DECL, p->current->line);
+        n->var_decl.name = name; n->var_decl.init = parse_expr(p); n->var_decl.is_const = is_const;
+        return n;
+    }
+    if (p->current->type == TOKEN_FUNC || p->current->type == TOKEN_FN) {
+        int line = p->current->line; advance(p);
+        if (p->current->type != TOKEN_IDENT) return NULL;
+        char *fname = strdup(p->current->value); advance(p);
+        Param *params = malloc(sizeof(Param) * 32); int pc = 0;
+        if (p->current->type == TOKEN_LPAREN) {
+            advance(p);
+            while (p->current->type != TOKEN_RPAREN && p->current->type != TOKEN_EOF) {
+                if (p->current->type == TOKEN_IDENT) {
+                    params[pc].name = strdup(p->current->value);
+                    params[pc].type_hint = NULL; params[pc].default_val = NULL;
+                    pc++; advance(p);
+                }
+                if (p->current->type == TOKEN_COMMA) advance(p);
+            }
+            if (p->current->type == TOKEN_RPAREN) advance(p);
+        }
+        while (p->current->type == TOKEN_NEWLINE) advance(p);
+        ASTNode *body = ast_node_new(NODE_BLOCK, line);
+        body->block.stmts = malloc(sizeof(ASTNode*) * 256); int bc = 0;
+        if (p->current->type == TOKEN_LBRACE) advance(p);
+        while (p->current->type != TOKEN_RBRACE && p->current->type != TOKEN_EOF) {
+            ASTNode *s = parse_stmt(p); if (s) body->block.stmts[bc++] = s;
+            while (p->current->type == TOKEN_NEWLINE) advance(p);
+        }
+        if (p->current->type == TOKEN_RBRACE) advance(p);
+        body->block.count = bc;
+        ASTNode *n = ast_node_new(NODE_FUNC_DECL, line);
+        n->func_decl.name = fname; n->func_decl.params = params;
+        n->func_decl.param_count = pc; n->func_decl.body = body;
+        return n;
+    }
+    if (p->current->type == TOKEN_RETURN) {
+        int line = p->current->line; advance(p);
+        ASTNode *n = ast_node_new(NODE_RETURN, line);
+        if (p->current->type != TOKEN_NEWLINE && p->current->type != TOKEN_RBRACE && p->current->type != TOKEN_EOF) {
+            n->ret.value = parse_expr(p);
+        } else { n->ret.value = NULL; }
+        return n;
     }
     if (p->current->type == TOKEN_FOR) {
         advance(p); if (p->current->type != TOKEN_IDENT) return NULL;

@@ -1,0 +1,15 @@
+const HELLO = "Hello"
+const BYE   = "Goodbye"
+const VERSION = "1.0.0"
+
+func hi(name) {
+    return "Hello there"
+}
+
+func bye(name) {
+    return "Goodbye friend"
+}
+
+func unused_helper(x) {
+    return x
+}

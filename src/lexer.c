@@ -21,10 +21,10 @@ void token_free(Token *t) { if (t) { if (!t->interned) free(t->value); free(t); 
 
 typedef struct { const char *word; TokenType type; } KW;
 static const KW KEYWORDS[] = {
-    {"let",TOKEN_LET},{"func",TOKEN_FUNC},{"fn",TOKEN_FN},{"return",TOKEN_RETURN},
+    {"let",TOKEN_LET},{"const",TOKEN_CONST},{"func",TOKEN_FUNC},{"fn",TOKEN_FN},{"return",TOKEN_RETURN},
     {"if",TOKEN_IF},{"else",TOKEN_ELSE},{"while",TOKEN_WHILE},{"for",TOKEN_FOR},
     {"in",TOKEN_IN},{"true",TOKEN_TRUE},{"false",TOKEN_FALSE},{"null",TOKEN_NULL},
-    {"step",TOKEN_STEP},{"range",TOKEN_RANGE_KW},
+    {"step",TOKEN_STEP},{"range",TOKEN_RANGE_KW},{"as",TOKEN_AS},
     {NULL, 0}
 };
 
@@ -67,6 +67,8 @@ Token *lexer_next(Lexer *l) {
     }
     advance(l);
     if (c == '.' && cur(l) == '.') { advance(l); return make_token(l, TOKEN_DOTDOT, ".."); }
+    if (c == '.') return make_token(l, TOKEN_DOT, ".");
+    if (c == '%') return make_token(l, TOKEN_PERCENT, "%");
     if (c == '(') return make_token(l, TOKEN_LPAREN, "(");
     if (c == ')') return make_token(l, TOKEN_RPAREN, ")");
     if (c == '{') return make_token(l, TOKEN_LBRACE, "{");

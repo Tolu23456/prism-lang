@@ -42,3 +42,25 @@ The **"Start application"** workflow runs `make && ./prism examples/hello.pr`, w
 - Generational mark-and-sweep garbage collector with adaptive GC policies
 - X11-native GUI toolkit with PSS (Prism StyleSheet) styling engine
 - JIT compilation for hot integer loops
+
+## Module Import Syntax
+Prism supports a concise `%` import syntax with **automatic tree-shaking** —
+only the symbols the program actually references are pulled into scope.
+
+- `%libname` — imports referenced names from `lib/libname.pr` directly into the
+  current scope. Unused declarations from the module are skipped entirely.
+- `%libname as alias` — loads the module into a namespace bound to `alias`.
+  Only members accessed via `alias.member` are imported into the namespace.
+
+Example (`examples/import_demo.pr`):
+```
+%greet
+output(HELLO)         # only HELLO + hi are pulled in
+output(hi("world"))
+
+%greet as g
+output(g.BYE)         # only BYE + bye are pulled into the `g` namespace
+output(g.bye("you"))
+```
+Implemented in `src/parser.c` (statement parsing) and `src/interpreter.c`
+(`NODE_IMPORT` handler with reachability scan over the program AST).
