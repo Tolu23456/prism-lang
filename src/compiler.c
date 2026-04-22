@@ -46,7 +46,7 @@ struct Compiler {
 static void compiler_error(Compiler *c, const char *msg, int line) {
     if (c->had_error) return;
     c->had_error = 1;
-    snprintf(c->error_msg, sizeof(c->error_msg), "line %d: %s", line, msg);
+    snprintf(c->error_msg, sizeof(c->error_msg), "line %d: %.480s", line, msg);
 }
 
 /* ================================================================== Emit helpers */
@@ -92,7 +92,9 @@ static void emit_loop(Compiler *c, int target, int line) {
 static uint16_t name_const(Compiler *c, const char *name) { return (uint16_t)chunk_add_const_str(c->chunk, name); }
 static int resolve_local(Compiler *c, const char *name) { for (int i = c->local_count - 1; i >= 0; i--) if (strcmp(c->locals[i].name, name) == 0) return i; return -1; }
 static int add_local(Compiler *c, const char *name, bool is_const) { if (c->local_count >= MAX_LOCALS) return -1; for (int i = c->local_count - 1; i >= 0; i--) { if (c->locals[i].depth != -1 && c->locals[i].depth < c->scope_depth) break; if (strcmp(c->locals[i].name, name) == 0) return -1; } Local *l = &c->locals[c->local_count++]; l->name = name; l->depth = c->scope_depth; l->is_const = is_const; return c->local_count - 1; }
+static void begin_scope(Compiler *c) __attribute__((unused));
 static void begin_scope(Compiler *c) { c->scope_depth++; }
+static void end_scope(Compiler *c, int ln) __attribute__((unused));
 static void end_scope(Compiler *c, int ln) { (void)ln; c->scope_depth--; while (c->local_count > 0 && c->locals[c->local_count - 1].depth > c->scope_depth) c->local_count--; }
 
 

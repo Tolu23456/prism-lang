@@ -29,17 +29,20 @@ void env_rehash(Env *env, int new_cap) {
 Env *env_new(Env *parent) {
     Env *e = calloc(1, sizeof(Env)); e->refcount = 1; e->cap = 16;
     e->slots = calloc(16, sizeof(EnvSlot)); e->parent = parent;
-    if(parent) parent->refcount++; return e;
+    if (parent) parent->refcount++;
+    return e;
 }
 Env *env_retain(Env *e) { if(e) e->refcount++; return e; }
 void env_free(Env *env) {
-    if (!env) return; if (--env->refcount > 0) return;
+    if (!env) return;
+    if (--env->refcount > 0) return;
     for (int i = 0; i < env->cap; i++) if (env->slots[i].key) value_release(env->slots[i].val);
     free(env->slots); Env *p = env->parent; free(env); env_free(p);
 }
 
 Value *env_get(Env *env, const char *name) {
-    if(!name) return NULL; const char *key = env_intern(name);
+    if (!name) return NULL;
+    const char *key = env_intern(name);
     for (Env *e = env; e; e = e->parent) {
         unsigned h = env_ptr_slot(key, e->cap);
         for (int i = 0; i < e->cap; i++) {
@@ -52,7 +55,8 @@ Value *env_get(Env *env, const char *name) {
 }
 
 bool env_set(Env *env, const char *name, Value val, bool is_const) {
-    if(!name) return false; const char *key = env_intern(name);
+    if (!name) return false;
+    const char *key = env_intern(name);
     unsigned h = env_ptr_slot(key, env->cap);
     for (int i = 0; i < env->cap; i++) {
         unsigned idx = (h + i) & (env->cap - 1);

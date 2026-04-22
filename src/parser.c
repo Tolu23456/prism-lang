@@ -6,14 +6,6 @@
 #include "ast.h"
 
 static ASTNode *parse_expr(Parser *p);
-static ASTNode *parse_block(Parser *p);
-static ASTNode *parse_nullcoal(Parser *p);
-static ASTNode *parse_range(Parser *p);
-static ASTNode *parse_logical_or(Parser *p);
-static ASTNode *parse_class_decl(Parser *p);
-static ASTNode *parse_struct_decl(Parser *p);
-static Param   *parse_param_list(Parser *p, int *out_count);
-static void     free_params(Param *params, int count);
 
 static Token *advance(Parser *p) {
     Token *prev = p->current;
@@ -23,9 +15,11 @@ static Token *advance(Parser *p) {
 }
 
 static bool check(Parser *p, TokenType t) { return p->current->type == t; }
+static bool check_peek(Parser *p, TokenType t) __attribute__((unused));
 static bool check_peek(Parser *p, TokenType t) { return p->peek->type == t; }
 
 /* Allow "soft keywords" and type keywords to be used as identifiers */
+static bool is_name_token(TokenType t) __attribute__((unused));
 static bool is_name_token(TokenType t) {
     /* Tokens that are valid as identifiers in expression or parameter context */
     switch (t) {
@@ -131,24 +125,10 @@ void parser_free(Parser *p) {
 /* ================================================================== expressions */
 
 static ASTNode *parse_primary(Parser *p);
-static ASTNode *parse_postfix(Parser *p);
-static ASTNode *parse_unary(Parser *p);
-static ASTNode *parse_power(Parser *p);
-static ASTNode *parse_mul(Parser *p);
-static ASTNode *parse_add(Parser *p);
-static ASTNode *parse_compare(Parser *p);
-static ASTNode *parse_equality(Parser *p);
-static ASTNode *parse_bitand(Parser *p);
-static ASTNode *parse_bitxor(Parser *p);
-static ASTNode *parse_bitor(Parser *p);
-static ASTNode *parse_logical_and(Parser *p);
-static ASTNode *parse_logical_or(Parser *p);
-static ASTNode *parse_range(Parser *p);
-static ASTNode *parse_nullcoal(Parser *p);
-static ASTNode *parse_assign(Parser *p);
 
 /* ---- primary ---- */
 
+static ASTNode **parse_arg_list(Parser *p, int *out_count) __attribute__((unused));
 static ASTNode **parse_arg_list(Parser *p, int *out_count) {
     *out_count = 0;
     int cap = 4;
@@ -165,6 +145,7 @@ static ASTNode **parse_arg_list(Parser *p, int *out_count) {
     return args;
 }
 
+static ASTNode *parse_array_literal(Parser *p, int line, bool use_arr_kw) __attribute__((unused));
 static ASTNode *parse_array_literal(Parser *p, int line, bool use_arr_kw) {
     /* opening '[' already consumed */
     (void)use_arr_kw;
@@ -186,6 +167,7 @@ static ASTNode *parse_array_literal(Parser *p, int line, bool use_arr_kw) {
 }
 
 /* parse {key:val, ...} as dict or {val, val, ...} as set */
+static ASTNode *parse_brace_literal(Parser *p, int line) __attribute__((unused));
 static ASTNode *parse_brace_literal(Parser *p, int line) {
     /* opening '{' already consumed */
     skip_newlines(p);
@@ -257,6 +239,7 @@ static ASTNode *parse_brace_literal(Parser *p, int line) {
 }
 
 /* parse () or (expr) or (a, b, c) */
+static ASTNode *parse_paren_or_tuple(Parser *p, int line) __attribute__((unused));
 static ASTNode *parse_paren_or_tuple(Parser *p, int line) {
     /* '(' already consumed */
     skip_newlines(p);

@@ -21,6 +21,7 @@
 
 /* ------------------------------------------------------------------ file reader */
 
+static char *read_file(const char *path) __attribute__((unused));
 static char *read_file(const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) { fprintf(stderr, "Error: cannot open '%s'\n", path); return NULL; }
@@ -51,6 +52,7 @@ static void bytecode_path_for_source(const char *filename, char *out, size_t out
 
 /* ------------------------------------------------------------------ helpers for emit-c / emit-llvm */
 
+static int emit_c_from_source(const char *source, const char *filename) __attribute__((unused));
 static int emit_c_from_source(const char *source, const char *filename) {
     Parser  *parser  = parser_new(source);
     ASTNode *program = parser_parse(parser);
@@ -66,6 +68,7 @@ static int emit_c_from_source(const char *source, const char *filename) {
     return 0;
 }
 
+static int emit_llvm_from_source(const char *source, const char *filename) __attribute__((unused));
 static int emit_llvm_from_source(const char *source, const char *filename) {
     /* Parse + compile to get a hot JIT trace, then emit LLVM IR for it. */
     Parser  *parser  = parser_new(source);
@@ -214,6 +217,7 @@ static int run_source_tree(const char *source, const char *filename) {
     return exit_code;
 }
 
+static int run_benchmark(const char *source, const char *filename) __attribute__((unused));
 static int run_benchmark(const char *source, const char *filename) {
     /* benchmark mode — hint workload so PrismGC uses throughput settings */
     gc_set_workload(gc_global(), GC_WORKLOAD_BENCH);
@@ -512,6 +516,7 @@ static int count_open_blocks(const char *src) {
 
 /* ------------------------------------------------------------------ REPL */
 
+static void run_repl(void) __attribute__((unused));
 static void run_repl(void) {
     printf("Prism %s  [REPL]  Up/Down=history  Ctrl-A/E=home/end  Ctrl-K=kill  Ctrl-D=exit\n\n",
            PRISM_VERSION);
@@ -615,6 +620,7 @@ static void run_repl(void) {
 
 /* ------------------------------------------------------------------ argument parsing */
 
+static const char *configure_gc_from_args(int argc, char **argv) __attribute__((unused));
 static const char *configure_gc_from_args(int argc, char **argv) {
     PrismGC *gc = gc_global();
     gc_configure_from_env(gc);
@@ -692,7 +698,7 @@ int main(int argc, char **argv) {
     gc_init(gc_global());
     FILE *f = fopen(argv[argc-1], "r");
     fseek(f, 0, SEEK_END); long sz = ftell(f); rewind(f);
-    char *src = malloc(sz + 1); fread(src, 1, sz, f); src[sz] = 0; fclose(f);
+    char *src = malloc(sz + 1); { size_t _nr = fread(src, 1, (size_t)sz, f); (void)_nr; } src[sz] = 0; fclose(f);
     Parser *p = parser_new(src); ASTNode *prog = parser_parse(p);
     Interpreter *interp = interpreter_new();
     interpreter_run(interp, prog);
