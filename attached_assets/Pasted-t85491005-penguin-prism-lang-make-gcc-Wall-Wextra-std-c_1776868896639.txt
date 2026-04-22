@@ -1,0 +1,149 @@
+t85491005@penguin:~/prism-lang$ make
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/main.o src/main.c
+src/main.c:618:20: warning: ‘configure_gc_from_args’ defined but not used [-Wunused-function]
+  618 | static const char *configure_gc_from_args(int argc, char **argv) {
+      |                    ^~~~~~~~~~~~~~~~~~~~~~
+src/main.c:515:13: warning: ‘run_repl’ defined but not used [-Wunused-function]
+  515 | static void run_repl(void) {
+      |             ^~~~~~~~
+src/main.c:217:12: warning: ‘run_benchmark’ defined but not used [-Wunused-function]
+  217 | static int run_benchmark(const char *source, const char *filename) {
+      |            ^~~~~~~~~~~~~
+src/main.c:69:12: warning: ‘emit_llvm_from_source’ defined but not used [-Wunused-function]
+   69 | static int emit_llvm_from_source(const char *source, const char *filename) {
+      |            ^~~~~~~~~~~~~~~~~~~~~
+src/main.c:54:12: warning: ‘emit_c_from_source’ defined but not used [-Wunused-function]
+   54 | static int emit_c_from_source(const char *source, const char *filename) {
+      |            ^~~~~~~~~~~~~~~~~~
+src/main.c:24:14: warning: ‘read_file’ defined but not used [-Wunused-function]
+   24 | static char *read_file(const char *path) {
+      |              ^~~~~~~~~
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/lexer.o src/lexer.c
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/ast.o src/ast.c
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/parser.o src/parser.c
+src/parser.c:9:17: warning: ‘parse_block’ declared ‘static’ but never defined [-Wunused-function]
+    9 | static ASTNode *parse_block(Parser *p);
+      |                 ^~~~~~~~~~~
+src/parser.c:147:17: warning: ‘parse_nullcoal’ declared ‘static’ but never defined [-Wunused-function]
+  147 | static ASTNode *parse_nullcoal(Parser *p);
+      |                 ^~~~~~~~~~~~~~
+src/parser.c:146:17: warning: ‘parse_range’ declared ‘static’ but never defined [-Wunused-function]
+  146 | static ASTNode *parse_range(Parser *p);
+      |                 ^~~~~~~~~~~
+src/parser.c:145:17: warning: ‘parse_logical_or’ declared ‘static’ but never defined [-Wunused-function]
+  145 | static ASTNode *parse_logical_or(Parser *p);
+      |                 ^~~~~~~~~~~~~~~~
+src/parser.c:13:17: warning: ‘parse_class_decl’ declared ‘static’ but never defined [-Wunused-function]
+   13 | static ASTNode *parse_class_decl(Parser *p);
+      |                 ^~~~~~~~~~~~~~~~
+src/parser.c:14:17: warning: ‘parse_struct_decl’ declared ‘static’ but never defined [-Wunused-function]
+   14 | static ASTNode *parse_struct_decl(Parser *p);
+      |                 ^~~~~~~~~~~~~~~~~
+src/parser.c:15:17: warning: ‘parse_param_list’ declared ‘static’ but never defined [-Wunused-function]
+   15 | static Param   *parse_param_list(Parser *p, int *out_count);
+      |                 ^~~~~~~~~~~~~~~~
+src/parser.c:16:17: warning: ‘free_params’ declared ‘static’ but never defined [-Wunused-function]
+   16 | static void     free_params(Param *params, int count);
+      |                 ^~~~~~~~~~~
+src/parser.c:134:17: warning: ‘parse_postfix’ declared ‘static’ but never defined [-Wunused-function]
+  134 | static ASTNode *parse_postfix(Parser *p);
+      |                 ^~~~~~~~~~~~~
+src/parser.c:135:17: warning: ‘parse_unary’ declared ‘static’ but never defined [-Wunused-function]
+  135 | static ASTNode *parse_unary(Parser *p);
+      |                 ^~~~~~~~~~~
+src/parser.c:136:17: warning: ‘parse_power’ declared ‘static’ but never defined [-Wunused-function]
+  136 | static ASTNode *parse_power(Parser *p);
+      |                 ^~~~~~~~~~~
+src/parser.c:137:17: warning: ‘parse_mul’ declared ‘static’ but never defined [-Wunused-function]
+  137 | static ASTNode *parse_mul(Parser *p);
+      |                 ^~~~~~~~~
+src/parser.c:138:17: warning: ‘parse_add’ declared ‘static’ but never defined [-Wunused-function]
+  138 | static ASTNode *parse_add(Parser *p);
+      |                 ^~~~~~~~~
+src/parser.c:139:17: warning: ‘parse_compare’ declared ‘static’ but never defined [-Wunused-function]
+  139 | static ASTNode *parse_compare(Parser *p);
+      |                 ^~~~~~~~~~~~~
+src/parser.c:140:17: warning: ‘parse_equality’ declared ‘static’ but never defined [-Wunused-function]
+  140 | static ASTNode *parse_equality(Parser *p);
+      |                 ^~~~~~~~~~~~~~
+src/parser.c:141:17: warning: ‘parse_bitand’ declared ‘static’ but never defined [-Wunused-function]
+  141 | static ASTNode *parse_bitand(Parser *p);
+      |                 ^~~~~~~~~~~~
+src/parser.c:142:17: warning: ‘parse_bitxor’ declared ‘static’ but never defined [-Wunused-function]
+  142 | static ASTNode *parse_bitxor(Parser *p);
+      |                 ^~~~~~~~~~~~
+src/parser.c:143:17: warning: ‘parse_bitor’ declared ‘static’ but never defined [-Wunused-function]
+  143 | static ASTNode *parse_bitor(Parser *p);
+      |                 ^~~~~~~~~~~
+src/parser.c:144:17: warning: ‘parse_logical_and’ declared ‘static’ but never defined [-Wunused-function]
+  144 | static ASTNode *parse_logical_and(Parser *p);
+      |                 ^~~~~~~~~~~~~~~~~
+src/parser.c:148:17: warning: ‘parse_assign’ declared ‘static’ but never defined [-Wunused-function]
+  148 | static ASTNode *parse_assign(Parser *p);
+      |                 ^~~~~~~~~~~~
+src/parser.c:260:17: warning: ‘parse_paren_or_tuple’ defined but not used [-Wunused-function]
+  260 | static ASTNode *parse_paren_or_tuple(Parser *p, int line) {
+      |                 ^~~~~~~~~~~~~~~~~~~~
+src/parser.c:189:17: warning: ‘parse_brace_literal’ defined but not used [-Wunused-function]
+  189 | static ASTNode *parse_brace_literal(Parser *p, int line) {
+      |                 ^~~~~~~~~~~~~~~~~~~
+src/parser.c:168:17: warning: ‘parse_array_literal’ defined but not used [-Wunused-function]
+  168 | static ASTNode *parse_array_literal(Parser *p, int line, bool use_arr_kw) {
+      |                 ^~~~~~~~~~~~~~~~~~~
+src/parser.c:152:18: warning: ‘parse_arg_list’ defined but not used [-Wunused-function]
+  152 | static ASTNode **parse_arg_list(Parser *p, int *out_count) {
+      |                  ^~~~~~~~~~~~~~
+src/parser.c:29:13: warning: ‘is_name_token’ defined but not used [-Wunused-function]
+   29 | static bool is_name_token(TokenType t) {
+      |             ^~~~~~~~~~~~~
+src/parser.c:26:13: warning: ‘check_peek’ defined but not used [-Wunused-function]
+   26 | static bool check_peek(Parser *p, TokenType t) { return p->peek->type == t; }
+      |             ^~~~~~~~~~
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/value.o src/value.c
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/gc.o src/gc.c
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/builtins.o src/builtins.c
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/interpreter.o src/interpreter.c
+src/interpreter.c: In function ‘env_new’:
+src/interpreter.c:32:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   32 |     if(parent) parent->refcount++; return e;
+      |     ^~
+src/interpreter.c:32:36: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   32 |     if(parent) parent->refcount++; return e;
+      |                                    ^~~~~~
+src/interpreter.c: In function ‘env_free’:
+src/interpreter.c:36:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   36 |     if (!env) return; if (--env->refcount > 0) return;
+      |     ^~
+src/interpreter.c:36:23: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   36 |     if (!env) return; if (--env->refcount > 0) return;
+      |                       ^~
+src/interpreter.c: In function ‘env_get’:
+src/interpreter.c:42:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   42 |     if(!name) return NULL; const char *key = env_intern(name);
+      |     ^~
+src/interpreter.c:42:28: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   42 |     if(!name) return NULL; const char *key = env_intern(name);
+      |                            ^~~~~
+src/interpreter.c: In function ‘env_set’:
+src/interpreter.c:55:5: warning: this ‘if’ clause does not guard... [-Wmisleading-indentation]
+   55 |     if(!name) return false; const char *key = env_intern(name);
+      |     ^~
+src/interpreter.c:55:29: note: ...this statement, but the latter is misleadingly indented as if it were guarded by the ‘if’
+   55 |     if(!name) return false; const char *key = env_intern(name);
+      |                             ^~~~~
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/chunk.o src/chunk.c
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/compiler.o src/compiler.c
+src/compiler.c:96:13: warning: ‘end_scope’ defined but not used [-Wunused-function]
+   96 | static void end_scope(Compiler *c, int ln) { (void)ln; c->scope_depth--; while (c->local_count > 0 && c->locals[c->local_count - 1].depth > c->scope_depth) c->local_count--; }
+      |             ^~~~~~~~~
+src/compiler.c:95:13: warning: ‘begin_scope’ defined but not used [-Wunused-function]
+   95 | static void begin_scope(Compiler *c) { c->scope_depth++; }
+      |             ^~~~~~~~~~~
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/vm.o src/vm.c
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/jit.o src/jit.c
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/transpiler.o src/transpiler.c
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/formatter.o src/formatter.c
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/pss.o src/pss.c
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -c -o src/xgui.o src/xgui.c
+gcc -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L -DHAVE_X11 -I/usr/include/freetype2 -I/usr/include/libpng16  -o prism src/main.o src/lexer.o src/ast.o src/parser.o src/value.o src/gc.o src/builtins.o src/interpreter.o src/chunk.o src/compiler.o src/vm.o src/jit.o src/transpiler.o src/formatter.o src/pss.o src/xgui.o -lm -lXft -lXrender -lX11 -lfontconfig -lfreetype 
+t85491005@penguin:~/prism-lang$ 
