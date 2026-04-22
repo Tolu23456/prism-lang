@@ -38,6 +38,9 @@ struct Compiler {
     char       error_msg[512];
     LoopCtx   *loop;
     int        dead_code;  /* 1 after return/break/continue — suppress emission */
+    Local      locals[MAX_LOCALS];
+    int        local_count;
+    int        scope_depth;
 };
 
 static void compiler_error(Compiler *c, const char *msg, int line) {
@@ -197,16 +200,26 @@ static void emit_int(Compiler *c, long long v, int ln) {
     }
 }
 
-static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body) {
+static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body, const char *name, Param *params, int param_count) {
+    (void)name;
     Chunk *chunk = malloc(sizeof(Chunk));
     Compiler c;
+    memset(&c, 0, sizeof(c));
     c.chunk      = chunk;
-    c.had_error  = 0;
-    c.error_msg[0] = '\0';
-    c.loop       = NULL;
     c.dead_code  = 0;  /* always reachable at function entry */
+    c.scope_depth = 1; /* function body is a nested scope so params are locals */
 
     chunk_init(chunk);
+
+    /* Register parameters as locals in slots 0..param_count-1 */
+    for (int i = 0; i < param_count; i++) {
+        if (c.local_count >= MAX_LOCALS) break;
+        Local *l = &c.locals[c.local_count++];
+        l->name     = params[i].name;
+        l->depth    = c.scope_depth;
+        l->is_const = false;
+    }
+
     if (body && ((body)->type == NODE_BLOCK || (body)->type == NODE_PROGRAM)) {
         for (int i = 0; i < body->block.count; i++)
             compile_node(&c, body->block.stmts[i]);
@@ -907,11 +920,8 @@ int compile(ASTNode *program, Chunk *out, char *error_buf, int error_buf_len) {
  * can return control to the importing frame instead of halting the VM. */
 int compile_module(ASTNode *program, Chunk *out, char *error_buf, int error_buf_len) {
     Compiler c;
+    memset(&c, 0, sizeof(c));
     c.chunk      = out;
-    c.had_error  = 0;
-    c.error_msg[0] = '\0';
-    c.loop       = NULL;
-    c.dead_code  = 0;
 
     chunk_init(out);
     compile_node(&c, program);

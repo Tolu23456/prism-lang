@@ -14,6 +14,8 @@
 #include "gc.h"
 #include "jit.h"
 #include "transpiler.h"
+#include "compiler.h"
+#include "vm.h"
 
 #define PRISM_VERSION "0.2.0"
 
@@ -87,7 +89,6 @@ static int emit_llvm_from_source(const char *source, const char *filename) {
     VM *vm = vm_new();
     vm->jit = jit_new();
     chunk.source_file = filename;
-    gui_register_builtins(vm->globals);
     vm_run_prelude(vm);
     vm_run(vm, &chunk);
     gc_collect_audit(vm->gc, vm->globals, vm, &chunk);
@@ -153,7 +154,6 @@ static int run_source_vm(const char *source, const char *filename) {
 
     VM *vm = vm_new();
     chunk.source_file = filename;
-    gui_register_builtins(vm->globals);
 
     /* Load the prelude (defines filter, map, reduce, forEach, zip, all, any) */
     int prelude_rc = vm_run_prelude(vm);
@@ -199,9 +199,8 @@ static int run_source_tree(const char *source, const char *filename) {
 
     Interpreter *interp = interpreter_new();
     interp->filename = filename;
-    gui_register_builtins(interp->globals);
-    Value *result = interpreter_eval(interp, program, interp->globals);
-    if (result) value_release(result);
+    Value result = interpreter_eval(interp, program, interp->globals);
+    value_release(result);
 
     int exit_code = 0;
     if (interp->had_error) {
@@ -520,7 +519,6 @@ static void run_repl(void) {
     gc_set_workload(gc_global(), GC_WORKLOAD_REPL);
 
     Interpreter *interp = interpreter_new();
-    gui_register_builtins(interp->globals);
 
     ReplHistory *hist = repl_hist_new();
 
@@ -591,19 +589,17 @@ static void run_repl(void) {
         } else {
             interp->had_error  = 0;
             interp->returning  = false;
-            interp->return_val = NULL;
+            interp->return_val = TO_NULL();
 
-            Value *result = interpreter_eval(interp, ast, interp->globals);
+            Value result = interpreter_eval(interp, ast, interp->globals);
             if (interp->had_error) {
                 fprintf(stderr, "\x1b[31mError:\x1b[0m %s\n", interp->error_msg);
-            } else if (result && result->type != VAL_NULL) {
+            } else if (VAL_TYPE(result) != VAL_NULL) {
                 char *s = value_to_string(result);
                 printf("\x1b[36m=> %s\x1b[0m\n", s);
                 free(s);
-                value_release(result);
-            } else if (result) {
-                value_release(result);
             }
+            value_release(result);
         }
 
         ast_node_free(ast);

@@ -5,10 +5,6 @@
 #include "lexer.h"
 #include "ast.h"
 
-Parser *parser_new(const char *src) { Parser *p = calloc(1, sizeof(Parser)); p->lexer = lexer_new(src); p->current = lexer_next(p->lexer); return p; }
-void parser_free(Parser *p) { lexer_free(p->lexer); token_free(p->current); free(p); }
-static void advance(Parser *p) { token_free(p->current); p->current = lexer_next(p->lexer); }
-
 static ASTNode *parse_expr(Parser *p);
 static ASTNode *parse_block(Parser *p);
 static ASTNode *parse_nullcoal(Parser *p);
@@ -366,6 +362,20 @@ static ASTNode *parse_stmt(Parser *p) {
     ASTNode *n = ast_node_new(NODE_EXPR_STMT, expr->line); n->expr_stmt.expr = expr; return n;
 }
 
+ASTNode *parser_parse_source(const char *source, char *errbuf, int errlen) {
+    Parser *p = parser_new(source);
+    ASTNode *program = parser_parse(p);
+    if (p->had_error) {
+        if (errbuf && errlen > 0)
+            snprintf(errbuf, (size_t)errlen, "%s", p->error_msg);
+        if (program) ast_node_free(program);
+        parser_free(p);
+        return NULL;
+    }
+    parser_free(p);
+    return program;
+}
+
 ASTNode *parser_parse(Parser *p) {
     ASTNode *program = ast_node_new(NODE_PROGRAM, 1);
     int cap = 16;
@@ -394,7 +404,7 @@ ASTNode *parser_parse(Parser *p) {
         program->block.stmts[program->block.count++] = stmt;
         consume_stmt_end(p);
     }
-    prog->block.count = c; return prog;
+    return program;
 }
 
 /* ================================================================== error display */
