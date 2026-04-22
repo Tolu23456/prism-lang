@@ -34,7 +34,7 @@ typedef enum {
 /* ------------------------------------------------------------------ string intern table */
 typedef struct InternBucket {
     char   *key;             /* owned copy of the interned string   */
-    Value  *val;             /* immortal Value* for this string     */
+    Value val;             /* immortal Value  for this string     */
     struct InternBucket *next;
 } InternBucket;
 
@@ -96,7 +96,7 @@ typedef struct GCStats {
 
 /* ------------------------------------------------------------------ temporary root stack
  *
- * Callers push in-flight Value* pointers here before any GC collection
+ * Callers push in-flight Value  pointers here before any GC collection
  * call so they are treated as additional GC roots and never swept while
  * they are still live in C stack variables.  Always pair push with pop.
  * ------------------------------------------------------------------ */
@@ -105,7 +105,7 @@ typedef struct GCStats {
 /* ------------------------------------------------------------------ PrismGC state */
 typedef struct PrismGC {
     /* object list */
-    Value   *objects;          /* head of tracked-value linked list   */
+    struct ValueStruct *objects;          /* head of tracked-value linked list   */
 
     /* statistics */
     GCStats  stats;
@@ -135,7 +135,7 @@ typedef struct PrismGC {
     size_t    alloc_sites_used;   /* number of occupied slots */
 
     /* temporary root stack (Items 2 & 3: protect in-flight Values from sweep) */
-    Value  *root_stack[GC_ROOT_STACK_MAX];
+    Value root_stack[GC_ROOT_STACK_MAX];
     int     root_stack_top;
 
     /* flags */
@@ -159,14 +159,14 @@ void        gc_configure_from_env(PrismGC *gc);
 void        gc_shutdown(PrismGC *gc);
 
 /* ------------------------------------------------------------------ tracking */
-void        gc_track_value(Value *value);
-void        gc_untrack_value(Value *value);
+void        gc_track_value(Value value);
+void        gc_untrack_value(Value value);
 
 /* ------------------------------------------------------------------ allocation site */
 void        gc_set_alloc_site(const char *file, int line);
 
 /* ------------------------------------------------------------------ marking */
-void        gc_mark_value(PrismGC *gc, Value *value);
+void        gc_mark_value(PrismGC *gc, Value value);
 void        gc_mark_env(PrismGC *gc, Env *env);
 void        gc_mark_vm(PrismGC *gc, VM *vm);
 void        gc_mark_chunk(PrismGC *gc, Chunk *chunk);
@@ -179,11 +179,11 @@ size_t      gc_collect_minor(PrismGC *gc, Env *env, VM *vm, Chunk *chunk); /* yo
 size_t      gc_collect_major(PrismGC *gc, Env *env, VM *vm, Chunk *chunk); /* all generations    */
 
 /* ------------------------------------------------------------------ temporary root stack */
-void        gc_push_root(PrismGC *gc, Value *v); /* push a live Value* as an extra GC root  */
+void        gc_push_root(PrismGC *gc, Value v); /* push a live Value  as an extra GC root  */
 void        gc_pop_root(PrismGC *gc);            /* pop the most-recently pushed root entry */
 
 /* ------------------------------------------------------------------ string interning */
-Value      *gc_intern_string(PrismGC *gc, const char *s);
+Value gc_intern_string(PrismGC *gc, const char *s);
 const char *gc_intern_cstr(PrismGC *gc, const char *s); /* canonical char* pointer */
 
 /* ------------------------------------------------------------------ policy / reporting */
@@ -193,7 +193,7 @@ const char *gc_policy_name(GCPolicy policy);
 const char *gc_workload_name(GCWorkload workload);
 void        gc_print_stats(PrismGC *gc);
 void        gc_print_mem_report(PrismGC *gc);
-Value      *gc_stats_dict(PrismGC *gc);
-Value      *gc_set_soft_limit(PrismGC *gc, const char *text);
+Value gc_stats_dict(PrismGC *gc);
+Value gc_set_soft_limit(PrismGC *gc, const char *text);
 
 #endif

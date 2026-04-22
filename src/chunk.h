@@ -20,7 +20,7 @@ typedef struct Chunk {
     int      count;
     int      cap;
 
-    Value  **constants;
+    Value   *constants;
     int      const_count;
     int      const_cap;
 
@@ -42,7 +42,7 @@ void     chunk_emit(Chunk *c, uint8_t byte, int line);
 void     chunk_emit16(Chunk *c, uint16_t val, int line);
 
 /* Add a constant to the pool; returns its index. */
-int      chunk_add_const(Chunk *c, Value *v);
+int      chunk_add_const(Chunk *c, Value v);
 
 /* Emit OP_PUSH_CONST for a Value (adds to pool). */
 int      chunk_add_const_str(Chunk *c, const char *s);

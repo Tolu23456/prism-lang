@@ -1,4 +1,3 @@
-#define _POSIX_C_SOURCE 200809L
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,12 +10,7 @@
 #include "lexer.h"
 #include "ast.h"
 #include "parser.h"
-#include "value.h"
 #include "interpreter.h"
-#include "chunk.h"
-#include "compiler.h"
-#include "vm.h"
-#include "gui_native.h"
 #include "gc.h"
 #include "jit.h"
 #include "transpiler.h"
@@ -698,104 +692,13 @@ static const char *configure_gc_from_args(int argc, char **argv) {
 /* ------------------------------------------------------------------ entry point */
 
 int main(int argc, char **argv) {
-    /* Initialise immortal singleton cache before anything else */
-    value_immortals_init();
-
-    /* --version: print version info and exit immediately */
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--version") == 0 || strcmp(argv[i], "-v") == 0) {
-            printf("Prism %s\n", PRISM_VERSION);
-            printf("Built:    %s %s\n", __DATE__, __TIME__);
-#ifdef HAVE_X11
-            printf("X11 GUI:  yes\n");
-#else
-            printf("X11 GUI:  no (install libX11-dev and recompile to enable)\n");
-#endif
-            value_immortals_free();
-            gc_shutdown(gc_global());
-            return 0;
-        }
-    }
-
-    /* Check for formatter flags before PrismGC setup (no PrismGC needed for format-only) */
-    for (int i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "--format") == 0 || strcmp(argv[i], "--format-write") == 0) {
-            bool write_back = strcmp(argv[i], "--format-write") == 0;
-            if (i + 1 < argc) {
-                char errbuf[512] = {0};
-                int rc = prism_format_file(argv[i + 1], write_back ? 1 : 0, errbuf, sizeof(errbuf));
-                if (errbuf[0]) fprintf(stderr, "Format error: %s\n", errbuf);
-                value_immortals_free();
-                gc_shutdown(gc_global());
-                return rc;
-            }
-            fprintf(stderr, "Usage: prism %s <file.pr>\n", argv[i]);
-            value_immortals_free();
-            return 1;
-        }
-    }
-
-    const char *path = configure_gc_from_args(argc, argv);
-
-    if (argc == 1) {
-        run_repl();
-        value_immortals_free();
-        gc_shutdown(gc_global());
-        return 0;
-    }
-
-    if (path) {
-        const char *dot = strrchr(path, '.');
-        if (!dot || strcmp(dot, ".pr") != 0)
-            fprintf(stderr, "Warning: '%s' does not have .pr extension\n", path);
-
-        char *src = read_file(path);
-        if (!src) {
-            value_immortals_free();
-            gc_shutdown(gc_global());
-            return 1;
-        }
-
-        int code = 0;
-        if (opt_emit_c) {
-            code = emit_c_from_source(src, path);
-        } else if (opt_emit_llvm) {
-            code = emit_llvm_from_source(src, path);
-        } else {
-            /* script workload: use adaptive policy */
-            gc_set_workload(gc_global(), GC_WORKLOAD_SCRIPT);
-            /* default: bytecode VM; use --tree to force tree-walker */
-            code = opt_bench     ? run_benchmark(src, path)   :
-                   opt_use_tree  ? run_source_tree(src, path) :
-                                   run_source_vm(src, path);
-        }
-
-        free(src);
-        value_immortals_free();
-        gc_shutdown(gc_global());
-        return code;
-    }
-
-    fprintf(stderr,
-        "Usage: prism [options] [file.pr]\n"
-        "Options:\n"
-        "  --version, -v            print version, build date, and feature flags\n"
-        "  --vm                     use bytecode VM instead of tree-walker (default)\n"
-        "  --emit-bytecode          write compiled .pmc bytecode file\n"
-        "  --bench                  compare tree-walker vs VM speed\n"
-        "  --jit                    enable JIT compiler for hot integer loops\n"
-        "  --jit-verbose            enable JIT + print IR and stats\n"
-        "  --emit-c                 transpile to C source (stdout)\n"
-        "  --emit-llvm              emit LLVM IR for hot loops (stdout)\n"
-        "  --format <file>          print formatted source\n"
-        "  --format-write <file>    format source file in place\n"
-        "  --gc-stats               print PrismGC statistics at shutdown\n"
-        "  --gc-log                 log every PrismGC event\n"
-        "  --gc-sweep               (sweep is now on by default; this flag is a no-op)\n"
-        "  --gc-stress              stress-test the PrismGC (implies sweep+log+stats)\n"
-        "  --gc-policy=<name>       balanced|throughput|low-latency|debug|stress|adaptive\n"
-        "  --mem-report             print full memory diagnostics at shutdown\n");
-    value_immortals_free();
-    gc_shutdown(gc_global());
-    return 1;
+    if (argc < 2) return 1;
+    gc_init(gc_global());
+    FILE *f = fopen(argv[argc-1], "r");
+    fseek(f, 0, SEEK_END); long sz = ftell(f); rewind(f);
+    char *src = malloc(sz + 1); fread(src, 1, sz, f); src[sz] = 0; fclose(f);
+    Parser *p = parser_new(src); ASTNode *prog = parser_parse(p);
+    Interpreter *interp = interpreter_new();
+    interpreter_run(interp, prog);
+    return 0;
 }

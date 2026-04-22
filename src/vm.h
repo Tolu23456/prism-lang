@@ -23,7 +23,7 @@ typedef struct CallFrame {
 
     /* Local variable flat array (O(1) access — no hash lookup).
      * Compiler emits OP_LOAD_LOCAL / OP_STORE_LOCAL with slot indices. */
-    Value        *locals[VM_LOCALS_MAX];
+    Value locals[VM_LOCALS_MAX];
     int           local_count;
 
     /* Name mapping for locals (used by debugger / error messages) */
@@ -31,7 +31,7 @@ typedef struct CallFrame {
 } CallFrame;
 
 typedef struct VM {
-    Value          *stack[VM_STACK_MAX];
+    Value stack[VM_STACK_MAX];
     int             stack_top;
 
     CallFrame       frames[VM_FRAME_MAX];
