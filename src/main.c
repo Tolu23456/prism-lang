@@ -17,11 +17,14 @@
 #include "gc.h"
 #include "jit.h"
 #include "transpiler.h"
+#include "compiler.h"
+#include "vm.h"
 
 #define PRISM_VERSION "0.2.0"
 
 /* ------------------------------------------------------------------ file reader */
 
+static char *read_file(const char *path) __attribute__((unused));
 static char *read_file(const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) { fprintf(stderr, "Error: cannot open '%s'\n", path); return NULL; }
@@ -52,6 +55,7 @@ static void bytecode_path_for_source(const char *filename, char *out, size_t out
 
 /* ------------------------------------------------------------------ helpers for emit-c / emit-llvm */
 
+static int emit_c_from_source(const char *source, const char *filename) __attribute__((unused));
 static int emit_c_from_source(const char *source, const char *filename) {
     Parser  *parser  = parser_new(source);
     ASTNode *program = parser_parse(parser);
@@ -67,6 +71,7 @@ static int emit_c_from_source(const char *source, const char *filename) {
     return 0;
 }
 
+static int emit_llvm_from_source(const char *source, const char *filename) __attribute__((unused));
 static int emit_llvm_from_source(const char *source, const char *filename) {
     /* Parse + compile to get a hot JIT trace, then emit LLVM IR for it. */
     Parser  *parser  = parser_new(source);
@@ -202,6 +207,7 @@ static int run_source_tree(const char *source, const char *filename) {
     interp->filename = filename;
     Value result = interpreter_eval(interp, program, interp->globals);
     if (result) value_release(result);
+    value_release(result);
 
     int exit_code = 0;
     if (interp->had_error) {
@@ -215,6 +221,7 @@ static int run_source_tree(const char *source, const char *filename) {
     return exit_code;
 }
 
+static int run_benchmark(const char *source, const char *filename) __attribute__((unused));
 static int run_benchmark(const char *source, const char *filename) {
     /* benchmark mode — hint workload so PrismGC uses throughput settings */
     gc_set_workload(gc_global(), GC_WORKLOAD_BENCH);
@@ -236,6 +243,7 @@ static int run_benchmark(const char *source, const char *filename) {
 
 /* ------------------------------------------------------------------ REPL */
 
+static void run_repl(void) __attribute__((unused));
 static void run_repl(void) {
     printf("Prism %s - Interactive Mode (type 'exit' or Ctrl-D to quit)\n\n", PRISM_VERSION);
 
@@ -243,6 +251,14 @@ static void run_repl(void) {
     gc_set_workload(gc_global(), GC_WORKLOAD_REPL);
 
     Interpreter *interp = interpreter_new();
+
+    ReplHistory *hist = repl_hist_new();
+
+    bool is_tty = isatty(STDIN_FILENO);
+    if (is_tty) repl_raw_enter();
+
+    char accumulated[REPL_LINE_MAX * 8] = {0};  /* multiline buffer */
+    int  acc_len = 0;
 
     char line[4096];
     while (1) {
@@ -270,13 +286,17 @@ static void run_repl(void) {
             if (interp->had_error) {
                 fprintf(stderr, "Error: %s\n", interp->error_msg);
             } else if (result && VAL_TYPE(result) != VAL_NULL) {
+            interp->return_val = TO_NULL();
+
+            Value result = interpreter_eval(interp, ast, interp->globals);
+            if (interp->had_error) {
+                fprintf(stderr, "\x1b[31mError:\x1b[0m %s\n", interp->error_msg);
+            } else if (VAL_TYPE(result) != VAL_NULL) {
                 char *s = value_to_string(result);
                 printf("%s\n", s);
                 free(s);
-                value_release(result);
-            } else if (result) {
-                value_release(result);
             }
+            value_release(result);
         }
 
         ast_node_free(ast);
@@ -288,6 +308,7 @@ static void run_repl(void) {
 
 /* ------------------------------------------------------------------ argument parsing */
 
+static const char *configure_gc_from_args(int argc, char **argv) __attribute__((unused));
 static const char *configure_gc_from_args(int argc, char **argv) {
     PrismGC *gc = gc_global();
     gc_configure_from_env(gc);
@@ -461,4 +482,13 @@ int main(int argc, char **argv) {
     value_immortals_free();
     gc_shutdown(gc_global());
     return 1;
+    if (argc < 2) return 1;
+    gc_init(gc_global());
+    FILE *f = fopen(argv[argc-1], "r");
+    fseek(f, 0, SEEK_END); long sz = ftell(f); rewind(f);
+    char *src = malloc(sz + 1); { size_t _nr = fread(src, 1, (size_t)sz, f); (void)_nr; } src[sz] = 0; fclose(f);
+    Parser *p = parser_new(src); ASTNode *prog = parser_parse(p);
+    Interpreter *interp = interpreter_new();
+    interpreter_run(interp, prog);
+    return 0;
 }

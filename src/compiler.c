@@ -29,12 +29,16 @@ struct Compiler {
     int        had_error;
     char       error_msg[512];
     LoopCtx   *loop;
+    int        dead_code;  /* 1 after return/break/continue — suppress emission */
+    Local      locals[MAX_LOCALS];
+    int        local_count;
+    int        scope_depth;
 };
 
 static void compiler_error(Compiler *c, const char *msg, int line) {
     if (c->had_error) return;
     c->had_error = 1;
-    snprintf(c->error_msg, sizeof(c->error_msg), "line %d: %s", line, msg);
+    snprintf(c->error_msg, sizeof(c->error_msg), "line %d: %.480s", line, msg);
 }
 
 /* ================================================================== Emit helpers */
@@ -78,6 +82,14 @@ static void emit_loop(Compiler *c, int target, int line) {
 static uint16_t name_const(Compiler *c, const char *name) {
     return (uint16_t)chunk_add_const_str(c->chunk, name);
 }
+static uint16_t name_const(Compiler *c, const char *name) { return (uint16_t)chunk_add_const_str(c->chunk, name); }
+static int resolve_local(Compiler *c, const char *name) { for (int i = c->local_count - 1; i >= 0; i--) if (strcmp(c->locals[i].name, name) == 0) return i; return -1; }
+static int add_local(Compiler *c, const char *name, bool is_const) { if (c->local_count >= MAX_LOCALS) return -1; for (int i = c->local_count - 1; i >= 0; i--) { if (c->locals[i].depth != -1 && c->locals[i].depth < c->scope_depth) break; if (strcmp(c->locals[i].name, name) == 0) return -1; } Local *l = &c->locals[c->local_count++]; l->name = name; l->depth = c->scope_depth; l->is_const = is_const; return c->local_count - 1; }
+static void begin_scope(Compiler *c) __attribute__((unused));
+static void begin_scope(Compiler *c) { c->scope_depth++; }
+static void end_scope(Compiler *c, int ln) __attribute__((unused));
+static void end_scope(Compiler *c, int ln) { (void)ln; c->scope_depth--; while (c->local_count > 0 && c->locals[c->local_count - 1].depth > c->scope_depth) c->local_count--; }
+
 
 /* ================================================================== Forward decl */
 static void compile_node(Compiler *c, ASTNode *node);
@@ -183,7 +195,8 @@ static void emit_int(Compiler *c, long long v, int ln) {
     }
 }
 
-static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body) {
+static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body, const char *name, Param *params, int param_count) {
+    (void)name;
     Chunk *chunk = malloc(sizeof(Chunk));
     Compiler c;
     c.chunk = chunk;
@@ -193,6 +206,23 @@ static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body) {
 
     chunk_init(chunk);
     if (body && ((body->type) == NODE_BLOCK || (body->type) == NODE_PROGRAM)) {
+    memset(&c, 0, sizeof(c));
+    c.chunk      = chunk;
+    c.dead_code  = 0;  /* always reachable at function entry */
+    c.scope_depth = 1; /* function body is a nested scope so params are locals */
+
+    chunk_init(chunk);
+
+    /* Register parameters as locals in slots 0..param_count-1 */
+    for (int i = 0; i < param_count; i++) {
+        if (c.local_count >= MAX_LOCALS) break;
+        Local *l = &c.locals[c.local_count++];
+        l->name     = params[i].name;
+        l->depth    = c.scope_depth;
+        l->is_const = false;
+    }
+
+    if (body && ((body)->type == NODE_BLOCK || (body)->type == NODE_PROGRAM)) {
         for (int i = 0; i < body->block.count; i++)
             compile_node(&c, body->block.stmts[i]);
     } else if (body) {
@@ -863,6 +893,7 @@ int compile(ASTNode *program, Chunk *out, char *error_buf, int error_buf_len) {
  * can return control to the importing frame instead of halting the VM. */
 int compile_module(ASTNode *program, Chunk *out, char *error_buf, int error_buf_len) {
     Compiler c;
+    memset(&c, 0, sizeof(c));
     c.chunk      = out;
     c.had_error  = 0;
     c.error_msg[0] = '\0';

@@ -107,6 +107,10 @@ static const KW KEYWORDS[] = {
     {"set",      TOKEN_SET_KW},
     {"type",     TOKEN_TYPE_KW},
     {"dict",     TOKEN_DICT_KW},
+    {"let",TOKEN_LET},{"const",TOKEN_CONST},{"func",TOKEN_FUNC},{"fn",TOKEN_FN},{"return",TOKEN_RETURN},
+    {"if",TOKEN_IF},{"else",TOKEN_ELSE},{"while",TOKEN_WHILE},{"for",TOKEN_FOR},
+    {"in",TOKEN_IN},{"true",TOKEN_TRUE},{"false",TOKEN_FALSE},{"null",TOKEN_NULL},
+    {"step",TOKEN_STEP},{"range",TOKEN_RANGE_KW},{"as",TOKEN_AS},
     {NULL, 0}
 };
 
@@ -429,6 +433,17 @@ Token *lexer_next(Lexer *l) {
             return make_token(l, TOKEN_ERROR, buf);
         }
     }
+    advance(l);
+    if (c == '.' && cur(l) == '.') { advance(l); return make_token(l, TOKEN_DOTDOT, ".."); }
+    if (c == '.') return make_token(l, TOKEN_DOT, ".");
+    if (c == '%') return make_token(l, TOKEN_PERCENT, "%");
+    if (c == '(') return make_token(l, TOKEN_LPAREN, "(");
+    if (c == ')') return make_token(l, TOKEN_RPAREN, ")");
+    if (c == '{') return make_token(l, TOKEN_LBRACE, "{");
+    if (c == '}') return make_token(l, TOKEN_RBRACE, "}");
+    if (c == ',') return make_token(l, TOKEN_COMMA, ",");
+    if (c == '=') return make_token(l, TOKEN_EQ, "=");
+    return make_token(l, TOKEN_ERROR, "");
 }
 
 /* ------------------------------------------------------------------ name helper */
