@@ -1,0 +1,500 @@
+void vm_free(VM *vm) {
+    if (vm->jit) {
+        if (vm->jit_verbose) jit_print_stats(vm->jit);
+        jit_free(vm->jit);
+        vm->jit = NULL;
+    }
+    gc_collect_audit(vm->gc, vm->globals, vm, NULL);
+    env_free(vm->globals);
+    /* Item 5: free the static HTML-GUI body buffer allocated by vmgui_append */
+    if (g_vmgui.body) {
+        free(g_vmgui.body);
+        g_vmgui.body     = NULL;
+        g_vmgui.body_len = 0;
+        g_vmgui.body_cap = 0;
+    }
+#ifdef HAVE_X11
+    /* Item 5: destroy the X11 GUI handle if the program exited without xgui_close */
+    if (g_vm_xgui) { xgui_destroy(g_vm_xgui); g_vm_xgui = NULL; }
+#endif
+    free(vm);
+}
+
+/* ================================================================== method dispatch hash table
+ *
+ * Built once at VM startup after the GC intern table is ready.
+ * Keys are (ValueType, interned const char*) pairs stored in an open-address
+ * hash table.  Lookup is a pointer-equality comparison — O(1) per call.
+ * ================================================================== */
+
+#define METHOD_TABLE_CAP 128  /* power of 2; must be > 2× the number of methods */
+
+typedef struct {
+    const char *key;  /* interned method name pointer; NULL = empty slot */
+    ValueType   type;
+    VmMethodId  id;
+} MethodEntry;
+
+static MethodEntry s_method_table[METHOD_TABLE_CAP];
+static bool        s_method_table_ready = false;
+
+static inline unsigned method_slot(ValueType type, const char *key) {
+    uintptr_t v = (uintptr_t)key ^ ((uintptr_t)(unsigned)type * 2654435761u);
+    v ^= v >> 16;
+    return (unsigned)v & (METHOD_TABLE_CAP - 1);
+}
+
+static void method_table_put(ValueType type, const char *name, VmMethodId id) {
+    const char *key = gc_intern_cstr(gc_global(), name);
+    unsigned    h   = method_slot(type, key);
+    for (int i = 0; i < METHOD_TABLE_CAP; i++) {
+        unsigned idx = (h + (unsigned)i) & (METHOD_TABLE_CAP - 1);
+        if (!s_method_table[idx].key) {
+            s_method_table[idx].key  = key;
+            s_method_table[idx].type = type;
+            s_method_table[idx].id   = id;
+            return;
+        }
+    }
+}
+
+static void method_table_init(void) {
+    if (s_method_table_ready) return;
+    memset(s_method_table, 0, sizeof(s_method_table));
+    /* STRING */
+    method_table_put(VAL_STRING, "upper",      VM_METHOD_STRING_UPPER);
+    method_table_put(VAL_STRING, "lower",      VM_METHOD_STRING_LOWER);
+    method_table_put(VAL_STRING, "strip",      VM_METHOD_STRING_STRIP);
+    method_table_put(VAL_STRING, "lstrip",     VM_METHOD_STRING_LSTRIP);
+    method_table_put(VAL_STRING, "rstrip",     VM_METHOD_STRING_RSTRIP);
+    method_table_put(VAL_STRING, "len",        VM_METHOD_STRING_LEN);
+    method_table_put(VAL_STRING, "capitalize", VM_METHOD_STRING_CAPITALIZE);
+    method_table_put(VAL_STRING, "find",       VM_METHOD_STRING_FIND);
+    method_table_put(VAL_STRING, "index",      VM_METHOD_STRING_FIND);
+    method_table_put(VAL_STRING, "replace",    VM_METHOD_STRING_REPLACE);
+    method_table_put(VAL_STRING, "startswith", VM_METHOD_STRING_STARTSWITH);
+    method_table_put(VAL_STRING, "endswith",   VM_METHOD_STRING_ENDSWITH);
+    method_table_put(VAL_STRING, "split",      VM_METHOD_STRING_SPLIT);
+    method_table_put(VAL_STRING, "join",       VM_METHOD_STRING_JOIN);
+    method_table_put(VAL_STRING, "isdigit",    VM_METHOD_STRING_ISDIGIT);
+    method_table_put(VAL_STRING, "isalpha",    VM_METHOD_STRING_ISALPHA);
+    /* ARRAY */
+    method_table_put(VAL_ARRAY, "add",    VM_METHOD_ARRAY_ADD);
+    method_table_put(VAL_ARRAY, "pop",    VM_METHOD_ARRAY_POP);
+    method_table_put(VAL_ARRAY, "sort",   VM_METHOD_ARRAY_SORT);
+    method_table_put(VAL_ARRAY, "insert", VM_METHOD_ARRAY_INSERT);
+    method_table_put(VAL_ARRAY, "remove", VM_METHOD_ARRAY_REMOVE);
+    method_table_put(VAL_ARRAY, "extend", VM_METHOD_ARRAY_EXTEND);
+    method_table_put(VAL_ARRAY, "len",    VM_METHOD_ARRAY_LEN);
+    /* DICT */
+    method_table_put(VAL_DICT, "keys",   VM_METHOD_DICT_KEYS);
+    method_table_put(VAL_DICT, "values", VM_METHOD_DICT_VALUES);
+    method_table_put(VAL_DICT, "items",  VM_METHOD_DICT_ITEMS);
+    method_table_put(VAL_DICT, "erase",  VM_METHOD_DICT_ERASE);
+    method_table_put(VAL_DICT, "get",    VM_METHOD_DICT_GET);
+    /* SET */
+    method_table_put(VAL_SET, "add",     VM_METHOD_SET_ADD);
+    method_table_put(VAL_SET, "remove",  VM_METHOD_SET_REMOVE);
+    method_table_put(VAL_SET, "discard", VM_METHOD_SET_DISCARD);
+    method_table_put(VAL_SET, "update",  VM_METHOD_SET_UPDATE);
+    /* TUPLE */
+    method_table_put(VAL_TUPLE, "count", VM_METHOD_TUPLE_COUNT);
+    method_table_put(VAL_TUPLE, "index", VM_METHOD_TUPLE_INDEX);
+    s_method_table_ready = true;
+}
+
+/* ================================================================== method dispatch */
+
+static VmMethodId vm_resolve_method_id(ValueType type, const char *method) {
+    /* Intern the method name and look up in the O(1) hash table. */
+    const char *key = gc_intern_cstr(gc_global(), method);
+    unsigned    h   = method_slot(type, key);
+    for (int i = 0; i < METHOD_TABLE_CAP; i++) {
+        unsigned idx = (h + (unsigned)i) & (METHOD_TABLE_CAP - 1);
+        if (!s_method_table[idx].key) return VM_METHOD_UNKNOWN; /* empty slot = not found */
+        if (s_method_table[idx].type == type && s_method_table[idx].key == key)
+            return s_method_table[idx].id;
+    }
+    return VM_METHOD_UNKNOWN;
+}
+
+static void vm_no_method_error(VM *vm, Value obj, const char *method, int line) {
+    char msg[256];
+    snprintf(msg, sizeof(msg), "type '%s' has no method '%s'",
+             value_type_name(VAL_TYPE(obj)), method);
+    vm_error(vm, msg, line);
+}
+
+static Value vm_dispatch_method_slow(VM *vm, Value obj, const char *method,
+                                       Value *args, int argc, int line) {
+    /* Re-use the interpreter's method dispatch by creating a temporary interpreter. */
+    /* Actually we implement the methods directly here to avoid coupling. */
+
+    if (VAL_TYPE(obj) == VAL_STRING) {
+        const char *s = AS_STR(obj);
+        if (strcmp(method, "upper") == 0) {
+            char *r = strdup(s);
+            for (int i = 0; r[i]; i++) if (r[i]>='a'&&r[i]<='z') r[i]-=32;
+            return value_string_take(r);
+        }
+        if (strcmp(method, "lower") == 0) {
+            char *r = strdup(s);
+            for (int i = 0; r[i]; i++) if (r[i]>='A'&&r[i]<='Z') r[i]+=32;
+            return value_string_take(r);
+        }
+        if (strcmp(method, "strip") == 0) {
+            const char *start = s;
+            while (*start == ' ' || *start == '\t' || *start == '\n') start++;
+            const char *end = s + strlen(s);
+            while (end > start && (*(end-1)==' '||*(end-1)=='\t'||*(end-1)=='\n')) end--;
+            size_t len = (size_t)(end - start);
+            char *r = malloc(len + 1); memcpy(r, start, len); r[len] = '\0';
+            return value_string_take(r);
+        }
+        if (strcmp(method, "lstrip") == 0) {
+            const char *p = s;
+            while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+            return value_string(p);
+        }
+        if (strcmp(method, "rstrip") == 0) {
+            char *r = strdup(s);
+            int len = (int)strlen(r);
+            while (len > 0 && (r[len-1]==' '||r[len-1]=='\t'||r[len-1]=='\n')) r[--len]='\0';
+            return value_string_take(r);
+        }
+        if (strcmp(method, "len") == 0) return value_int((long long)strlen(s));
+        if (strcmp(method, "capitalize") == 0) {
+            char *r = strdup(s);
+            if (r[0]>='a'&&r[0]<='z') r[0]-=32;
+            for (int i=1;r[i];i++) if(r[i]>='A'&&r[i]<='Z') r[i]+=32;
+            return value_string_take(r);
+        }
+        if (strcmp(method, "find") == 0 && argc >= 1 && VAL_TYPE(args[0]) == VAL_STRING) {
+            const char *p = strstr(s, AS_STR(args[0]));
+            return value_int(p ? (long long)(p - s) : -1);
+        }
+        if (strcmp(method, "replace") == 0 && argc >= 2
+            && VAL_TYPE(args[0])==VAL_STRING && VAL_TYPE(args[1])==VAL_STRING) {
+            const char *from = AS_STR(args[0]), *to = AS_STR(args[1]);
+            size_t flen = strlen(from), tlen = strlen(to);
+            size_t rlen = 0, slen = strlen(s);
+            const char *p = s;
+            while ((p = strstr(p, from)) != NULL) { rlen += tlen - flen; p += flen; }
+            char *r = malloc(slen + rlen + 1);
+            char *out = r; p = s;
+            const char *q;
+            while ((q = strstr(p, from)) != NULL) {
+                size_t pre = (size_t)(q - p);
+                memcpy(out, p, pre); out += pre;
+                memcpy(out, to, tlen); out += tlen;
+                p = q + flen;
+            }
+            strcpy(out, p);
+            return value_string_take(r);
+        }
+        if (strcmp(method, "startswith") == 0 && argc >= 1 && VAL_TYPE(args[0])==VAL_STRING)
+            return value_bool(strncmp(s, AS_STR(args[0]), strlen(AS_STR(args[0])))==0 ? 1 : 0);
+        if (strcmp(method, "endswith") == 0 && argc >= 1 && VAL_TYPE(args[0])==VAL_STRING) {
+            size_t sl=strlen(s), pl=strlen(AS_STR(args[0]));
+            return value_bool(sl>=pl && strcmp(s+sl-pl, AS_STR(args[0]))==0 ? 1 : 0);
+        }
+        if (strcmp(method, "split") == 0) {
+            const char *delim = (argc>=1&&VAL_TYPE(args[0])==VAL_STRING) ? AS_STR(args[0]) : " ";
+            Value arr = value_array_new();
+            char *copy = strdup(s), *tok, *save = NULL;
+            size_t dl = strlen(delim);
+            if (dl == 0) { free(copy); return arr; }
+            char *p2 = copy;
+            while (1) {
+                tok = strstr(p2, delim);
+                if (!tok) { value_array_push(arr, value_string(p2)); break; }
+                *tok = '\0'; value_array_push(arr, value_string(p2)); p2 = tok + dl;
+            }
+            (void)save; free(copy);
+            return arr;
+        }
+        if (strcmp(method, "join") == 0 && argc >= 1 &&
+            (VAL_TYPE(args[0])==VAL_ARRAY||VAL_TYPE(args[0])==VAL_TUPLE)) {
+            ValueArray *arr2 = VAL_TYPE(args[0])==VAL_ARRAY ? &AS_ARRAY(args[0]) : &AS_TUPLE(args[0]);
+            size_t dlen = strlen(s), total = 0;
+            for (int i=0;i<arr2->len;i++) {
+                char *tmp = value_to_string(arr2->items[i]);
+                total += strlen(tmp); free(tmp);
+                if (i < arr2->len-1) total += dlen;
+            }
+            char *r = malloc(total+1); r[0]='\0';
+            for (int i=0;i<arr2->len;i++) {
+                char *tmp = value_to_string(arr2->items[i]);
+                strcat(r, tmp); free(tmp);
+                if (i < arr2->len-1) strcat(r, s);
+            }
+            return value_string_take(r);
+        }
+        if (strcmp(method, "isdigit")==0) {
+            bool ok = *s!='\0';
+            for (const char *p=s;*p;p++) if(*p<'0'||*p>'9'){ok=false;break;}
+            return value_bool(ok?1:0);
+        }
+        if (strcmp(method, "isalpha")==0) {
+            bool ok = *s!='\0';
+            for (const char *p=s;*p;p++) if(!((*p>='a'&&*p<='z')||(*p>='A'&&*p<='Z'))){ok=false;break;}
+            return value_bool(ok?1:0);
+        }
+    }
+
+    if (VAL_TYPE(obj) == VAL_ARRAY) {
+        if (strcmp(method, "add") == 0 && argc >= 1) {
+            value_array_push(obj, args[0]); return value_null();
+        }
+        if (strcmp(method, "pop") == 0) {
+            long long idx = (argc>=1&&VAL_TYPE(args[0])==VAL_INT) ? AS_INT(args[0]) : -1;
+            return value_array_pop(obj, idx);
+        }
+        if (strcmp(method, "sort") == 0) { value_array_sort(obj); return value_null(); }
+        if (strcmp(method, "insert") == 0 && argc >= 2 && VAL_TYPE(args[0])==VAL_INT) {
+            value_array_insert(obj, AS_INT(args[0]), args[1]); return value_null();
+        }
+        if (strcmp(method, "remove") == 0 && argc >= 1) {
+            value_array_remove(obj, args[0]); return value_null();
+        }
+        if (strcmp(method, "extend") == 0 && argc >= 1) {
+            value_array_extend(obj, args[0]); return value_null();
+        }
+        if (strcmp(method, "len") == 0) return value_int(AS_ARRAY(obj).len);
+    }
+
+    if (VAL_TYPE(obj) == VAL_DICT) {
+        if (strcmp(method, "keys") == 0) {
+            Value arr2 = value_array_new();
+            for (int i=0;i<AS_DICT(obj).len;i++)
+                value_array_push(arr2, value_retain(AS_DICT(obj).entries[i].key));
+            return arr2;
+        }
+        if (strcmp(method, "values") == 0) {
+            Value arr2 = value_array_new();
+            for (int i=0;i<AS_DICT(obj).len;i++)
+                value_array_push(arr2, value_retain(AS_DICT(obj).entries[i].val));
+            return arr2;
+        }
+        if (strcmp(method, "items") == 0) {
+            Value arr2 = value_array_new();
+            for (int i=0;i<AS_DICT(obj).len;i++) {
+                Value items[2] = {AS_DICT(obj).entries[i].key, AS_DICT(obj).entries[i].val};
+                value_array_push(arr2, value_tuple_new(items, 2));
+            }
+            return arr2;
+        }
+        if (strcmp(method, "erase") == 0) {
+            value_dict_clear(obj);
+            return value_null();
+        }
+        if (strcmp(method, "get") == 0 && argc >= 1) {
+            Value v = value_dict_get(obj, args[0]);
+            if (!v) v = (argc>=2) ? value_retain(args[1]) : value_null();
+            return v;
+        }
+    }
+
+    if (VAL_TYPE(obj) == VAL_SET) {
+        if (strcmp(method,"add")==0&&argc>=1) { value_set_add(obj,args[0]); return value_null(); }
+        if (strcmp(method,"remove")==0&&argc>=1) { value_set_remove(obj,args[0]); return value_null(); }
+        if (strcmp(method,"discard")==0&&argc>=1) { value_set_remove(obj,args[0]); return value_null(); }
+        if (strcmp(method,"update")==0&&argc>=1&&(VAL_TYPE(args[0])==VAL_SET||VAL_TYPE(args[0])==VAL_ARRAY)) {
+            ValueArray *src = VAL_TYPE(args[0])==VAL_SET ? &AS_SET(args[0]) : &AS_ARRAY(args[0]);
+            for (int i=0;i<src->len;i++) value_set_add(obj,src->items[i]);
+            return value_null();
+        }
+    }
+
+    if (VAL_TYPE(obj) == VAL_TUPLE) {
+        if (strcmp(method,"count")==0&&argc>=1) {
+            int cnt=0;
+            for (int i=0;i<AS_TUPLE(obj).len;i++)
+                if(value_equals(AS_TUPLE(obj).items[i],args[0])) cnt++;
+            return value_int(cnt);
+        }
+        if (strcmp(method,"index")==0&&argc>=1) {
+            for (int i=0;i<AS_TUPLE(obj).len;i++)
+                if(value_equals(AS_TUPLE(obj).items[i],args[0])) return value_int(i);
+            return value_int(-1);
+        }
+    }
+
+    char msg[256];
+    snprintf(msg, sizeof(msg), "type '%s' has no method '%s'",
+             value_type_name(VAL_TYPE(obj)), method);
+    vm_error(vm, msg, line);
+    return value_null();
+}
+
+static Value vm_dispatch_method_cached(VM *vm, Value obj, const char *method,
+                                         VmMethodId method_id, Value *args,
+                                         int argc, int line) {
+    if (vm_is_memory_module(obj))
+        return vm_memory_method(vm, obj, method, args, argc, line);
+    if (method_id == VM_METHOD_UNKNOWN)
+        return vm_dispatch_method_slow(vm, obj, method, args, argc, line);
+
+    const char *s = VAL_TYPE(obj) == VAL_STRING ? AS_STR(obj) : NULL;
+    switch (method_id) {
+        case VM_METHOD_STRING_UPPER: {
+            char *r = strdup(s);
+            for (int i = 0; r[i]; i++) if (r[i]>='a'&&r[i]<='z') r[i]-=32;
+            return value_string_take(r);
+        }
+        case VM_METHOD_STRING_LOWER: {
+            char *r = strdup(s);
+            for (int i = 0; r[i]; i++) if (r[i]>='A'&&r[i]<='Z') r[i]+=32;
+            return value_string_take(r);
+        }
+        case VM_METHOD_STRING_STRIP: {
+            const char *start = s;
+            while (*start == ' ' || *start == '\t' || *start == '\n') start++;
+            const char *end = s + strlen(s);
+            while (end > start && (*(end-1)==' '||*(end-1)=='\t'||*(end-1)=='\n')) end--;
+            size_t len = (size_t)(end - start);
+            char *r = malloc(len + 1); memcpy(r, start, len); r[len] = '\0';
+            return value_string_take(r);
+        }
+        case VM_METHOD_STRING_LSTRIP: {
+            const char *p = s;
+            while (*p == ' ' || *p == '\t' || *p == '\n') p++;
+            return value_string(p);
+        }
+        case VM_METHOD_STRING_RSTRIP: {
+            char *r = strdup(s);
+            int len = (int)strlen(r);
+            while (len > 0 && (r[len-1]==' '||r[len-1]=='\t'||r[len-1]=='\n')) r[--len]='\0';
+            return value_string_take(r);
+        }
+        case VM_METHOD_STRING_LEN:
+            return value_int((long long)strlen(s));
+        case VM_METHOD_STRING_CAPITALIZE: {
+            char *r = strdup(s);
+            if (r[0]>='a'&&r[0]<='z') r[0]-=32;
+            for (int i=1;r[i];i++) if(r[i]>='A'&&r[i]<='Z') r[i]+=32;
+            return value_string_take(r);
+        }
+        case VM_METHOD_STRING_FIND:
+            if (argc >= 1 && VAL_TYPE(args[0]) == VAL_STRING) {
+                const char *p = strstr(s, AS_STR(args[0]));
+                return value_int(p ? (long long)(p - s) : -1);
+            }
+            break;
+        case VM_METHOD_STRING_REPLACE:
+            if (argc >= 2 && VAL_TYPE(args[0])==VAL_STRING && VAL_TYPE(args[1])==VAL_STRING) {
+                const char *from = AS_STR(args[0]), *to = AS_STR(args[1]);
+                size_t flen = strlen(from), tlen = strlen(to);
+                size_t rlen = 0, slen = strlen(s);
+                const char *p = s;
+                while ((p = strstr(p, from)) != NULL) { rlen += tlen - flen; p += flen; }
+                char *r = malloc(slen + rlen + 1);
+                char *out = r; p = s;
+                const char *q;
+                while ((q = strstr(p, from)) != NULL) {
+                    size_t pre = (size_t)(q - p);
+                    memcpy(out, p, pre); out += pre;
+                    memcpy(out, to, tlen); out += tlen;
+                    p = q + flen;
+                }
+                strcpy(out, p);
+                return value_string_take(r);
+            }
+            break;
+        case VM_METHOD_STRING_STARTSWITH:
+            if (argc >= 1 && VAL_TYPE(args[0])==VAL_STRING)
+                return value_bool(strncmp(s, AS_STR(args[0]), strlen(AS_STR(args[0])))==0 ? 1 : 0);
+            break;
+        case VM_METHOD_STRING_ENDSWITH:
+            if (argc >= 1 && VAL_TYPE(args[0])==VAL_STRING) {
+                size_t sl=strlen(s), pl=strlen(AS_STR(args[0]));
+                return value_bool(sl>=pl && strcmp(s+sl-pl, AS_STR(args[0]))==0 ? 1 : 0);
+            }
+            break;
+        case VM_METHOD_STRING_SPLIT: {
+            const char *delim = (argc>=1&&VAL_TYPE(args[0])==VAL_STRING) ? AS_STR(args[0]) : " ";
+            Value arr = value_array_new();
+            char *copy = strdup(s);
+            size_t dl = strlen(delim);
+            if (dl == 0) { free(copy); return arr; }
+            char *p2 = copy;
+            while (1) {
+                char *tok = strstr(p2, delim);
+                if (!tok) { value_array_push(arr, value_string(p2)); break; }
+                *tok = '\0'; value_array_push(arr, value_string(p2)); p2 = tok + dl;
+            }
+            free(copy);
+            return arr;
+        }
+        case VM_METHOD_STRING_JOIN:
+            if (argc >= 1 && (VAL_TYPE(args[0])==VAL_ARRAY||VAL_TYPE(args[0])==VAL_TUPLE)) {
+                ValueArray *arr2 = VAL_TYPE(args[0])==VAL_ARRAY ? &AS_ARRAY(args[0]) : &AS_TUPLE(args[0]);
+                size_t dlen = strlen(s), total = 0;
+                for (int i=0;i<arr2->len;i++) {
+                    char *tmp = value_to_string(arr2->items[i]);
+                    total += strlen(tmp); free(tmp);
+                    if (i < arr2->len-1) total += dlen;
+                }
+                char *r = malloc(total+1); r[0]='\0';
+                for (int i=0;i<arr2->len;i++) {
+                    char *tmp = value_to_string(arr2->items[i]);
+                    strcat(r, tmp); free(tmp);
+                    if (i < arr2->len-1) strcat(r, s);
+                }
+                return value_string_take(r);
+            }
+            break;
+        case VM_METHOD_STRING_ISDIGIT: {
+            bool ok = *s!='\0';
+            for (const char *p=s;*p;p++) if(*p<'0'||*p>'9'){ok=false;break;}
+            return value_bool(ok?1:0);
+        }
+        case VM_METHOD_STRING_ISALPHA: {
+            bool ok = *s!='\0';
+            for (const char *p=s;*p;p++) if(!((*p>='a'&&*p<='z')||(*p>='A'&&*p<='Z'))){ok=false;break;}
+            return value_bool(ok?1:0);
+        }
+        case VM_METHOD_ARRAY_ADD:
+            if (argc >= 1) { value_array_push(obj, args[0]); return value_null(); }
+            break;
+        case VM_METHOD_ARRAY_POP: {
+            long long idx = (argc>=1&&VAL_TYPE(args[0])==VAL_INT) ? AS_INT(args[0]) : -1;
+            return value_array_pop(obj, idx);
+        }
+        case VM_METHOD_ARRAY_SORT:
+            value_array_sort(obj); return value_null();
+        case VM_METHOD_ARRAY_INSERT:
+            if (argc >= 2 && VAL_TYPE(args[0])==VAL_INT) { value_array_insert(obj, AS_INT(args[0]), args[1]); return value_null(); }
+            break;
+        case VM_METHOD_ARRAY_REMOVE:
+            if (argc >= 1) { value_array_remove(obj, args[0]); return value_null(); }
+            break;
+        case VM_METHOD_ARRAY_EXTEND:
+            if (argc >= 1) { value_array_extend(obj, args[0]); return value_null(); }
+            break;
+        case VM_METHOD_ARRAY_LEN:
+            return value_int(AS_ARRAY(obj).len);
+        case VM_METHOD_DICT_KEYS: {
+            Value arr2 = value_array_new();
+            for (int i=0;i<AS_DICT(obj).len;i++) value_array_push(arr2, value_retain(AS_DICT(obj).entries[i].key));
+            return arr2;
+        }
+        case VM_METHOD_DICT_VALUES: {
+            Value arr2 = value_array_new();
+            for (int i=0;i<AS_DICT(obj).len;i++) value_array_push(arr2, value_retain(AS_DICT(obj).entries[i].val));
+            return arr2;
+        }
+        case VM_METHOD_DICT_ITEMS: {
+            Value arr2 = value_array_new();
+            for (int i=0;i<AS_DICT(obj).len;i++) {
+                Value items[2] = {AS_DICT(obj).entries[i].key, AS_DICT(obj).entries[i].val};
+                value_array_push(arr2, value_tuple_new(items, 2));
+            }
+            return arr2;
+        }
+        case VM_METHOD_DICT_ERASE:
+            value_dict_clear(obj); return value_null();
+        case VM_METHOD_DICT_GET:
+            if (argc >= 1) {
+                Value v = value_dict_get(obj, args[0]);
+                return v ? value_retain(v) : (argc>=2 ? value_retain(args[1]) : value_null());

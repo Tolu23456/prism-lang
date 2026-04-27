@@ -1,0 +1,500 @@
+            if(PRISM_UNLIKELY(!r)){vm_error(vm,"invalid operand for unary -",line);r=value_null();}
+            value_release(a);PUSH(r);DISPATCH(); }
+        lbl_OP_POS:
+        case OP_POS: { /* unary + is a no-op for numbers */ DISPATCH(); }
+
+        /* ---- bitwise ---- */
+        lbl_OP_BIT_AND:
+        case OP_BIT_AND: { Value b=POP(),*a=POP();
+            if(PRISM_LIKELY(VAL_TYPE(a[0])==VAL_INT&&VAL_TYPE(b)==VAL_INT)) { PUSH(value_int(vm_fast_iand(AS_INT(a[0]),AS_INT(b)))); }
+            else if(VAL_TYPE(a[0])==VAL_SET&&VAL_TYPE(b)==VAL_SET) {
+                Value r=value_set_new();
+                for(int i=0;i<AS_SET(a).len;i++) if(value_set_has(b,AS_SET(a).items[i])) value_set_add(r,AS_SET(a).items[i]);
+                PUSH(r);
+            } else { vm_error(vm,"invalid operands for &",line); PUSH(value_null()); }
+            value_release(a);value_release(b);DISPATCH(); }
+        lbl_OP_BIT_OR:
+        case OP_BIT_OR: { Value b=POP(),*a=POP();
+            if(PRISM_LIKELY(VAL_TYPE(a[0])==VAL_INT&&VAL_TYPE(b)==VAL_INT)) { PUSH(value_int(vm_fast_ior(AS_INT(a[0]),AS_INT(b)))); }
+            else if(VAL_TYPE(a[0])==VAL_SET&&VAL_TYPE(b)==VAL_SET) {
+                Value r=value_set_new();
+                for(int i=0;i<AS_SET(a).len;i++) value_set_add(r,AS_SET(a).items[i]);
+                for(int i=0;i<AS_SET(b).len;i++) value_set_add(r,AS_SET(b).items[i]);
+                PUSH(r);
+            } else { vm_error(vm,"invalid operands for |",line); PUSH(value_null()); }
+            value_release(a);value_release(b);DISPATCH(); }
+        lbl_OP_BIT_XOR:
+        case OP_BIT_XOR: { Value b=POP(),*a=POP();
+            if(PRISM_LIKELY(VAL_TYPE(a[0])==VAL_INT&&VAL_TYPE(b)==VAL_INT)) { PUSH(value_int(vm_fast_ixor(AS_INT(a[0]),AS_INT(b)))); }
+            else if(VAL_TYPE(a[0])==VAL_SET&&VAL_TYPE(b)==VAL_SET) {
+                Value r=value_set_new();
+                for(int i=0;i<AS_SET(a).len;i++) if(!value_set_has(b,AS_SET(a).items[i])) value_set_add(r,AS_SET(a).items[i]);
+                for(int i=0;i<AS_SET(b).len;i++) if(!value_set_has(a,AS_SET(b).items[i])) value_set_add(r,AS_SET(b).items[i]);
+                PUSH(r);
+            } else { vm_error(vm,"invalid operands for ^",line); PUSH(value_null()); }
+            value_release(a);value_release(b);DISPATCH(); }
+        lbl_OP_BIT_NOT:
+        case OP_BIT_NOT: { Value a=POP();
+            if(PRISM_LIKELY(VAL_TYPE(a[0])==VAL_INT)) PUSH(value_int(~AS_INT(a[0])));
+            else { vm_error(vm,"~ requires int",line); PUSH(value_null()); }
+            value_release(a);DISPATCH(); }
+        lbl_OP_LSHIFT:
+        case OP_LSHIFT: { Value b=POP(),*a=POP();
+            if(PRISM_LIKELY(VAL_TYPE(a[0])==VAL_INT&&VAL_TYPE(b)==VAL_INT)) PUSH(value_int(AS_INT(a[0])<<AS_INT(b)));
+            else { vm_error(vm,"<< requires int",line); PUSH(value_null()); }
+            value_release(a);value_release(b);DISPATCH(); }
+        lbl_OP_RSHIFT:
+        case OP_RSHIFT: { Value b=POP(),*a=POP();
+            if(PRISM_LIKELY(VAL_TYPE(a[0])==VAL_INT&&VAL_TYPE(b)==VAL_INT)) PUSH(value_int(AS_INT(a[0])>>AS_INT(b)));
+            else { vm_error(vm,">> requires int",line); PUSH(value_null()); }
+            value_release(a);value_release(b);DISPATCH(); }
+
+        /* ---- comparison ---- */
+        lbl_OP_EQ:
+        case OP_EQ:  { Value b=POP(),*a=POP(); PUSH(value_bool(value_equals(a,b)?1:0)); value_release(a);value_release(b);DISPATCH(); }
+        lbl_OP_NE:
+        case OP_NE:  { Value b=POP(),*a=POP(); PUSH(value_bool(value_equals(a,b)?0:1)); value_release(a);value_release(b);DISPATCH(); }
+        lbl_OP_LT:
+        case OP_LT:  { Value b=POP(),*a=POP(); PUSH(value_bool(value_compare(a,b)<0?1:0)); value_release(a);value_release(b);DISPATCH(); }
+        lbl_OP_LE:
+        case OP_LE:  { Value b=POP(),*a=POP(); PUSH(value_bool(value_compare(a,b)<=0?1:0)); value_release(a);value_release(b);DISPATCH(); }
+        lbl_OP_GT:
+        case OP_GT:  { Value b=POP(),*a=POP(); PUSH(value_bool(value_compare(a,b)>0?1:0)); value_release(a);value_release(b);DISPATCH(); }
+        lbl_OP_GE:
+        case OP_GE:  { Value b=POP(),*a=POP(); PUSH(value_bool(value_compare(a,b)>=0?1:0)); value_release(a);value_release(b);DISPATCH(); }
+
+        /* ---- membership ---- */
+        lbl_OP_IN:
+        case OP_IN: {
+            Value container=POP(), *item=POP();
+            bool found = false;
+            if(VAL_TYPE(container)==VAL_ARRAY||VAL_TYPE(container)==VAL_TUPLE) {
+                ValueArray *arr2=(VAL_TYPE(container)==VAL_ARRAY)?&AS_ARRAY(container):&AS_TUPLE(container);
+                for(int i=0;i<arr2->len;i++) if(value_equals(arr2->items[i],item)){found=true;break;}
+            } else if(VAL_TYPE(container)==VAL_SET) {
+                found = value_set_has(container,item);
+            } else if(VAL_TYPE(container)==VAL_DICT) {
+                for(int i=0;i<AS_DICT(container).len;i++) if(value_equals(AS_DICT(container).entries[i].key,item)){found=true;break;}
+            } else if(VAL_TYPE(container)==VAL_STRING&&VAL_TYPE(item)==VAL_STRING) {
+                found = strstr(AS_STR(container), AS_STR(item)) != NULL;
+            }
+            value_release(container);value_release(item);
+            PUSH(value_bool(found?1:0));
+            DISPATCH();
+        }
+        lbl_OP_NOT_IN:
+        case OP_NOT_IN: {
+            Value container=POP(), *item=POP();
+            bool found = false;
+            if(VAL_TYPE(container)==VAL_ARRAY||VAL_TYPE(container)==VAL_TUPLE) {
+                ValueArray *arr2=(VAL_TYPE(container)==VAL_ARRAY)?&AS_ARRAY(container):&AS_TUPLE(container);
+                for(int i=0;i<arr2->len;i++) if(value_equals(arr2->items[i],item)){found=true;break;}
+            } else if(VAL_TYPE(container)==VAL_SET) {
+                found = value_set_has(container,item);
+            } else if(VAL_TYPE(container)==VAL_STRING&&VAL_TYPE(item)==VAL_STRING) {
+                found = strstr(AS_STR(container), AS_STR(item)) != NULL;
+            }
+            value_release(container);value_release(item);
+            PUSH(value_bool(found?0:1));
+            DISPATCH();
+        }
+
+        /* ---- logical not ---- */
+        lbl_OP_NOT:
+        case OP_NOT: { Value a=POP(); PUSH(value_bool(value_truthy(a)?0:1)); value_release(a); DISPATCH(); }
+
+        /* ---- jumps ---- */
+        lbl_OP_JUMP:
+        case OP_JUMP: {
+            int16_t off = (int16_t)READ_U16();
+            /* frame->ip is now 3 bytes past the OP_JUMP byte. */
+            if (off < 0 && vm->jit) {
+                /* Backward jump = potential loop back-edge. */
+                int jump_ip   = frame->ip - 3;
+                int header_ip = frame->ip + (int)off;
+                JitTrace *trace = jit_on_backward_jump(
+                    vm->jit, vm, frame->env, jump_ip, header_ip, frame->chunk);
+                if (trace) {
+                    if (vm->jit_verbose) jit_dump_ir(trace);
+                    int result = jit_execute(trace, vm, frame->env);
+                    vm->jit->traces_executed++;
+                    if (result == JIT_EXIT_LOOP_DONE) {
+                        if (trace->exit_ip > 0) {
+                            frame->ip = trace->exit_ip;
+                        } else {
+                            frame->ip += (int)off;
+                        }
+                        DISPATCH();
+                    }
+                    vm->jit->guard_exits++;
+                }
+            }
+            frame->ip += (int)off;
+            DISPATCH();
+        }
+        lbl_OP_JUMP_IF_FALSE:
+        case OP_JUMP_IF_FALSE: {
+            int16_t off = (int16_t)READ_U16();
+            Value v = POP();
+            if (!value_truthy(v)) frame->ip += off;
+            value_release(v);
+            DISPATCH();
+        }
+        lbl_OP_JUMP_IF_TRUE:
+        case OP_JUMP_IF_TRUE: {
+            int16_t off = (int16_t)READ_U16();
+            Value v = POP();
+            if (value_truthy(v)) frame->ip += off;
+            value_release(v);
+            DISPATCH();
+        }
+        lbl_OP_JUMP_IF_FALSE_PEEK:
+        case OP_JUMP_IF_FALSE_PEEK: {
+            int16_t off = (int16_t)READ_U16();
+            if (!value_truthy(PEEK(0))) frame->ip += off;
+            DISPATCH();
+        }
+        lbl_OP_JUMP_IF_TRUE_PEEK:
+        case OP_JUMP_IF_TRUE_PEEK: {
+            int16_t off = (int16_t)READ_U16();
+            if (value_truthy(PEEK(0))) frame->ip += off;
+            DISPATCH();
+        }
+
+        /* ---- scope ---- */
+        lbl_OP_PUSH_SCOPE:
+        case OP_PUSH_SCOPE:
+            frame->env = env_new(frame->env);
+            DISPATCH();
+        lbl_OP_POP_SCOPE:
+        case OP_POP_SCOPE: {
+            Env *old = frame->env;
+            frame->env = old->parent;
+            old->parent = NULL;
+            env_free(old);
+            DISPATCH();
+        }
+
+        /* ---- collections ---- */
+        lbl_OP_MAKE_ARRAY:
+        case OP_MAKE_ARRAY: {
+            uint16_t n = READ_U16();
+            Value arr2 = value_array_new();
+            /* Use stack buffer for small arrays to avoid malloc */
+            Value _stk_buf[VM_CALL_STACK_BUF];
+            Value *tmp = (n <= VM_CALL_STACK_BUF) ? _stk_buf : malloc(n * sizeof(Value*));
+            for (int i = n-1; i >= 0; i--) tmp[i] = POP();
+            for (int i = 0; i < n; i++) { value_array_push(arr2, tmp[i]); value_release(tmp[i]); }
+            if (n > VM_CALL_STACK_BUF) free(tmp);
+            PUSH(arr2);
+            DISPATCH();
+        }
+        lbl_OP_MAKE_TUPLE:
+        case OP_MAKE_TUPLE: {
+            uint16_t n = READ_U16();
+            Value _stk_buf2[VM_CALL_STACK_BUF];
+            Value *tmp = (n <= VM_CALL_STACK_BUF) ? _stk_buf2 : malloc(n * sizeof(Value*));
+            for (int i = n-1; i >= 0; i--) tmp[i] = POP();
+            Value t = value_tuple_new(tmp, n);
+            for (int i=0;i<n;i++) value_release(tmp[i]);
+            if (n > VM_CALL_STACK_BUF) free(tmp);
+            PUSH(t);
+            DISPATCH();
+        }
+        lbl_OP_MAKE_SET:
+        case OP_MAKE_SET: {
+            uint16_t n = READ_U16();
+            Value _stk_buf3[VM_CALL_STACK_BUF];
+            Value *tmp = (n <= VM_CALL_STACK_BUF) ? _stk_buf3 : malloc(n * sizeof(Value*));
+            for (int i = n-1; i >= 0; i--) tmp[i] = POP();
+            Value s = value_set_new();
+            for (int i = 0; i < n; i++) { value_set_add(s, tmp[i]); value_release(tmp[i]); }
+            if (n > VM_CALL_STACK_BUF) free(tmp);
+            PUSH(s);
+            DISPATCH();
+        }
+        lbl_OP_MAKE_DICT:
+        case OP_MAKE_DICT: {
+            uint16_t n = READ_U16();
+            Value _stk_buf4[VM_CALL_STACK_BUF * 2];
+            Value *tmp = (n*2 <= VM_CALL_STACK_BUF*2) ? _stk_buf4 : malloc(n * 2 * sizeof(Value));
+            for (int i = n*2-1; i >= 0; i--) tmp[i] = POP();
+            Value d = value_dict_new();
+            for (int i = 0; i < n; i++) {
+                value_dict_set(d, tmp[i*2], tmp[i*2+1]);
+                value_release(tmp[i*2]); value_release(tmp[i*2+1]);
+            }
+            if (n*2 > VM_CALL_STACK_BUF*2) free(tmp);
+            PUSH(d);
+            DISPATCH();
+        }
+
+        /* ---- indexing ---- */
+        lbl_OP_GET_INDEX:
+        case OP_GET_INDEX: {
+            Value idx = POP(), *obj = POP();
+            Value result = value_null();
+            if (PRISM_LIKELY(VAL_TYPE(obj) == VAL_ARRAY)) {
+                long long i = (VAL_TYPE(idx)==VAL_INT) ? AS_INT(idx) : 0;
+                if (i < 0) i += AS_ARRAY(obj).len;
+                if (PRISM_LIKELY(i >= 0 && i < AS_ARRAY(obj).len)) result = value_retain(AS_ARRAY(obj).items[i]);
+                else { vm_error(vm,"array index out of range",line); }
+            } else if (VAL_TYPE(obj) == VAL_TUPLE) {
+                long long i = (VAL_TYPE(idx)==VAL_INT) ? AS_INT(idx) : 0;
+                if (i < 0) i += AS_TUPLE(obj).len;
+                if (i >= 0 && i < AS_TUPLE(obj).len) result = value_retain(AS_TUPLE(obj).items[i]);
+                else { vm_error(vm,"tuple index out of range",line); }
+            } else if (VAL_TYPE(obj) == VAL_STRING) {
+                long long i = (VAL_TYPE(idx)==VAL_INT) ? AS_INT(idx) : 0;
+                long long slen = (long long)strlen(AS_STR(obj));
+                if (i < 0) i += slen;
+                if (i >= 0 && i < slen) {
+                    char ch[2] = {AS_STR(obj)[i], '\0'};
+                    result = value_string(ch);
+                } else { vm_error(vm,"string index out of range",line); }
+            } else if (VAL_TYPE(obj) == VAL_DICT) {
+                Value v = value_dict_get(obj, idx);
+                result = v ? value_retain(v) : value_null();
+            }
+            value_release(obj); value_release(idx);
+            PUSH(result);
+            DISPATCH();
+        }
+
+        lbl_OP_SET_INDEX:
+        case OP_SET_INDEX: {
+            Value val = POP(), idx = POP(), obj = POP();
+            if (PRISM_LIKELY(VAL_TYPE(obj) == VAL_ARRAY)) {
+                long long i = (VAL_TYPE(idx)==VAL_INT) ? AS_INT(idx) : 0;
+                if (i < 0) i += AS_ARRAY(obj).len;
+                if (PRISM_LIKELY(i >= 0 && i < AS_ARRAY(obj).len)) {
+                    value_release(AS_ARRAY(obj).items[i]);
+                    AS_ARRAY(obj).items[i] = value_retain(val);
+                } else vm_error(vm,"array index out of range",line);
+            } else if (VAL_TYPE(obj) == VAL_DICT) {
+                value_dict_set(obj, idx, val);
+            } else vm_error(vm,"cannot index-assign this type",line);
+            value_release(val); value_release(idx); value_release(obj);
+            DISPATCH();
+        }
+
+        lbl_OP_GET_ATTR:
+        case OP_GET_ATTR: {
+            int instruction_ip = frame->ip - 1;
+            uint16_t name_idx = READ_U16();
+            const char *name = AS_STR(CONST(name_idx));
+            Value obj = POP();
+            if (PRISM_LIKELY(VAL_TYPE(obj) == VAL_DICT)) {
+                InlineCache *cache = chunk_inline_cache(frame->chunk, instruction_ip);
+                if (cache && (cache->opcode != OP_GET_ATTR || cache->name_idx != name_idx)) {
+                    cache->opcode = OP_GET_ATTR;
+                    cache->name_idx = name_idx;
+                    cache->receiver_type = VAL_DICT;
+                    cache->dict_index = -1;
+                    cache->dict_version = 0;
+                    cache->method_id = VM_METHOD_UNKNOWN;
+                }
+                Value v = cache
+                    ? value_dict_get_cached(obj, CONST(name_idx), &cache->dict_index, &cache->dict_version)
+                    : value_dict_get(obj, CONST(name_idx));
+                PUSH(v ? value_retain(v) : value_null());
+            } else {
+                char msg[256];
+                snprintf(msg, sizeof(msg), "cannot get attribute '%s' on %s",
+                         name, value_type_name(VAL_TYPE(obj)));
+                vm_error(vm, msg, line);
+                PUSH(value_null());
+            }
+            value_release(obj);
+            DISPATCH();
+        }
+
+        lbl_OP_SET_ATTR:
+        case OP_SET_ATTR: {
+            int instruction_ip = frame->ip - 1;
+            uint16_t name_idx = READ_U16();
+            Value val = POP(), *obj = POP();
+            if (VAL_TYPE(obj) == VAL_DICT) {
+                InlineCache *cache = chunk_inline_cache(frame->chunk, instruction_ip);
+                value_dict_set(obj, CONST(name_idx), val);
+                if (cache) {
+                    cache->opcode = OP_SET_ATTR;
+                    cache->name_idx = name_idx;
+                    cache->receiver_type = VAL_DICT;
+                    cache->dict_index = value_dict_find_index(obj, CONST(name_idx));
+                    cache->dict_version = AS_DICT(obj).version;
+                    cache->method_id = VM_METHOD_UNKNOWN;
+                }
+            } else {
+                vm_error(vm, "cannot set attribute on non-dict", line);
+            }
+            value_release(val); value_release(obj);
+            DISPATCH();
+        }
+
+        /* ---- slicing ---- */
+        lbl_OP_SLICE:
+        case OP_SLICE: {
+            Value step  = POP();
+            Value stop  = POP();
+            Value start = POP();
+            Value obj   = POP();
+            Value result = vm_do_slice(vm, obj, start, stop, step, line);
+            value_release(obj); value_release(start);
+            value_release(stop); value_release(step);
+            PUSH(result);
+            DISPATCH();
+        }
+
+        /* ---- functions ---- */
+        lbl_OP_MAKE_FUNCTION:
+        case OP_MAKE_FUNCTION: {
+            uint16_t idx = READ_U16();
+            Value proto = CONST(idx);
+            Value fn = value_function(
+                AS_FUNC(proto).name,
+                AS_FUNC(proto).params,
+                AS_FUNC(proto).param_count,
+                AS_FUNC(proto).body,
+                frame->env
+            );
+            AS_FUNC(fn).chunk = AS_FUNC(proto).chunk;
+            if (AS_FUNC(proto).owns_chunk) {
+                AS_FUNC(fn).owns_chunk    = true;
+                AS_FUNC(proto).owns_chunk = false;
+            } else {
+                AS_FUNC(fn).owns_chunk = false;
+            }
+            AS_FUNC(proto).owns_params = false;
+            PUSH(fn);
+            DISPATCH();
+        }
+
+        lbl_OP_CALL:
+        case OP_CALL: {
+            uint16_t argc = READ_U16();
+            /* Stack-buffer optimization: avoid malloc for ≤16 args (the common case).
+             * Eliminates one malloc+free per function call — significant on hot paths. */
+            Value _arg_buf[VM_CALL_STACK_BUF];
+            Value *args = (argc <= VM_CALL_STACK_BUF) ? _arg_buf : malloc(argc * sizeof(Value));
+            for (int i = argc-1; i >= 0; i--) args[i] = POP();
+            Value callee = POP();
+            if (PRISM_LIKELY(VAL_TYPE(callee) == VAL_BUILTIN)) {
+                Value result = AS_BUILTIN(callee).fn(args, argc);
+                for (int i = 0; i < argc; i++) value_release(args[i]);
+                if (argc > VM_CALL_STACK_BUF) free(args);
+                value_release(callee);
+                PUSH(result ? result : value_null());
+            } else if (VAL_TYPE(callee) == VAL_FUNCTION && AS_FUNC(callee).chunk) {
+                if (PRISM_UNLIKELY(vm->frame_count >= VM_FRAME_MAX)) {
+                    vm_error(vm, "call frame overflow", line);
+                    for (int i = 0; i < argc; i++) value_release(args[i]);
+                    if (argc > VM_CALL_STACK_BUF) free(args);
+                    value_release(callee);
+                    PUSH(value_null());
+                    DISPATCH();
+                }
+                Env *fn_env = env_new(AS_FUNC(callee).closure ? AS_FUNC(callee).closure : vm->globals);
+                for (int i = 0; i < AS_FUNC(callee).param_count; i++) {
+                    Value arg = (i < argc) ? args[i] : value_null();
+                    env_set(fn_env, AS_FUNC(callee).params[i].name, arg, false);
+                    if (i >= argc) value_release(arg);
+                }
+                for (int i = 0; i < argc; i++) value_release(args[i]);
+                if (argc > VM_CALL_STACK_BUF) free(args);
+
+                CallFrame *new_frame = &vm->frames[vm->frame_count++];
+                new_frame->chunk = AS_FUNC(callee).chunk;
+                if (!new_frame->chunk->source_file)
+                    new_frame->chunk->source_file = frame->chunk->source_file;
+                new_frame->ip = 0;
+                new_frame->stack_base = vm->stack_top;
+                new_frame->env = fn_env;
+                new_frame->root_env = fn_env;
+                new_frame->owns_env   = 1;
+                new_frame->owns_chunk = 0;
+                new_frame->local_count = 0;
+                memset(new_frame->locals, 0, sizeof(new_frame->locals));
+                value_release(callee);
+                frame = new_frame;
+            } else {
+                vm_error(vm, "value is not callable", line);
+                for (int i = 0; i < argc; i++) value_release(args[i]);
+                if (argc > VM_CALL_STACK_BUF) free(args);
+                value_release(callee);
+                PUSH(value_null());
+            }
+            DISPATCH();
+        }
+
+        lbl_OP_CALL_METHOD:
+        case OP_CALL_METHOD: {
+            int instruction_ip = frame->ip - 1;
+            uint16_t name_idx = READ_U16();
+            uint16_t argc     = READ_U16();
+            const char *method_name = AS_STR(CONST(name_idx));
+            Value _marg_buf[VM_CALL_STACK_BUF];
+            Value *args = (argc <= VM_CALL_STACK_BUF) ? _marg_buf : malloc(argc * sizeof(Value));
+            for (int i = argc-1; i >= 0; i--) args[i] = POP();
+            Value obj = POP();
+            InlineCache *cache = chunk_inline_cache(frame->chunk, instruction_ip);
+            VmMethodId method_id = VM_METHOD_UNKNOWN;
+            if (PRISM_LIKELY(cache && cache->opcode == OP_CALL_METHOD
+                && cache->name_idx == name_idx
+                && cache->receiver_type == VAL_TYPE(obj))) {
+                method_id = (VmMethodId)cache->method_id;
+            } else {
+                method_id = vm_resolve_method_id(VAL_TYPE(obj), method_name);
+                if (cache) {
+                    cache->opcode = OP_CALL_METHOD;
+                    cache->name_idx = name_idx;
+                    cache->receiver_type = VAL_TYPE(obj);
+                    cache->method_id = method_id;
+                    cache->dict_index = -1;
+                    cache->dict_version = 0;
+                }
+            }
+            Value result = vm_dispatch_method_cached(vm, obj, method_name, method_id, args, argc, line);
+            for (int i = 0; i < argc; i++) value_release(args[i]);
+            if (argc > VM_CALL_STACK_BUF) free(args);
+            value_release(obj);
+            PUSH(result ? result : value_null());
+            DISPATCH();
+        }
+
+        lbl_OP_RETURN:
+        case OP_RETURN: {
+            Value ret = POP();
+            while (vm->stack_top > frame->stack_base) {
+                value_release(POP());
+            }
+            for (int _li = 0; _li < frame->local_count; _li++) {
+                value_release(frame->locals[_li]);
+                frame->locals[_li] = NULL;
+            }
+            frame->local_count = 0;
+            vm_close_frame_env(frame);
+            if (frame->owns_chunk) {
+                chunk_free(frame->chunk); free(frame->chunk); frame->chunk = NULL;
+            }
+            vm->frame_count--;
+            if (vm->frame_count == 0) {
+                value_release(ret);
+                goto done;
+            }
+            frame = &vm->frames[vm->frame_count - 1];
+            PUSH(ret);
+            DISPATCH();
+        }
+
+        lbl_OP_RETURN_NULL:
+        case OP_RETURN_NULL: {
+            while (vm->stack_top > frame->stack_base) {
+                value_release(POP());
+            }
+            for (int _li = 0; _li < frame->local_count; _li++) {
+                value_release(frame->locals[_li]);
+                frame->locals[_li] = NULL;
+            }
+            frame->local_count = 0;
+            vm_close_frame_env(frame);

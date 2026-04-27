@@ -1,0 +1,620 @@
+            if (frame->owns_chunk) {
+                chunk_free(frame->chunk); free(frame->chunk); frame->chunk = NULL;
+            }
+            vm->frame_count--;
+            if (vm->frame_count == 0) goto done;
+            frame = &vm->frames[vm->frame_count - 1];
+            PUSH(value_null());
+            DISPATCH();
+        }
+
+        /* ---- iteration ---- */
+        lbl_OP_GET_ITER:
+        case OP_GET_ITER: {
+            Value v = POP();
+            Value iter = vm_get_iter(vm, v, line);
+            value_release(v);
+            PUSH(iter);
+            DISPATCH();
+        }
+
+        lbl_OP_FOR_ITER:
+        case OP_FOR_ITER: {
+            int16_t jump_off = (int16_t)READ_U16();
+            Value idx_v    = PEEK(0);
+            Value iter_arr = PEEK(1);
+            long long idx  = AS_INT(idx_v);
+            long long len  = AS_ARRAY(iter_arr).len;
+            if (PRISM_UNLIKELY(idx >= len)) {
+                value_release(POP());
+                value_release(POP());
+                frame->ip += jump_off;
+            } else {
+                Value item = value_retain(AS_ARRAY(iter_arr).items[idx]);
+                value_release(POP());
+                PUSH(value_int(idx + 1));
+                PUSH(item);
+            }
+            DISPATCH();
+        }
+
+        /* ---- f-string ---- */
+        lbl_OP_BUILD_FSTRING:
+        case OP_BUILD_FSTRING: {
+            READ_U16(); /* count (currently always 1) */
+            Value tmpl = POP();
+            char *result = vm_process_fstring(vm, AS_STR(tmpl), frame->env);
+            value_release(tmpl);
+            PUSH(value_string_take(result));
+            DISPATCH();
+        }
+
+        /* ---- import ---- */
+        lbl_OP_IMPORT:
+        case OP_IMPORT: {
+            uint16_t idx = READ_U16();
+            const char *path = AS_STR(CONST(idx));
+            /* Resolve import: try as-is, +.pr, lib/<path>, lib/<path>.pr */
+            FILE *f = NULL;
+            char probe[512];
+            if ((f = fopen(path, "r")) != NULL) {
+                /* as-is */
+            } else {
+                snprintf(probe, sizeof(probe), "%s.pr", path);
+                if ((f = fopen(probe, "r")) != NULL) {
+                    /* with .pr */
+                } else {
+                    snprintf(probe, sizeof(probe), "lib/%s", path);
+                    if ((f = fopen(probe, "r")) != NULL) {
+                        /* lib/<path> */
+                    } else {
+                        snprintf(probe, sizeof(probe), "lib/%s.pr", path);
+                        f = fopen(probe, "r");
+                    }
+                }
+            }
+            if (!f) {
+                char msg[256];
+                snprintf(msg, sizeof(msg), "cannot import '%s': file not found", path);
+                vm_error(vm, msg, line);
+                DISPATCH();
+            }
+            fseek(f, 0, SEEK_END);
+            long sz = ftell(f); rewind(f);
+            char *src = malloc(sz + 1);
+            { size_t _nr = fread(src, 1, (size_t)sz, f); (void)_nr; }
+            src[sz] = '\0'; fclose(f);
+
+            /* Parse the module source. */
+            extern ASTNode *parser_parse_source(const char *src,
+                                                char *errbuf, int errlen);
+            char errbuf[512] = {0};
+            ASTNode *prog = parser_parse_source(src, errbuf, sizeof(errbuf));
+            free(src);
+            if (!prog) {
+                vm_error(vm, errbuf[0] ? errbuf : "import parse error", line);
+                DISPATCH();
+            }
+
+            Chunk *mod_chunk = calloc(1, sizeof(Chunk));
+            char comp_err[512] = {0};
+            if (compile_module(prog, mod_chunk, comp_err, sizeof(comp_err)) != 0) {
+                ast_node_free(prog);
+                chunk_free(mod_chunk); free(mod_chunk);
+                vm_error(vm, comp_err[0] ? comp_err : "import compile error", line);
+                DISPATCH();
+            }
+            ast_node_free(prog);
+            mod_chunk->source_file = path;
+
+            if (PRISM_UNLIKELY(vm->frame_count >= VM_FRAME_MAX)) {
+                chunk_free(mod_chunk); free(mod_chunk);
+                vm_error(vm, "import: frame stack overflow", line);
+                DISPATCH();
+            }
+            CallFrame *mod_frame = &vm->frames[vm->frame_count++];
+            mod_frame->chunk       = mod_chunk;
+            mod_frame->ip          = 0;
+            mod_frame->stack_base  = vm->stack_top;
+            mod_frame->env         = frame->env;
+            mod_frame->root_env    = frame->env;
+            mod_frame->owns_env    = 0;
+            mod_frame->owns_chunk  = 1;
+            mod_frame->local_count = 0;
+            memset(mod_frame->locals, 0, sizeof(mod_frame->locals));
+            frame = mod_frame;
+            DISPATCH();
+        }
+
+        lbl_OP_IS_TYPE:
+        case OP_IS_TYPE: {
+            uint16_t idx = READ_U16();
+            const char *tname = AS_STR(CONST(idx));
+            Value val = vm_pop(vm);
+            bool match_ok = false;
+            if      (strcmp(tname, "int")    == 0) match_ok = (VAL_TYPE(val) == VAL_INT);
+            else if (strcmp(tname, "float")  == 0) match_ok = (VAL_TYPE(val) == VAL_FLOAT);
+            else if (strcmp(tname, "str")    == 0) match_ok = (VAL_TYPE(val) == VAL_STRING);
+            else if (strcmp(tname, "bool")   == 0) match_ok = (VAL_TYPE(val) == VAL_BOOL);
+            else if (strcmp(tname, "null")   == 0) match_ok = (VAL_TYPE(val) == VAL_NULL);
+            else if (strcmp(tname, "array")  == 0) match_ok = (VAL_TYPE(val) == VAL_ARRAY);
+            else if (strcmp(tname, "dict")   == 0) match_ok = (VAL_TYPE(val) == VAL_DICT);
+            else if (strcmp(tname, "set")    == 0) match_ok = (VAL_TYPE(val) == VAL_SET);
+            else if (strcmp(tname, "tuple")  == 0) match_ok = (VAL_TYPE(val) == VAL_TUPLE);
+            else if (strcmp(tname, "func")   == 0) match_ok = (VAL_TYPE(val) == VAL_FUNCTION || VAL_TYPE(val) == VAL_BUILTIN);
+            else if (strcmp(tname, "unknown") == 0) match_ok = (VAL_TYPE(val) == VAL_BOOL && AS_BOOL(val) == -1);
+            else {
+                match_ok = (strcmp(value_type_name(VAL_TYPE(val)), tname) == 0);
+            }
+            value_release(val);
+            vm_push(vm, value_bool(match_ok ? 1 : 0));
+            DISPATCH();
+        }
+
+        /* ── local variable slots (O(1), no hash) ──────────────── */
+        lbl_OP_DEFINE_LOCAL:
+        case OP_DEFINE_LOCAL: {
+            uint16_t slot = READ_U16();
+            Value v = POP();
+            if (PRISM_LIKELY(slot < VM_LOCALS_MAX)) {
+                value_release(frame->locals[slot]);
+                frame->locals[slot] = v;
+                if (slot >= (uint16_t)frame->local_count)
+                    frame->local_count = (int)slot + 1;
+            } else { value_release(v); }
+            DISPATCH();
+        }
+        lbl_OP_STORE_LOCAL:
+        case OP_STORE_LOCAL: {
+            uint16_t slot = READ_U16();
+            Value v = POP();
+            if (PRISM_LIKELY(slot < VM_LOCALS_MAX)) {
+                value_release(frame->locals[slot]);
+                frame->locals[slot] = v;
+            } else { value_release(v); }
+            DISPATCH();
+        }
+        lbl_OP_LOAD_LOCAL:
+        case OP_LOAD_LOCAL: {
+            uint16_t slot = READ_U16();
+            Value v = (PRISM_LIKELY(slot < VM_LOCALS_MAX) && frame->locals[slot])
+                       ? value_retain(frame->locals[slot])
+                       : value_null();
+            PUSH(v);
+            DISPATCH();
+        }
+        lbl_OP_INC_LOCAL:
+        case OP_INC_LOCAL: {
+            uint16_t slot = READ_U16();
+            if (PRISM_LIKELY(slot < VM_LOCALS_MAX && frame->locals[slot] &&
+                frame->locals[slot]->type == VAL_INT)) {
+                Value old = frame->locals[slot];
+                frame->locals[slot] = value_int(AS_INT(old) + 1);
+                value_release(old);
+            }
+            DISPATCH();
+        }
+        lbl_OP_DEC_LOCAL:
+        case OP_DEC_LOCAL: {
+            uint16_t slot = READ_U16();
+            if (PRISM_LIKELY(slot < VM_LOCALS_MAX && frame->locals[slot] &&
+                frame->locals[slot]->type == VAL_INT)) {
+                Value old = frame->locals[slot];
+                frame->locals[slot] = value_int(AS_INT(old) - 1);
+                value_release(old);
+            }
+            DISPATCH();
+        }
+
+        /* ── small immediate integer ──────────────────────────── */
+        lbl_OP_PUSH_INT_IMM:
+        case OP_PUSH_INT_IMM: {
+            int16_t imm = (int16_t)READ_U16();
+            PUSH(value_int((long long)imm));
+            DISPATCH();
+        }
+
+        /* ── specialized integer arithmetic (no type check) ──── */
+        lbl_OP_ADD_INT:
+        case OP_ADD_INT: {
+            Value b = POP(), *a = POP();
+            PUSH(value_int(vm_fast_iadd(AS_INT(a[0]), AS_INT(b))));
+            value_release(a); value_release(b);
+            DISPATCH();
+        }
+        lbl_OP_SUB_INT:
+        case OP_SUB_INT: {
+            Value b = POP(), *a = POP();
+            PUSH(value_int(vm_fast_isub(AS_INT(a[0]), AS_INT(b))));
+            value_release(a); value_release(b);
+            DISPATCH();
+        }
+        lbl_OP_MUL_INT:
+        case OP_MUL_INT: {
+            Value b = POP(), *a = POP();
+            PUSH(value_int(vm_fast_imul(AS_INT(a[0]), AS_INT(b))));
+            value_release(a); value_release(b);
+            DISPATCH();
+        }
+        lbl_OP_DIV_INT:
+        case OP_DIV_INT: {
+            Value b = POP(), *a = POP();
+            if (PRISM_UNLIKELY(AS_INT(b) == 0)) { vm_error(vm, "division by zero", line); PUSH(value_null()); }
+            else PUSH(value_int(AS_INT(a[0]) / AS_INT(b)));
+            value_release(a); value_release(b);
+            DISPATCH();
+        }
+        lbl_OP_MOD_INT:
+        case OP_MOD_INT: {
+            Value b = POP(), *a = POP();
+            if (PRISM_UNLIKELY(AS_INT(b) == 0)) { vm_error(vm, "modulo by zero", line); PUSH(value_null()); }
+            else PUSH(value_int(AS_INT(a[0]) % AS_INT(b)));
+            value_release(a); value_release(b);
+            DISPATCH();
+        }
+        lbl_OP_NEG_INT:
+        case OP_NEG_INT: {
+            Value a = POP();
+            PUSH(value_int(-AS_INT(a[0])));
+            value_release(a);
+            DISPATCH();
+        }
+        lbl_OP_IDIV:
+        case OP_IDIV: {
+            Value b = POP(), *a = POP();
+            if ((VAL_TYPE(a[0]) == VAL_INT) && (VAL_TYPE(b) == VAL_INT)) {
+                if (PRISM_UNLIKELY(AS_INT(b) == 0)) { vm_error(vm,"division by zero",line); PUSH(value_null()); }
+                else {
+                    long long q = AS_INT(a[0]) / AS_INT(b);
+                    if ((AS_INT(a[0]) ^ AS_INT(b)) < 0 && q * AS_INT(b) != AS_INT(a[0])) q--;
+                    PUSH(value_int(q));
+                }
+            } else if (VAL_TYPE(a[0]) == VAL_FLOAT || VAL_TYPE(b) == VAL_FLOAT) {
+                double fa = (VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
+                double fb = (VAL_TYPE(b)==VAL_INT)?(double)AS_INT(b):AS_FLOAT(b);
+                if (fb == 0.0) { vm_error(vm,"division by zero",line); PUSH(value_null()); }
+                else PUSH(value_float(floor(fa/fb)));
+            } else { vm_error(vm,"// requires numeric operands",line); PUSH(value_null()); }
+            value_release(a); value_release(b);
+            DISPATCH();
+        }
+
+        /* ── specialized integer comparisons ─────────────────── */
+        lbl_OP_LT_INT:
+        case OP_LT_INT: {
+            Value b = POP(), *a = POP();
+            PUSH(value_bool(AS_INT(a[0]) < AS_INT(b) ? 1 : 0));
+            value_release(a); value_release(b); DISPATCH();
+        }
+        lbl_OP_LE_INT:
+        case OP_LE_INT: {
+            Value b = POP(), *a = POP();
+            PUSH(value_bool(AS_INT(a[0]) <= AS_INT(b) ? 1 : 0));
+            value_release(a); value_release(b); DISPATCH();
+        }
+        lbl_OP_GT_INT:
+        case OP_GT_INT: {
+            Value b = POP(), *a = POP();
+            PUSH(value_bool(AS_INT(a[0]) > AS_INT(b) ? 1 : 0));
+            value_release(a); value_release(b); DISPATCH();
+        }
+        lbl_OP_GE_INT:
+        case OP_GE_INT: {
+            Value b = POP(), *a = POP();
+            PUSH(value_bool(AS_INT(a[0]) >= AS_INT(b) ? 1 : 0));
+            value_release(a); value_release(b); DISPATCH();
+        }
+        lbl_OP_EQ_INT:
+        case OP_EQ_INT: {
+            Value b = POP(), *a = POP();
+            PUSH(value_bool(AS_INT(a[0]) == AS_INT(b) ? 1 : 0));
+            value_release(a); value_release(b); DISPATCH();
+        }
+        lbl_OP_NE_INT:
+        case OP_NE_INT: {
+            Value b = POP(), *a = POP();
+            PUSH(value_bool(AS_INT(a[0]) != AS_INT(b) ? 1 : 0));
+            value_release(a); value_release(b); DISPATCH();
+        }
+
+        /* ── wide jumps (32-bit offset) ───────────────────────── */
+        lbl_OP_JUMP_WIDE:
+        case OP_JUMP_WIDE: {
+            uint16_t lo = READ_U16(), hi = READ_U16();
+            int32_t off = (int32_t)((uint32_t)lo | ((uint32_t)hi << 16));
+            frame->ip += (int)off;
+            DISPATCH();
+        }
+        lbl_OP_JUMP_IF_FALSE_WIDE:
+        case OP_JUMP_IF_FALSE_WIDE: {
+            uint16_t lo = READ_U16(), hi = READ_U16();
+            int32_t off = (int32_t)((uint32_t)lo | ((uint32_t)hi << 16));
+            Value v = POP();
+            if (!value_truthy(v)) frame->ip += (int)off;
+            value_release(v); DISPATCH();
+        }
+        lbl_OP_JUMP_IF_TRUE_WIDE:
+        case OP_JUMP_IF_TRUE_WIDE: {
+            uint16_t lo = READ_U16(), hi = READ_U16();
+            int32_t off = (int32_t)((uint32_t)lo | ((uint32_t)hi << 16));
+            Value v = POP();
+            if (value_truthy(v)) frame->ip += (int)off;
+            value_release(v); DISPATCH();
+        }
+
+        /* ── range literal [start..stop step N] ──────────────── */
+        lbl_OP_MAKE_RANGE:
+        case OP_MAKE_RANGE: {
+            uint16_t flags = READ_U16();
+            Value step_v  = (flags & 1) ? POP() : NULL;
+            Value stop_v  = POP();
+            Value start_v = POP();
+            long long start = (VAL_TYPE(start_v) == VAL_INT) ? AS_INT(start_v) : 0;
+            long long stop  = (VAL_TYPE(stop_v)  == VAL_INT) ? AS_INT(stop_v)  : 0;
+            long long step2 = step_v ? (VAL_TYPE(step_v)==VAL_INT?AS_INT(step_v):1) : 1;
+            if (step2 == 0) step2 = 1;
+            if (flags & 2) {
+                stop += (step2 > 0) ? 1 : -1;
+            }
+            Value arr2 = value_array_new();
+            if (step2 > 0) {
+                for (long long i = start; i < stop; i += step2)
+                    value_array_push(arr2, value_int(i));
+            } else {
+                for (long long i = start; i > stop; i += step2)
+                    value_array_push(arr2, value_int(i));
+            }
+            value_release(start_v); value_release(stop_v);
+            if (step_v) value_release(step_v);
+            PUSH(arr2);
+            DISPATCH();
+        }
+
+        /* ── null coalescing ?? ───────────────────────────────── */
+        lbl_OP_NULL_COAL:
+        case OP_NULL_COAL: {
+            Value rhs = POP(), lhs = POP();
+            if (VAL_TYPE(lhs) == VAL_NULL) {
+                value_release(lhs); PUSH(rhs);
+            } else {
+                value_release(rhs); PUSH(lhs);
+            }
+            DISPATCH();
+        }
+
+        /* ── safe attribute ?. ───────────────────────────────── */
+        lbl_OP_SAFE_GET_ATTR:
+        case OP_SAFE_GET_ATTR: {
+            uint16_t name_idx = READ_U16();
+            Value obj = POP();
+            if (VAL_TYPE(obj) == VAL_NULL) {
+                PUSH(value_null());
+            } else if (VAL_TYPE(obj) == VAL_DICT) {
+                Value v = value_dict_get(obj, CONST(name_idx));
+                PUSH(v ? value_retain(v) : value_null());
+            } else {
+                char msg2[256];
+                snprintf(msg2,sizeof(msg2),"cannot safe-access '%s' on %s",
+                         AS_STR(CONST(name_idx)), value_type_name(VAL_TYPE(obj)));
+                vm_error(vm, msg2, line); PUSH(value_null());
+            }
+            value_release(obj); DISPATCH();
+        }
+
+        /* ── safe index ?[] ──────────────────────────────────── */
+        lbl_OP_SAFE_GET_INDEX:
+        case OP_SAFE_GET_INDEX: {
+            Value idx = POP(), *obj = POP();
+            if (VAL_TYPE(obj) == VAL_NULL) {
+                PUSH(value_null());
+            } else if (VAL_TYPE(obj) == VAL_ARRAY) {
+                long long i = (VAL_TYPE(idx)==VAL_INT)?AS_INT(idx):0;
+                if (i < 0) i += AS_ARRAY(obj).len;
+                PUSH((i>=0&&i<AS_ARRAY(obj).len)?value_retain(AS_ARRAY(obj).items[i]):value_null());
+            } else if (VAL_TYPE(obj) == VAL_DICT) {
+                Value v = value_dict_get(obj, idx);
+                PUSH(v ? value_retain(v) : value_null());
+            } else {
+                PUSH(value_null());
+            }
+            value_release(obj); value_release(idx); DISPATCH();
+        }
+
+        /* ── pipe |> operator ────────────────────────────────── */
+        lbl_OP_PIPE:
+        case OP_PIPE: {
+            Value fn   = POP();
+            Value arg  = POP();
+            Value result = value_null();
+            if (VAL_TYPE(fn) == VAL_BUILTIN) {
+                result = AS_BUILTIN(fn).fn(&arg, 1);
+            } else if (VAL_TYPE(fn) == VAL_FUNCTION && AS_FUNC(fn).chunk) {
+                if (vm->frame_count < VM_FRAME_MAX) {
+                    Env *fn_env = env_new(AS_FUNC(fn).closure ? AS_FUNC(fn).closure : vm->globals);
+                    if (AS_FUNC(fn).param_count >= 1)
+                        env_set(fn_env, AS_FUNC(fn).params[0].name, arg, false);
+                    CallFrame *new_frame = &vm->frames[vm->frame_count++];
+                    new_frame->chunk = AS_FUNC(fn).chunk;
+                    new_frame->ip = 0;
+                    new_frame->stack_base = vm->stack_top;
+                    new_frame->env = fn_env;
+                    new_frame->root_env = fn_env;
+                    new_frame->owns_env   = 1;
+                    new_frame->owns_chunk = 0;
+                    new_frame->local_count = 0;
+                    frame = new_frame;
+                    value_release(arg); value_release(fn);
+                    DISPATCH();
+                }
+            } else {
+                vm_error(vm, "pipe: right-hand side is not callable", line);
+            }
+            value_release(arg); value_release(fn);
+            PUSH(result ? result : value_null());
+            DISPATCH();
+        }
+
+        /* ── PSS link stylesheet ─────────────────────────────── */
+        lbl_OP_LINK_STYLE:
+        case OP_LINK_STYLE: {
+            uint16_t idx = READ_U16();
+            const char *path = AS_STR(CONST(idx));
+#ifdef HAVE_X11
+            if (g_vm_xgui) {
+                xgui_load_style(g_vm_xgui, path);
+            } else {
+                fprintf(stderr, "[pss] link '%s' (no active xgui window yet)\n", path);
+            }
+#else
+            fprintf(stderr, "[pss] link '%s' (X11 not compiled in)\n", path);
+#endif
+            DISPATCH();
+        }
+
+        /* ── expect / assert ─────────────────────────────────── */
+        lbl_OP_EXPECT:
+        case OP_EXPECT: {
+            uint16_t msg_idx = READ_U16();
+            Value cond = POP();
+            if (PRISM_UNLIKELY(!value_truthy(cond))) {
+                const char *msg2 = (msg_idx < (uint16_t)frame->chunk->const_count &&
+                                   frame->chunk->constants[msg_idx]->type==VAL_STRING)
+                                   ? AS_STR(frame->chunk->constants[msg_idx])
+                                   : "expectation failed";
+                fprintf(stderr, "[prism] expect failed: %s (line %d)\n", msg2, line);
+                value_release(cond);
+                vm->had_error = 1;
+                snprintf(vm->error_msg, sizeof(vm->error_msg),
+                         "line %d: expect failed: %s", line, msg2);
+                goto done;
+            }
+            value_release(cond);
+            DISPATCH();
+        }
+
+        /* ── match type check ─────────────────────────────────── */
+        lbl_OP_MATCH_TYPE:
+        case OP_MATCH_TYPE: {
+            uint16_t idx = READ_U16();
+            const char *tname = AS_STR(CONST(idx));
+            Value val = PEEK(0);
+            bool match_ok2 = false;
+            if      (strcmp(tname,"int")==0)    match_ok2 = VAL_TYPE(val)==VAL_INT;
+            else if (strcmp(tname,"float")==0)  match_ok2 = VAL_TYPE(val)==VAL_FLOAT;
+            else if (strcmp(tname,"str")==0)    match_ok2 = VAL_TYPE(val)==VAL_STRING;
+            else if (strcmp(tname,"bool")==0)   match_ok2 = VAL_TYPE(val)==VAL_BOOL;
+            else if (strcmp(tname,"null")==0)   match_ok2 = VAL_TYPE(val)==VAL_NULL;
+            else if (strcmp(tname,"array")==0)  match_ok2 = VAL_TYPE(val)==VAL_ARRAY;
+            else if (strcmp(tname,"dict")==0)   match_ok2 = VAL_TYPE(val)==VAL_DICT;
+            else if (strcmp(tname,"set")==0)    match_ok2 = VAL_TYPE(val)==VAL_SET;
+            else if (strcmp(tname,"tuple")==0)  match_ok2 = VAL_TYPE(val)==VAL_TUPLE;
+            else match_ok2 = false;
+            PUSH(value_bool(match_ok2 ? 1 : 0));
+            DISPATCH();
+        }
+
+        /* ── tail call — true TCO: reuse current frame for self-recursion ── */
+        lbl_OP_TAIL_CALL:
+        case OP_TAIL_CALL: {
+            uint16_t argc = READ_U16();
+            Value _tc_buf[VM_CALL_STACK_BUF];
+            Value *args = (argc <= VM_CALL_STACK_BUF) ? _tc_buf : malloc(argc * sizeof(Value));
+            for (int i = argc-1; i >= 0; i--) args[i] = POP();
+            Value callee = POP();
+            if (VAL_TYPE(callee) == VAL_BUILTIN) {
+                Value result = AS_BUILTIN(callee).fn(args, argc);
+                for (int i = 0; i < argc; i++) value_release(args[i]);
+                if (argc > VM_CALL_STACK_BUF) free(args);
+                value_release(callee);
+                PUSH(result ? result : value_null());
+            } else if (VAL_TYPE(callee) == VAL_FUNCTION && AS_FUNC(callee).chunk
+                       && AS_FUNC(callee).chunk == frame->chunk) {
+                /* True TCO: same function — update locals in-place, reset ip */
+                Env *fn_env = env_new(AS_FUNC(callee).closure ? AS_FUNC(callee).closure : vm->globals);
+                for (int i = 0; i < AS_FUNC(callee).param_count; i++) {
+                    Value arg2 = (i < argc) ? args[i] : value_null();
+                    env_set(fn_env, AS_FUNC(callee).params[i].name, arg2, false);
+                    if (i >= argc) value_release(arg2);
+                }
+                for (int i = 0; i < argc; i++) value_release(args[i]);
+                if (argc > VM_CALL_STACK_BUF) free(args);
+                /* Release old locals */
+                for (int _li = 0; _li < frame->local_count; _li++) {
+                    value_release(frame->locals[_li]);
+                    frame->locals[_li] = NULL;
+                }
+                frame->local_count = 0;
+                /* Swap env */
+                vm_close_frame_env(frame);
+                frame->env = fn_env;
+                frame->root_env = fn_env;
+                frame->owns_env = 1;
+                frame->ip = 0;   /* restart at top of function */
+                value_release(callee);
+            } else if (VAL_TYPE(callee) == VAL_FUNCTION && AS_FUNC(callee).chunk) {
+                /* Different function — regular call */
+                if (PRISM_UNLIKELY(vm->frame_count >= VM_FRAME_MAX)) {
+                    for (int i = 0; i < argc; i++) value_release(args[i]);
+                    if (argc > VM_CALL_STACK_BUF) free(args);
+                    value_release(callee); PUSH(value_null());
+                } else {
+                    Env *fn_env = env_new(AS_FUNC(callee).closure ? AS_FUNC(callee).closure : vm->globals);
+                    for (int i = 0; i < AS_FUNC(callee).param_count; i++) {
+                        Value arg2 = (i < argc) ? args[i] : value_null();
+                        env_set(fn_env, AS_FUNC(callee).params[i].name, arg2, false);
+                        if (i >= argc) value_release(arg2);
+                    }
+                    for (int i = 0; i < argc; i++) value_release(args[i]);
+                    if (argc > VM_CALL_STACK_BUF) free(args);
+                    CallFrame *new_frame = &vm->frames[vm->frame_count++];
+                    new_frame->chunk = AS_FUNC(callee).chunk;
+                    new_frame->ip = 0; new_frame->stack_base = vm->stack_top;
+                    new_frame->env = fn_env; new_frame->root_env = fn_env;
+                    new_frame->owns_env = 1; new_frame->owns_chunk = 0;
+                    new_frame->local_count = 0;
+                    memset(new_frame->locals, 0, sizeof(new_frame->locals));
+                    value_release(callee);
+                    frame = new_frame;
+                }
+            } else {
+                vm_error(vm, "value is not callable", line);
+                for (int i = 0; i < argc; i++) value_release(args[i]);
+                if (argc > VM_CALL_STACK_BUF) free(args);
+                value_release(callee); PUSH(value_null());
+            }
+            DISPATCH();
+        }
+
+        default: {
+            char msg[64];
+            snprintf(msg, sizeof(msg), "unknown opcode %d at ip %d", op, frame->ip - 1);
+            vm_error(vm, msg, line);
+            DISPATCH();
+        }
+        }
+    }
+
+done:
+    while (vm->frame_count > 0) {
+        CallFrame *open = &vm->frames[vm->frame_count - 1];
+        /* Free any local variable slots still live in this frame. */
+        for (int _li = 0; _li < open->local_count; _li++) {
+            if (open->locals[_li]) {
+                value_release(open->locals[_li]);
+                open->locals[_li] = NULL;
+            }
+        }
+        open->local_count = 0;
+        vm_close_frame_env(open);
+        vm->frame_count--;
+    }
+    return vm->had_error ? 1 : 0;
+
+#undef READ_BYTE
+#undef READ_U16
+#undef CURR_LINE
+#undef PUSH
+#undef POP
+#undef PEEK
+#undef CONST
+}

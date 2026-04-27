@@ -1,0 +1,499 @@
+
+static Value vm_bi_xgui_end(Value *args, int argc) {
+    (void)args; (void)argc;
+    xgui_end(g_vm_xgui); return value_null();
+}
+
+static Value vm_bi_xgui_label(Value *args, int argc) {
+    if (g_vm_xgui && argc > 0 && VAL_TYPE(args[0]) == VAL_STRING)
+        xgui_label(g_vm_xgui, AS_STR(args[0]));
+    return value_null();
+}
+
+static Value vm_bi_xgui_button(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_bool(0);
+    return value_bool(xgui_button(g_vm_xgui, AS_STR(args[0])) ? 1 : 0);
+}
+
+static Value vm_bi_xgui_input(Value *args, int argc) {
+    if (!g_vm_xgui) return value_string("");
+    const char *id  = (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "input";
+    const char *ph  = (argc > 1 && VAL_TYPE(args[1]) == VAL_STRING) ? AS_STR(args[1]) : "";
+    const char *val = xgui_input(g_vm_xgui, id, ph);
+    return value_string(val ? val : "");
+}
+
+static Value vm_bi_xgui_spacer(Value *args, int argc) {
+    int h = (argc > 0 && VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : 16;
+    xgui_spacer(g_vm_xgui, h); return value_null();
+}
+
+static Value vm_bi_xgui_row_begin(Value *args, int argc) {
+    (void)args; (void)argc; xgui_row_begin(g_vm_xgui); return value_null();
+}
+
+static Value vm_bi_xgui_row_end(Value *args, int argc) {
+    (void)args; (void)argc; xgui_row_end(g_vm_xgui); return value_null();
+}
+
+static Value vm_bi_xgui_close(Value *args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) { xgui_destroy(g_vm_xgui); g_vm_xgui = NULL; }
+    return value_null();
+}
+
+static Value vm_bi_xgui_title(Value *args, int argc) {
+    if (g_vm_xgui && argc > 0 && VAL_TYPE(args[0]) == VAL_STRING)
+        xgui_title(g_vm_xgui, AS_STR(args[0]));
+    return value_null();
+}
+static Value vm_bi_xgui_subtitle(Value *args, int argc) {
+    if (g_vm_xgui && argc > 0 && VAL_TYPE(args[0]) == VAL_STRING)
+        xgui_subtitle(g_vm_xgui, AS_STR(args[0]));
+    return value_null();
+}
+static Value vm_bi_xgui_separator(Value *args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) xgui_separator(g_vm_xgui);
+    return value_null();
+}
+static Value vm_bi_xgui_checkbox(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 2) return value_bool(0);
+    const char *id    = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "cb";
+    const char *label = (argc > 1 && VAL_TYPE(args[1]) == VAL_STRING) ? AS_STR(args[1]) : "";
+    return value_bool(xgui_checkbox(g_vm_xgui, id, label) ? 1 : 0);
+}
+static Value vm_bi_xgui_progress(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 2) return value_null();
+    int val = (VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : (int)AS_FLOAT(args[0]);
+    int mx  = (VAL_TYPE(args[1]) == VAL_INT) ? (int)AS_INT(args[1]) : (int)AS_FLOAT(args[1]);
+    xgui_progress(g_vm_xgui, val, mx);
+    return value_null();
+}
+static Value vm_bi_xgui_slider(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 4) return value_float(0.0);
+    const char *id = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "sl";
+    double mn  = (VAL_TYPE(args[1]) == VAL_INT) ? (double)AS_INT(args[1]) : AS_FLOAT(args[1]);
+    double mx  = (VAL_TYPE(args[2]) == VAL_INT) ? (double)AS_INT(args[2]) : AS_FLOAT(args[2]);
+    double cur = (VAL_TYPE(args[3]) == VAL_INT) ? (double)AS_INT(args[3]) : AS_FLOAT(args[3]);
+    return value_float((double)xgui_slider(g_vm_xgui, id, (float)mn, (float)mx, (float)cur));
+}
+static Value vm_bi_xgui_textarea(Value *args, int argc) {
+    if (!g_vm_xgui) return value_string("");
+    const char *id = (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "ta";
+    const char *ph = (argc > 1 && VAL_TYPE(args[1]) == VAL_STRING) ? AS_STR(args[1]) : "";
+    const char *val = xgui_textarea(g_vm_xgui, id, ph);
+    return value_string(val ? val : "");
+}
+static Value vm_bi_xgui_badge(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_null();
+    const char *text = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    uint32_t color = 0x4f8ef7;
+    if (argc > 1 && VAL_TYPE(args[1]) == VAL_INT) color = (uint32_t)AS_INT(args[1]);
+    xgui_badge(g_vm_xgui, text, color);
+    return value_null();
+}
+static Value vm_bi_xgui_set_dark(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_null();
+    bool dark = false;
+    if (VAL_TYPE(args[0]) == VAL_BOOL)     dark = (AS_BOOL(args[0]) != 0);
+    else if (VAL_TYPE(args[0]) == VAL_INT) dark = (AS_INT(args[0])  != 0);
+    xgui_set_dark(g_vm_xgui, dark);
+    return value_null();
+}
+static Value vm_bi_xgui_card_begin(Value *args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) xgui_card_begin(g_vm_xgui);
+    return value_null();
+}
+static Value vm_bi_xgui_card_end(Value *args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) xgui_card_end(g_vm_xgui);
+    return value_null();
+}
+static Value vm_bi_xgui_tooltip(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_null();
+    const char *text = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    xgui_tooltip(g_vm_xgui, text);
+    return value_null();
+}
+
+/* ── new v4 widgets ─────────────────────────────────────────── */
+static Value vm_bi_xgui_toggle(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 3) return value_bool(0);
+    const char *id  = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "toggle";
+    bool        v   = (VAL_TYPE(args[1]) == VAL_BOOL)   ? (AS_BOOL(args[1]) != 0)
+                    : (VAL_TYPE(args[1]) == VAL_INT)    ? (AS_INT(args[1])  != 0) : false;
+    const char *lbl = (VAL_TYPE(args[2]) == VAL_STRING) ? AS_STR(args[2]) : "";
+    return value_bool(xgui_toggle(g_vm_xgui, id, v, lbl) ? 1 : 0);
+}
+static Value vm_bi_xgui_chip(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_bool(0);
+    const char *text = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    bool removable   = (argc >= 2 && VAL_TYPE(args[1]) == VAL_BOOL) ? (AS_BOOL(args[1]) != 0) : false;
+    return value_bool(xgui_chip(g_vm_xgui, text, removable) ? 1 : 0);
+}
+static Value vm_bi_xgui_tabs(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 2) return value_int(0);
+    const char *id = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "tabs";
+    const char *labels_arr[16]; int n = 0;
+    if (VAL_TYPE(args[1]) == VAL_ARRAY) {
+        for (int i = 0; i < AS_ARRAY(args[1]).len && i < 16; i++) {
+            Value lv = AS_ARRAY(args[1]).items[i];
+            labels_arr[n++] = (VAL_TYPE(lv) == VAL_STRING) ? AS_STR(lv) : "";
+        }
+    }
+    return value_int(xgui_tabs(g_vm_xgui, id, labels_arr, n));
+}
+static Value vm_bi_xgui_select(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 3) return value_int(0);
+    const char *id  = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "sel";
+    int         cur = (VAL_TYPE(args[2]) == VAL_INT)    ? (int)AS_INT(args[2]) : 0;
+    const char *opts[32]; int n = 0;
+    if (VAL_TYPE(args[1]) == VAL_ARRAY) {
+        for (int i = 0; i < AS_ARRAY(args[1]).len && i < 32; i++) {
+            Value ov = AS_ARRAY(args[1]).items[i];
+            opts[n++] = (VAL_TYPE(ov) == VAL_STRING) ? AS_STR(ov) : "";
+        }
+    }
+    return value_int(xgui_select(g_vm_xgui, id, opts, n, cur));
+}
+static Value vm_bi_xgui_spinner(Value *args, int argc) {
+    int sz = (argc >= 1 && VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : 32;
+    if (g_vm_xgui) xgui_spinner(g_vm_xgui, sz);
+    return value_null();
+}
+static Value vm_bi_xgui_list_item(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_bool(0);
+    const char *title    = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    const char *subtitle = (argc >= 2 && VAL_TYPE(args[1]) == VAL_STRING) ? AS_STR(args[1]) : NULL;
+    const char *trailing = (argc >= 3 && VAL_TYPE(args[2]) == VAL_STRING) ? AS_STR(args[2]) : NULL;
+    return value_bool(xgui_list_item(g_vm_xgui, title, subtitle, trailing) ? 1 : 0);
+}
+static Value vm_bi_xgui_show_toast(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_null();
+    const char *text = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    int dur = (argc >= 2 && VAL_TYPE(args[1]) == VAL_INT) ? (int)AS_INT(args[1]) : 90;
+    xgui_show_toast(g_vm_xgui, text, dur);
+    return value_null();
+}
+static Value vm_bi_xgui_section(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_null();
+    xgui_section(g_vm_xgui, (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "");
+    return value_null();
+}
+static Value vm_bi_xgui_icon_button(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 2) return value_bool(0);
+    const char *icon  = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    const char *label = (VAL_TYPE(args[1]) == VAL_STRING) ? AS_STR(args[1]) : "";
+    return value_bool(xgui_icon_button(g_vm_xgui, icon, label) ? 1 : 0);
+}
+static Value vm_bi_xgui_group_begin(Value *args, int argc) {
+    if (!g_vm_xgui) return value_null();
+    const char *t = (argc >= 1 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    xgui_group_begin(g_vm_xgui, t);
+    return value_null();
+}
+static Value vm_bi_xgui_group_end(Value *args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) xgui_group_end(g_vm_xgui);
+    return value_null();
+}
+static Value vm_bi_xgui_grid_begin(Value *args, int argc) {
+    int cols = (argc >= 1 && VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : 2;
+    if (g_vm_xgui) xgui_grid_begin(g_vm_xgui, cols);
+    return value_null();
+}
+static Value vm_bi_xgui_grid_end(Value *args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) xgui_grid_end(g_vm_xgui);
+    return value_null();
+}
+static Value vm_bi_xgui_clear_bg(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 1) return value_null();
+    xgui_clear_bg(g_vm_xgui, (uint32_t)AS_INT(args[0]));
+    return value_null();
+}
+static Value vm_bi_xgui_fill_rect_at(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 5) return value_null();
+    int r = (argc >= 6 && VAL_TYPE(args[4]) == VAL_INT) ? (int)AS_INT(args[4]) : 0;
+    uint32_t c = (argc >= 6) ? (uint32_t)AS_INT(args[5]) : (uint32_t)AS_INT(args[4]);
+    xgui_fill_rect_at(g_vm_xgui, (int)AS_INT(args[0]), (int)AS_INT(args[1]),
+                      (int)AS_INT(args[2]), (int)AS_INT(args[3]), r, c);
+    return value_null();
+}
+static Value vm_bi_xgui_fill_circle_at(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 4) return value_null();
+    xgui_fill_circle_at(g_vm_xgui, (int)AS_INT(args[0]), (int)AS_INT(args[1]),
+                        (int)AS_INT(args[2]), (uint32_t)AS_INT(args[3]));
+    return value_null();
+}
+static Value vm_bi_xgui_draw_line_at(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 5) return value_null();
+    int thick = (argc >= 6) ? (int)AS_INT(args[4]) : 1;
+    uint32_t c = (argc >= 6) ? (uint32_t)AS_INT(args[5]) : (uint32_t)AS_INT(args[4]);
+    xgui_draw_line_at(g_vm_xgui, (int)AS_INT(args[0]), (int)AS_INT(args[1]),
+                      (int)AS_INT(args[2]), (int)AS_INT(args[3]), thick, c);
+    return value_null();
+}
+static Value vm_bi_xgui_draw_text_at(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 5) return value_null();
+    const char *t = (VAL_TYPE(args[2]) == VAL_STRING) ? AS_STR(args[2]) : "";
+    xgui_draw_text_at(g_vm_xgui, (int)AS_INT(args[0]), (int)AS_INT(args[1]),
+                      t, (int)AS_INT(args[3]), (uint32_t)AS_INT(args[4]));
+    return value_null();
+}
+static Value vm_bi_xgui_draw_text_centered(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 5) return value_null();
+    const char *t = (VAL_TYPE(args[2]) == VAL_STRING) ? AS_STR(args[2]) : "";
+    xgui_draw_text_centered(g_vm_xgui, (int)AS_INT(args[0]), (int)AS_INT(args[1]),
+                            t, (int)AS_INT(args[3]), (uint32_t)AS_INT(args[4]));
+    return value_null();
+}
+static Value vm_bi_xgui_draw_text_bold_at(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 5) return value_null();
+    const char *t = (VAL_TYPE(args[2]) == VAL_STRING) ? AS_STR(args[2]) : "";
+    xgui_draw_text_bold_at(g_vm_xgui, (int)AS_INT(args[0]), (int)AS_INT(args[1]),
+                           t, (int)AS_INT(args[3]), (uint32_t)AS_INT(args[4]));
+    return value_null();
+}
+static Value vm_bi_xgui_draw_text_bold_centered(Value *args, int argc) {
+    if (!g_vm_xgui || argc < 5) return value_null();
+    const char *t = (VAL_TYPE(args[2]) == VAL_STRING) ? AS_STR(args[2]) : "";
+    xgui_draw_text_bold_centered(g_vm_xgui, (int)AS_INT(args[0]), (int)AS_INT(args[1]),
+                                  t, (int)AS_INT(args[3]), (uint32_t)AS_INT(args[4]));
+    return value_null();
+}
+static Value vm_bi_xgui_key_w(Value *args, int argc)      { (void)args;(void)argc; return value_bool(xgui_key_w(g_vm_xgui)      ? 1:0); }
+static Value vm_bi_xgui_key_s(Value *args, int argc)      { (void)args;(void)argc; return value_bool(xgui_key_s(g_vm_xgui)      ? 1:0); }
+static Value vm_bi_xgui_key_a(Value *args, int argc)      { (void)args;(void)argc; return value_bool(xgui_key_a(g_vm_xgui)      ? 1:0); }
+static Value vm_bi_xgui_key_d(Value *args, int argc)      { (void)args;(void)argc; return value_bool(xgui_key_d(g_vm_xgui)      ? 1:0); }
+static Value vm_bi_xgui_key_up(Value *args, int argc)     { (void)args;(void)argc; return value_bool(xgui_key_up(g_vm_xgui)     ? 1:0); }
+static Value vm_bi_xgui_key_down(Value *args, int argc)   { (void)args;(void)argc; return value_bool(xgui_key_down(g_vm_xgui)   ? 1:0); }
+static Value vm_bi_xgui_key_left(Value *args, int argc)   { (void)args;(void)argc; return value_bool(xgui_key_left(g_vm_xgui)   ? 1:0); }
+static Value vm_bi_xgui_key_right(Value *args, int argc)  { (void)args;(void)argc; return value_bool(xgui_key_right(g_vm_xgui)  ? 1:0); }
+static Value vm_bi_xgui_key_space(Value *args, int argc)  { (void)args;(void)argc; return value_bool(xgui_key_space(g_vm_xgui)  ? 1:0); }
+static Value vm_bi_xgui_key_escape(Value *args, int argc) { (void)args;(void)argc; return value_bool(xgui_key_escape(g_vm_xgui) ? 1:0); }
+static Value vm_bi_xgui_mouse_down(Value *args, int argc) { (void)args;(void)argc; return value_bool(xgui_mouse_down(g_vm_xgui) ? 1:0); }
+static Value vm_bi_xgui_mouse_x(Value *args, int argc)    { (void)args;(void)argc; return value_int(xgui_mouse_x(g_vm_xgui));  }
+static Value vm_bi_xgui_mouse_y(Value *args, int argc)    { (void)args;(void)argc; return value_int(xgui_mouse_y(g_vm_xgui));  }
+static Value vm_bi_xgui_win_w(Value *args, int argc)      { (void)args;(void)argc; return value_int(xgui_win_w(g_vm_xgui));    }
+static Value vm_bi_xgui_win_h(Value *args, int argc)      { (void)args;(void)argc; return value_int(xgui_win_h(g_vm_xgui));    }
+static Value vm_bi_xgui_delta_ms(Value *args, int argc)   { (void)args;(void)argc; return value_float(xgui_delta_ms(g_vm_xgui)); }
+static Value vm_bi_xgui_clock_ms(Value *args, int argc)   { (void)args;(void)argc; return value_int((int64_t)xgui_clock_ms(g_vm_xgui)); }
+static Value vm_bi_xgui_sleep_ms(Value *args, int argc) {
+    int ms = (argc >= 1 && VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : 0;
+    xgui_sleep_ms(g_vm_xgui, ms);
+    return value_null();
+}
+
+#else /* !HAVE_X11 — graceful stubs */
+
+static Value vm_bi_xgui_no_x11(Value *args, int argc) {
+    (void)args; (void)argc;
+    fprintf(stderr, "xgui: X11 support was not compiled in. "
+                    "Install libX11-dev / xorg-dev and recompile.\n");
+    return value_null();
+}
+
+#endif /* HAVE_X11 */
+
+/* ================================================================== register */
+
+void vm_register_builtins(VM *vm) {
+    /* Register complete shared stdlib first (math, string, array, dict, etc.) */
+    prism_register_stdlib(vm->globals);
+
+    /* VM-specific overrides and additions */
+    struct { const char *name; BuiltinFn fn; } bi[] = {
+        {"output",     vm_builtin_output},
+        {"input",      vm_builtin_input},
+        {"len",        vm_builtin_len},
+        {"bool",       vm_builtin_bool_fn},
+        {"int",        vm_builtin_int_fn},
+        {"float",      vm_builtin_float_fn},
+        {"str",        vm_builtin_str_fn},
+        {"set",        vm_builtin_set_fn},
+        {"array",      vm_builtin_array_fn},
+        {"tuple",      vm_builtin_tuple_fn},
+        {"complex",    vm_builtin_complex_fn},
+        {"type",       vm_builtin_type_fn},
+        {"assert",     vm_builtin_assert},
+        {"assert_eq",  vm_builtin_assert_eq},
+        {"gui_window", vmbi_gui_window},
+        {"gui_label",  vmbi_gui_label},
+        {"gui_button", vmbi_gui_button},
+        {"gui_input",  vmbi_gui_input},
+        {"gui_run",    vmbi_gui_run},
+        /* X11 native GUI */
+#ifdef HAVE_X11
+        {"xgui_init",      vm_bi_xgui_init},
+        {"xgui_style",     vm_bi_xgui_style},
+        {"xgui_running",   vm_bi_xgui_running},
+        {"xgui_begin",     vm_bi_xgui_begin},
+        {"xgui_end",       vm_bi_xgui_end},
+        {"xgui_label",     vm_bi_xgui_label},
+        {"xgui_button",    vm_bi_xgui_button},
+        {"xgui_input",     vm_bi_xgui_input},
+        {"xgui_spacer",    vm_bi_xgui_spacer},
+        {"xgui_row_begin", vm_bi_xgui_row_begin},
+        {"xgui_row_end",   vm_bi_xgui_row_end},
+        {"xgui_close",     vm_bi_xgui_close},
+        {"xgui_title",     vm_bi_xgui_title},
+        {"xgui_subtitle",  vm_bi_xgui_subtitle},
+        {"xgui_separator", vm_bi_xgui_separator},
+        {"xgui_checkbox",  vm_bi_xgui_checkbox},
+        {"xgui_progress",  vm_bi_xgui_progress},
+        {"xgui_slider",    vm_bi_xgui_slider},
+        {"xgui_textarea",  vm_bi_xgui_textarea},
+        {"xgui_badge",       vm_bi_xgui_badge},
+        {"xgui_set_dark",    vm_bi_xgui_set_dark},
+        {"xgui_card_begin",  vm_bi_xgui_card_begin},
+        {"xgui_card_end",    vm_bi_xgui_card_end},
+        {"xgui_tooltip",     vm_bi_xgui_tooltip},
+        /* v4 new widgets */
+        {"xgui_toggle",              vm_bi_xgui_toggle},
+        {"xgui_chip",                vm_bi_xgui_chip},
+        {"xgui_tabs",                vm_bi_xgui_tabs},
+        {"xgui_select",              vm_bi_xgui_select},
+        {"xgui_spinner",             vm_bi_xgui_spinner},
+        {"xgui_list_item",           vm_bi_xgui_list_item},
+        {"xgui_show_toast",          vm_bi_xgui_show_toast},
+        {"xgui_section",             vm_bi_xgui_section},
+        {"xgui_icon_button",         vm_bi_xgui_icon_button},
+        {"xgui_group_begin",         vm_bi_xgui_group_begin},
+        {"xgui_group_end",           vm_bi_xgui_group_end},
+        {"xgui_grid_begin",          vm_bi_xgui_grid_begin},
+        {"xgui_grid_end",            vm_bi_xgui_grid_end},
+        /* game-mode raw drawing */
+        {"xgui_clear_bg",            vm_bi_xgui_clear_bg},
+        {"xgui_fill_rect_at",        vm_bi_xgui_fill_rect_at},
+        {"xgui_fill_circle_at",      vm_bi_xgui_fill_circle_at},
+        {"xgui_draw_line_at",        vm_bi_xgui_draw_line_at},
+        {"xgui_draw_text_at",        vm_bi_xgui_draw_text_at},
+        {"xgui_draw_text_centered",  vm_bi_xgui_draw_text_centered},
+        {"xgui_draw_text_bold_at",   vm_bi_xgui_draw_text_bold_at},
+        {"xgui_draw_text_bold_centered", vm_bi_xgui_draw_text_bold_centered},
+        /* key-hold queries */
+        {"xgui_key_w",       vm_bi_xgui_key_w},
+        {"xgui_key_s",       vm_bi_xgui_key_s},
+        {"xgui_key_a",       vm_bi_xgui_key_a},
+        {"xgui_key_d",       vm_bi_xgui_key_d},
+        {"xgui_key_up",      vm_bi_xgui_key_up},
+        {"xgui_key_down",    vm_bi_xgui_key_down},
+        {"xgui_key_left",    vm_bi_xgui_key_left},
+        {"xgui_key_right",   vm_bi_xgui_key_right},
+        {"xgui_key_space",   vm_bi_xgui_key_space},
+        {"xgui_key_escape",  vm_bi_xgui_key_escape},
+        {"xgui_mouse_down",  vm_bi_xgui_mouse_down},
+        {"xgui_mouse_x",     vm_bi_xgui_mouse_x},
+        {"xgui_mouse_y",     vm_bi_xgui_mouse_y},
+        {"xgui_win_w",       vm_bi_xgui_win_w},
+        {"xgui_win_h",       vm_bi_xgui_win_h},
+        {"xgui_delta_ms",    vm_bi_xgui_delta_ms},
+        {"xgui_clock_ms",    vm_bi_xgui_clock_ms},
+        {"xgui_sleep_ms",    vm_bi_xgui_sleep_ms},
+#else
+        {"xgui_init",        vm_bi_xgui_no_x11},
+        {"xgui_style",       vm_bi_xgui_no_x11},
+        {"xgui_running",     vm_bi_xgui_no_x11},
+        {"xgui_begin",       vm_bi_xgui_no_x11},
+        {"xgui_end",         vm_bi_xgui_no_x11},
+        {"xgui_label",       vm_bi_xgui_no_x11},
+        {"xgui_button",      vm_bi_xgui_no_x11},
+        {"xgui_input",       vm_bi_xgui_no_x11},
+        {"xgui_spacer",      vm_bi_xgui_no_x11},
+        {"xgui_row_begin",   vm_bi_xgui_no_x11},
+        {"xgui_row_end",     vm_bi_xgui_no_x11},
+        {"xgui_close",       vm_bi_xgui_no_x11},
+        {"xgui_title",       vm_bi_xgui_no_x11},
+        {"xgui_subtitle",    vm_bi_xgui_no_x11},
+        {"xgui_separator",   vm_bi_xgui_no_x11},
+        {"xgui_checkbox",    vm_bi_xgui_no_x11},
+        {"xgui_progress",    vm_bi_xgui_no_x11},
+        {"xgui_slider",      vm_bi_xgui_no_x11},
+        {"xgui_textarea",    vm_bi_xgui_no_x11},
+        {"xgui_badge",       vm_bi_xgui_no_x11},
+        {"xgui_set_dark",    vm_bi_xgui_no_x11},
+        {"xgui_card_begin",  vm_bi_xgui_no_x11},
+        {"xgui_card_end",    vm_bi_xgui_no_x11},
+        {"xgui_tooltip",     vm_bi_xgui_no_x11},
+#endif
+        {NULL, NULL}
+    };
+    for (int i = 0; bi[i].name; i++) {
+        Value v = value_builtin(bi[i].name, bi[i].fn);
+        env_set(vm->globals, bi[i].name, v, false);
+        value_release(v);
+    }
+    Value memory = value_dict_new();
+    Value key = value_string("__module");
+    Value name = value_string("memory");
+    value_dict_set(memory, key, name);
+    value_release(key);
+    value_release(name);
+    env_set(vm->globals, "memory", memory, true);
+    value_release(memory);
+}
+
+/* ================================================================== f-string processing */
+
+static char *vm_process_fstring(VM *vm, const char *tmpl, Env *env);
+
+/* Forward declarations for method dispatch */
+typedef enum {
+    VM_METHOD_UNKNOWN = 0,
+    VM_METHOD_STRING_UPPER,
+    VM_METHOD_STRING_LOWER,
+    VM_METHOD_STRING_STRIP,
+    VM_METHOD_STRING_LSTRIP,
+    VM_METHOD_STRING_RSTRIP,
+    VM_METHOD_STRING_LEN,
+    VM_METHOD_STRING_CAPITALIZE,
+    VM_METHOD_STRING_FIND,
+    VM_METHOD_STRING_REPLACE,
+    VM_METHOD_STRING_STARTSWITH,
+    VM_METHOD_STRING_ENDSWITH,
+    VM_METHOD_STRING_SPLIT,
+    VM_METHOD_STRING_JOIN,
+    VM_METHOD_STRING_ISDIGIT,
+    VM_METHOD_STRING_ISALPHA,
+    VM_METHOD_ARRAY_ADD,
+    VM_METHOD_ARRAY_POP,
+    VM_METHOD_ARRAY_SORT,
+    VM_METHOD_ARRAY_INSERT,
+    VM_METHOD_ARRAY_REMOVE,
+    VM_METHOD_ARRAY_EXTEND,
+    VM_METHOD_ARRAY_LEN,
+    VM_METHOD_DICT_KEYS,
+    VM_METHOD_DICT_VALUES,
+    VM_METHOD_DICT_ITEMS,
+    VM_METHOD_DICT_ERASE,
+    VM_METHOD_DICT_GET,
+    VM_METHOD_SET_ADD,
+    VM_METHOD_SET_REMOVE,
+    VM_METHOD_SET_DISCARD,
+    VM_METHOD_SET_UPDATE,
+    VM_METHOD_TUPLE_COUNT,
+    VM_METHOD_TUPLE_INDEX,
+} VmMethodId;
+
+static Value vm_dispatch_method_slow(VM *vm, Value obj, const char *method,
+                                       Value *args, int argc, int line);
+static Value vm_dispatch_method_cached(VM *vm, Value obj, const char *method,
+                                         VmMethodId method_id, Value *args,
+                                         int argc, int line);
+static void method_table_init(void);
+
+/* ================================================================== VM new/free */
+
+VM *vm_new(void) {
+    VM *vm = calloc(1, sizeof(VM));
+    vm->gc  = gc_global();
+    vm->jit = NULL;            /* JIT disabled by default; enable with vm->jit = jit_new() */
+    vm->jit_verbose = false;
+    vm->globals = env_new(NULL);
+    method_table_init();  /* build O(1) method dispatch table */
+    vm_register_builtins(vm);
+    return vm;
+}

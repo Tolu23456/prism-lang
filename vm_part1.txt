@@ -1,0 +1,500 @@
+#define _POSIX_C_SOURCE 200809L
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdint.h>
+#include <math.h>
+#include "vm.h"
+#include "opcode.h"
+#include "chunk.h"
+#include "value.h"
+#include "interpreter.h"
+#include "compiler.h"
+#include "builtins.h"
+#include "jit.h"
+#include "parser.h"
+#include "ast.h"
+#ifdef HAVE_X11
+#include "xgui.h"
+#endif
+
+/* ================================================================== helpers */
+
+static void vm_error(VM *vm, const char *msg, int line) {
+    if (vm->had_error) return;
+    vm->had_error = 1;
+    snprintf(vm->error_msg, sizeof(vm->error_msg), "line %d: %s", line, msg);
+}
+
+/* Free a single scope env without recursing into the parent chain.
+ * Used by vm_close_frame_env when manually walking up the env chain to avoid
+ * double-frees while also correctly releasing scope-local values. */
+static void env_free_scope_only(Env *env) {
+    if (!env) return;
+    /* For root envs (no parent), refcount is not managed here. */
+    if (!env->parent) return;
+    if (--env->refcount > 0) return; /* still referenced by a closure */
+    /* Free slot values and the memory for this env only. */
+    for (int i = 0; i < env->cap; i++)
+        if (env->slots[i].key) value_release(env->slots[i].val);
+    free(env->slots);
+    /* Release the reference we took on parent via env_new, without freeing it
+     * (the caller will walk up to it next). */
+    env_free(env->parent);
+    free(env);
+}
+
+static void vm_close_frame_env(CallFrame *frame) {
+    /* Walk up any inner scopes pushed by OP_PUSH_SCOPE that weren't closed. */
+    while (frame->env && frame->env != frame->root_env) {
+        Env *old = frame->env;
+        frame->env = old->parent; /* advance before freeing */
+        env_free_scope_only(old);
+    }
+    /* Release the function's root call env (preserving parent for closures). */
+    if (frame->owns_env && frame->root_env) {
+        env_free(frame->root_env); /* correct refcount decrement, no parent nulling */
+    }
+    frame->env = NULL;
+    frame->root_env = NULL;
+    frame->owns_env = 0;
+}
+
+/* Push / pop helpers (no bounds check in release, add in debug). */
+static inline void vm_push(VM *vm, Value v) {
+    if (vm->stack_top >= VM_STACK_MAX) {
+        vm->had_error = 1;
+        snprintf(vm->error_msg, sizeof(vm->error_msg), "stack overflow");
+        return;
+    }
+    vm->stack[vm->stack_top++] = v;
+}
+
+static inline Value vm_pop(VM *vm) {
+    if (vm->stack_top <= 0) {
+        vm->had_error = 1;
+        snprintf(vm->error_msg, sizeof(vm->error_msg), "stack underflow");
+        return value_null();
+    }
+    return vm->stack[--vm->stack_top];
+}
+
+static inline Value vm_peek(VM *vm, int offset) {
+    return vm->stack[vm->stack_top - 1 - offset];
+}
+
+static inline long long vm_fast_iadd(long long a, long long b) {
+#if defined(__x86_64__) || defined(__amd64__)
+    __asm__("addq %1, %0" : "+r"(a) : "r"(b));
+    return a;
+#else
+    return a + b;
+#endif
+}
+
+static inline long long vm_fast_isub(long long a, long long b) {
+#if defined(__x86_64__) || defined(__amd64__)
+    __asm__("subq %1, %0" : "+r"(a) : "r"(b));
+    return a;
+#else
+    return a - b;
+#endif
+}
+
+static inline long long vm_fast_imul(long long a, long long b) {
+#if defined(__x86_64__) || defined(__amd64__)
+    __asm__("imulq %1, %0" : "+r"(a) : "r"(b));
+    return a;
+#else
+    return a * b;
+#endif
+}
+
+static inline long long vm_fast_iand(long long a, long long b) {
+#if defined(__x86_64__) || defined(__amd64__)
+    __asm__("andq %1, %0" : "+r"(a) : "r"(b));
+    return a;
+#else
+    return a & b;
+#endif
+}
+
+static inline long long vm_fast_ior(long long a, long long b) {
+#if defined(__x86_64__) || defined(__amd64__)
+    __asm__("orq %1, %0" : "+r"(a) : "r"(b));
+    return a;
+#else
+    return a | b;
+#endif
+}
+
+static inline long long vm_fast_ixor(long long a, long long b) {
+#if defined(__x86_64__) || defined(__amd64__)
+    __asm__("xorq %1, %0" : "+r"(a) : "r"(b));
+    return a;
+#else
+    return a ^ b;
+#endif
+}
+
+/* Read a uint16_t from bytecode (little-endian) and advance ip by 2. */
+static inline uint16_t read16(CallFrame *f) {
+    uint8_t lo = f->chunk->code[f->ip++];
+    uint8_t hi = f->chunk->code[f->ip++];
+    return (uint16_t)(lo | (hi << 8));
+}
+
+/* ================================================================== built-in output via VM */
+
+static Value vm_builtin_output(Value *args, int argc) {
+    for (int i = 0; i < argc; i++) {
+        if (i > 0) printf(" ");
+        if (VAL_TYPE(args[i]) == VAL_STRING) printf("%s", AS_STR(args[i]));
+        else value_print(args[i]);
+    }
+    printf("\n");
+    return value_null();
+}
+
+static Value vm_builtin_input(Value *args, int argc) {
+    if (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING)
+        printf("%s", AS_STR(args[0]));
+    fflush(stdout);
+    char buf[4096];
+    if (!fgets(buf, sizeof(buf), stdin)) return value_string("");
+    size_t len = strlen(buf);
+    if (len > 0 && buf[len-1] == '\n') buf[len-1] = '\0';
+    return value_string(buf);
+}
+
+static Value vm_builtin_len(Value *args, int argc) {
+    if (argc < 1) return value_int(0);
+    Value v = args[0];
+    switch (VAL_TYPE(v)) {
+        case VAL_STRING: return value_int((long long)strlen(AS_STR(v)));
+        case VAL_ARRAY:  return value_int(AS_ARRAY(v).len);
+        case VAL_TUPLE:  return value_int(AS_TUPLE(v).len);
+        case VAL_DICT:   return value_int(AS_DICT(v).len);
+        case VAL_SET:    return value_int(AS_SET(v).len);
+        default: return value_int(0);
+    }
+}
+
+static Value vm_builtin_bool_fn(Value *args, int argc) {
+    if (argc < 1) return value_bool(0);
+    Value v = args[0];
+    if (VAL_TYPE(v) == VAL_BOOL) return value_retain(v);
+    if (VAL_TYPE(v) == VAL_INT)  return value_bool(AS_INT(v) == 0 ? 0 : (AS_INT(v) < 0 ? -1 : 1));
+    if (VAL_TYPE(v) == VAL_STRING) {
+        if (strcmp(AS_STR(v), "true")    == 0) return value_bool(1);
+        if (strcmp(AS_STR(v), "false")   == 0) return value_bool(0);
+        if (strcmp(AS_STR(v), "unknown") == 0) return value_bool(-1);
+    }
+    return value_bool(value_truthy(v) ? 1 : 0);
+}
+
+static Value vm_builtin_int_fn(Value *args, int argc) {
+    if (argc < 1) return value_int(0);
+    Value v = args[0];
+    if (VAL_TYPE(v) == VAL_INT)     return value_retain(v);
+    if (VAL_TYPE(v) == VAL_FLOAT)   return value_int((long long)AS_FLOAT(v));
+    if (VAL_TYPE(v) == VAL_BOOL)    return value_int(AS_BOOL(v) == 1 ? 1 : 0);
+    if (VAL_TYPE(v) == VAL_NULL)    return value_int(0);
+    if (VAL_TYPE(v) == VAL_COMPLEX) return value_int((long long)AS_COMPLEX(v).real);
+    if (VAL_TYPE(v) == VAL_STRING) {
+        const char *s = AS_STR(v);
+        if (s[0] == '0' && (s[1] == 'b' || s[1] == 'B'))
+            return value_int(strtoll(s + 2, NULL, 2));
+        if (s[0] == '0' && (s[1] == 'o' || s[1] == 'O'))
+            return value_int(strtoll(s + 2, NULL, 8));
+        return value_int(strtoll(s, NULL, 0));
+    }
+    return value_int(0);
+}
+
+static Value vm_builtin_float_fn(Value *args, int argc) {
+    if (argc < 1) return value_float(0.0);
+    Value v = args[0];
+    if (VAL_TYPE(v) == VAL_FLOAT)   return value_retain(v);
+    if (VAL_TYPE(v) == VAL_INT)     return value_float((double)AS_INT(v));
+    if (VAL_TYPE(v) == VAL_BOOL)    return value_float(AS_BOOL(v) == 1 ? 1.0 : 0.0);
+    if (VAL_TYPE(v) == VAL_NULL)    return value_float(0.0);
+    if (VAL_TYPE(v) == VAL_COMPLEX) return value_float(AS_COMPLEX(v).real);
+    if (VAL_TYPE(v) == VAL_STRING)  return value_float(strtod(AS_STR(v), NULL));
+    return value_float(0.0);
+}
+
+static Value vm_builtin_str_fn(Value *args, int argc) {
+    if (argc < 1) return value_string("");
+    return value_string_take(value_to_string(args[0]));
+}
+
+static Value vm_builtin_set_fn(Value *args, int argc) {
+    Value s = value_set_new();
+    if (argc >= 1) {
+        Value src = args[0];
+        if (VAL_TYPE(src) == VAL_ARRAY || VAL_TYPE(src) == VAL_TUPLE) {
+            ValueArray *arr = (VAL_TYPE(src) == VAL_ARRAY) ? &AS_ARRAY(src) : &AS_TUPLE(src);
+            for (int i = 0; i < arr->len; i++) value_set_add(s, arr->items[i]);
+        } else if (VAL_TYPE(src) == VAL_SET) {
+            for (int i = 0; i < AS_SET(src).len; i++) value_set_add(s, AS_SET(src).items[i]);
+        } else if (VAL_TYPE(src) == VAL_DICT) {
+            for (int i = 0; i < AS_DICT(src).len; i++) value_set_add(s, AS_DICT(src).entries[i].key);
+        } else if (VAL_TYPE(src) == VAL_STRING) {
+            const char *p = AS_STR(src);
+            while (*p) {
+                char buf[5] = {0};
+                buf[0] = *p++;
+                value_set_add(s, value_string(buf));
+            }
+        }
+    }
+    return s;
+}
+
+static Value vm_builtin_array_fn(Value *args, int argc) {
+    Value a = value_array_new();
+    if (argc >= 1) {
+        Value src = args[0];
+        if (VAL_TYPE(src) == VAL_ARRAY) {
+            for (int i = 0; i < AS_ARRAY(src).len; i++) value_array_push(a, AS_ARRAY(src).items[i]);
+        } else if (VAL_TYPE(src) == VAL_TUPLE) {
+            for (int i = 0; i < AS_TUPLE(src).len; i++) value_array_push(a, AS_TUPLE(src).items[i]);
+        } else if (VAL_TYPE(src) == VAL_SET) {
+            for (int i = 0; i < AS_SET(src).len; i++) value_array_push(a, AS_SET(src).items[i]);
+        } else if (VAL_TYPE(src) == VAL_DICT) {
+            for (int i = 0; i < AS_DICT(src).len; i++) value_array_push(a, AS_DICT(src).entries[i].key);
+        } else if (VAL_TYPE(src) == VAL_STRING) {
+            const char *p = AS_STR(src);
+            while (*p) {
+                char buf[5] = {0};
+                buf[0] = *p++;
+                value_array_push(a, value_string(buf));
+            }
+        } else {
+            value_array_push(a, src);
+        }
+    }
+    return a;
+}
+
+static Value vm_builtin_tuple_fn(Value *args, int argc) {
+    if (argc < 1) return value_tuple_new(NULL, 0);
+    Value src = args[0];
+    if (VAL_TYPE(src) == VAL_TUPLE) return value_retain(src);
+    if (VAL_TYPE(src) == VAL_ARRAY)
+        return value_tuple_new(AS_ARRAY(src).items, AS_ARRAY(src).len);
+    if (VAL_TYPE(src) == VAL_SET)
+        return value_tuple_new(AS_SET(src).items, AS_SET(src).len);
+    if (VAL_TYPE(src) == VAL_DICT) {
+        Value *keys = malloc(AS_DICT(src).len * sizeof(Value));
+        for (int i = 0; i < AS_DICT(src).len; i++) keys[i] = AS_DICT(src).entries[i].key;
+        Value t = value_tuple_new(keys, AS_DICT(src).len);
+        free(keys);
+        return t;
+    }
+    return value_tuple_new(&src, 1);
+}
+
+static Value vm_builtin_complex_fn(Value *args, int argc) {
+    if (argc < 1) return value_complex(0.0, 0.0);
+    double real = 0.0, imag = 0.0;
+    if (argc >= 1) {
+        Value v = args[0];
+        if (VAL_TYPE(v) == VAL_COMPLEX)  return value_retain(v);
+        if (VAL_TYPE(v) == VAL_INT)      real = (double)AS_INT(v);
+        else if (VAL_TYPE(v) == VAL_FLOAT) real = AS_FLOAT(v);
+        else if (VAL_TYPE(v) == VAL_STRING) {
+            char *end;
+            real = strtod(AS_STR(v), &end);
+            if (*end == '+' || *end == '-') imag = strtod(end, NULL);
+        }
+    }
+    if (argc >= 2) {
+        Value v = args[1];
+        if (VAL_TYPE(v) == VAL_INT)        imag = (double)AS_INT(v);
+        else if (VAL_TYPE(v) == VAL_FLOAT) imag = AS_FLOAT(v);
+    }
+    return value_complex(real, imag);
+}
+
+static Value vm_builtin_type_fn(Value *args, int argc) {
+    if (argc < 1) return value_string("null");
+    return value_string(value_type_name(VAL_TYPE(args[0])));
+}
+
+static Value vm_builtin_assert(Value *args, int argc) {
+    if (argc < 1 || !value_truthy(args[0])) {
+        const char *msg = (argc > 1 && VAL_TYPE(args[1]) == VAL_STRING)
+            ? AS_STR(args[1]) : "assertion failed";
+        fprintf(stderr, "[FAIL] %s\n", msg);
+        exit(1);
+    }
+    return value_null();
+}
+
+static Value vm_builtin_assert_eq(Value *args, int argc) {
+    if (argc < 2) {
+        fprintf(stderr, "[FAIL] assert_eq requires 2 arguments\n");
+        exit(1);
+    }
+    if (!value_equals(args[0], args[1])) {
+        if (argc > 2 && VAL_TYPE(args[2]) == VAL_STRING) {
+            fprintf(stderr, "[FAIL] %s\n", AS_STR(args[2]));
+        } else {
+            char *s0 = value_to_string(args[0]);
+            char *s1 = value_to_string(args[1]);
+            fprintf(stderr, "[FAIL] expected %s but got %s\n", s1, s0);
+            free(s0); free(s1);
+        }
+        exit(1);
+    }
+    return value_null();
+}
+
+static bool vm_is_memory_module(Value obj) {
+    if (!obj || VAL_TYPE(obj) != VAL_DICT) return false;
+    Value key = value_string("__module");
+    Value found = value_dict_get(obj, key);
+    value_release(key);
+    return found && VAL_TYPE(found) == VAL_STRING && strcmp(AS_STR(found), "memory") == 0;
+}
+
+static Value vm_memory_method(VM *vm, Value obj, const char *method, Value *args, int argc, int line) {
+    (void)obj;
+    PrismGC *gc = vm->gc ? vm->gc : gc_global();
+    if (strcmp(method, "stats") == 0) return gc_stats_dict(gc);
+    if (strcmp(method, "collect") == 0) {
+        size_t freed = gc_collect_major(gc, NULL, vm, NULL);
+        return value_int((long long)freed);
+    }
+    if (strcmp(method, "limit") == 0) {
+        if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) {
+            vm_error(vm, "memory.limit() requires a string like \"512mb\"", line);
+            return value_null();
+        }
+        return gc_set_soft_limit(gc, AS_STR(args[0]));
+    }
+    if (strcmp(method, "profile") == 0) return gc_stats_dict(gc);
+    char msg[128];
+    snprintf(msg, sizeof(msg), "memory has no method '%s'", method);
+    vm_error(vm, msg, line);
+    return value_null();
+}
+
+/* ---- GUI built-ins (same as in interpreter.c) ---- */
+
+typedef struct {
+    char  title[256];
+    int   width, height;
+    char *body;
+    int   body_len, body_cap;
+    int   active;
+} VmGuiState;
+
+static VmGuiState g_vmgui = {"Prism Window", 800, 600, NULL, 0, 0, 0};
+
+static void vmgui_append(const char *html) {
+    int add = (int)strlen(html);
+    if (!g_vmgui.body) {
+        g_vmgui.body_cap = 4096;
+        g_vmgui.body = malloc(g_vmgui.body_cap);
+        g_vmgui.body[0] = '\0';
+        g_vmgui.body_len = 0;
+    }
+    while (g_vmgui.body_len + add + 1 >= g_vmgui.body_cap) {
+        g_vmgui.body_cap *= 2;
+        g_vmgui.body = realloc(g_vmgui.body, g_vmgui.body_cap);
+    }
+    memcpy(g_vmgui.body + g_vmgui.body_len, html, add + 1);
+    g_vmgui.body_len += add;
+}
+
+static Value vmbi_gui_window(Value *args, int argc) {
+    if (argc >= 1 && VAL_TYPE(args[0]) == VAL_STRING)
+        snprintf(g_vmgui.title, sizeof(g_vmgui.title), "%s", AS_STR(args[0]));
+    if (argc >= 2 && VAL_TYPE(args[1]) == VAL_INT) g_vmgui.width  = (int)AS_INT(args[1]);
+    if (argc >= 3 && VAL_TYPE(args[2]) == VAL_INT) g_vmgui.height = (int)AS_INT(args[2]);
+    g_vmgui.active = 1;
+    return value_null();
+}
+
+static Value vmbi_gui_label(Value *args, int argc) {
+    char buf[2048];
+    const char *t = (argc >= 1 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    snprintf(buf, sizeof(buf), "  <p class=\"gui-label\">%s</p>\n", t);
+    vmgui_append(buf); return value_null();
+}
+
+static Value vmbi_gui_button(Value *args, int argc) {
+    char buf[2048];
+    const char *t = (argc >= 1 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "Button";
+    snprintf(buf, sizeof(buf), "  <button class=\"gui-btn\">%s</button>\n", t);
+    vmgui_append(buf); return value_null();
+}
+
+static Value vmbi_gui_input(Value *args, int argc) {
+    char buf[2048];
+    const char *ph = (argc >= 1 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    snprintf(buf, sizeof(buf), "  <input class=\"gui-input\" type=\"text\" placeholder=\"%s\" />\n", ph);
+    vmgui_append(buf); return value_null();
+}
+
+static Value vmbi_gui_run(Value *args, int argc) {
+    (void)args; (void)argc;
+    if (!g_vmgui.active) {
+        fprintf(stderr, "[prism] gui_run() called without gui_window()\n");
+        return value_null();
+    }
+    FILE *fp = fopen("prism_gui.html", "w");
+    if (!fp) { fprintf(stderr, "[prism] could not write prism_gui.html\n"); return value_null(); }
+    fprintf(fp,
+        "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n"
+        "  <meta charset=\"UTF-8\">\n  <title>%s</title>\n"
+        "  <style>\n"
+        "    body{font-family:sans-serif;margin:0;padding:20px;width:%dpx;min-height:%dpx;box-sizing:border-box}\n"
+        "    .gui-label{font-size:16px;margin:8px 0}\n"
+        "    .gui-btn{padding:8px 18px;font-size:15px;cursor:pointer;background:#4f8ef7;color:#fff;"
+        "             border:none;border-radius:4px;margin:6px 4px}\n"
+        "    .gui-btn:hover{background:#2563c7}\n"
+        "    .gui-input{padding:7px 12px;font-size:15px;border:1px solid #ccc;"
+        "               border-radius:4px;margin:6px 0;width:100%%;box-sizing:border-box}\n"
+        "  </style>\n</head>\n<body>\n"
+        "  <h2>%s</h2>\n%s</body>\n</html>\n",
+        g_vmgui.title, g_vmgui.width, g_vmgui.height,
+        g_vmgui.title, g_vmgui.body ? g_vmgui.body : "");
+    fclose(fp);
+    printf("[prism] GUI written to prism_gui.html\n");
+    return value_null();
+}
+
+/* ================================================================== XGUI builtins (VM) */
+
+#ifdef HAVE_X11
+
+static XGui *g_vm_xgui = NULL;
+
+static Value vm_bi_xgui_init(Value *args, int argc) {
+    int w = (argc > 0 && VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : 800;
+    int h = (argc > 1 && VAL_TYPE(args[1]) == VAL_INT) ? (int)AS_INT(args[1]) : 600;
+    const char *title = (argc > 2 && VAL_TYPE(args[2]) == VAL_STRING) ? AS_STR(args[2]) : "Prism";
+    if (g_vm_xgui) xgui_destroy(g_vm_xgui);
+    g_vm_xgui = xgui_init(w, h, title);
+    return value_null();
+}
+
+static Value vm_bi_xgui_style(Value *args, int argc) {
+    if (g_vm_xgui && argc > 0 && VAL_TYPE(args[0]) == VAL_STRING)
+        xgui_load_style(g_vm_xgui, AS_STR(args[0]));
+    return value_null();
+}
+
+static Value vm_bi_xgui_running(Value *args, int argc) {
+    (void)args; (void)argc;
+    return value_bool(xgui_running(g_vm_xgui) ? 1 : 0);
+}
+
+static Value vm_bi_xgui_begin(Value *args, int argc) {
+    (void)args; (void)argc;
+    xgui_begin(g_vm_xgui); return value_null();
+}

@@ -1,56 +1,35 @@
 #ifndef CHUNK_H
 #define CHUNK_H
-
 #include <stdint.h>
 #include "value.h"
-#include "opcode.h"
+
+typedef enum {
+    VM_METHOD_UNKNOWN = 0, VM_METHOD_STRING_UPPER, VM_METHOD_STRING_LOWER, VM_METHOD_STRING_STRIP, VM_METHOD_STRING_LSTRIP, VM_METHOD_STRING_RSTRIP,
+    VM_METHOD_STRING_LEN, VM_METHOD_STRING_CAPITALIZE, VM_METHOD_STRING_FIND, VM_METHOD_STRING_REPLACE, VM_METHOD_STRING_STARTSWITH,
+    VM_METHOD_STRING_ENDSWITH, VM_METHOD_STRING_SPLIT, VM_METHOD_STRING_JOIN, VM_METHOD_STRING_ISDIGIT, VM_METHOD_STRING_ISALPHA,
+    VM_METHOD_ARRAY_ADD, VM_METHOD_ARRAY_POP, VM_METHOD_ARRAY_SORT, VM_METHOD_ARRAY_INSERT, VM_METHOD_ARRAY_REMOVE,
+    VM_METHOD_ARRAY_EXTEND, VM_METHOD_ARRAY_LEN, VM_METHOD_DICT_KEYS, VM_METHOD_DICT_VALUES, VM_METHOD_DICT_ITEMS,
+    VM_METHOD_DICT_ERASE, VM_METHOD_DICT_GET, VM_METHOD_SET_ADD, VM_METHOD_SET_REMOVE, VM_METHOD_SET_DISCARD,
+    VM_METHOD_SET_UPDATE, VM_METHOD_TUPLE_COUNT, VM_METHOD_TUPLE_INDEX,
+} VmMethodId;
 
 typedef struct {
-    uint8_t      opcode;
-    uint16_t     name_idx;
-    ValueType    receiver_type;
-    int          method_id;
-    int          dict_index;
-    unsigned int dict_version;
+    uint8_t opcode; uint16_t name_idx; ValueType receiver_type; int dict_index; unsigned int dict_version; VmMethodId method_id;
 } InlineCache;
 
-/* A Chunk holds a compiled bytecode sequence + constant pool + line info. */
 typedef struct Chunk {
-    uint8_t *code;
-    int      count;
-    int      cap;
-
-    Value   *constants;
-    int      const_count;
-    int      const_cap;
-
-    int     *lines;   /* parallel to code: source line for each byte */
-
-    InlineCache *inline_caches;
-    int          inline_cache_count;
-
-    const char *source_file; /* path of the originating .pr file (not owned) */
+    uint8_t *code; int count; int cap; Value *constants; int const_count; int const_cap; int *lines; const char *source_file; InlineCache *inline_caches;
 } Chunk;
 
-void     chunk_init(Chunk *c);
-void     chunk_free(Chunk *c);
-
-/* Emit one byte. */
-void     chunk_emit(Chunk *c, uint8_t byte, int line);
-
-/* Emit a uint16_t operand (little-endian, 2 bytes). */
-void     chunk_emit16(Chunk *c, uint16_t val, int line);
-
-/* Add a constant to the pool; returns its index. */
-int      chunk_add_const(Chunk *c, Value v);
-
-/* Emit OP_PUSH_CONST for a Value (adds to pool). */
-int      chunk_add_const_str(Chunk *c, const char *s);
-
-/* Patch a uint16_t at offset `off` (for backpatching jumps). */
-void     chunk_patch16(Chunk *c, int off, uint16_t val);
+void chunk_init(Chunk *c);
+void chunk_free(Chunk *c);
+void chunk_write(Chunk *c, uint8_t byte, int line);
+int chunk_add_const(Chunk *c, Value v);
+int chunk_add_const_str(Chunk *c, const char *s);
+void chunk_emit(Chunk *c, uint8_t byte, int line);
+void chunk_emit16(Chunk *c, uint16_t val, int line);
+void chunk_patch16(Chunk *c, int offset, uint16_t val);
+int chunk_write_bytecode(Chunk *c, const char *path);
+int chunk_load_bytecode(Chunk *c, const char *path);
 InlineCache *chunk_inline_cache(Chunk *c, int bytecode_offset);
-
-int      chunk_write_bytecode(Chunk *c, const char *path);
-
-#endif /* CHUNK_H */
+#endif

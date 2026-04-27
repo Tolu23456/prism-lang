@@ -1,0 +1,6 @@
+let a = 10;
+let b = 20;
+output("a is", a);
+output("b is", b);
+let sum = a + b;
+output("sum is", sum);
