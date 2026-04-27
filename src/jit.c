@@ -1253,8 +1253,7 @@ int jit_execute(JitTrace *trace, VM *vm, Env *env) {
     memset(regs, 0, sizeof(regs));
 
     for (int i = 0; i < trace->var_count; i++) {
-        Value *v_ptr = env_get(env, trace->vars[i]);
-        Value v = v_ptr ? *v_ptr : TO_NULL();
+        Value v = env_get(env, trace->vars[i]);
         if (!v || VAL_TYPE(v) != VAL_INT) {
             trace->guard_fails++;
             return JIT_EXIT_GUARD_FAIL;

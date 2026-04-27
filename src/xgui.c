@@ -46,14 +46,6 @@
 #define SHADOW_LAYERS    6
 #define GRID_MAX_COLS    8
 
-/* Momentum / rubber-band constants */
-#define MOMENTUM_FRICTION   0.88f   /* velocity multiplied each frame */
-#define MOMENTUM_THRESH     0.5f    /* px/frame — below this, spring takes over */
-#define RUBBER_BAND_K       0.45f   /* rubber-band stretch factor */
-#define RUBBER_SPRING       0.18f   /* spring-back pull per frame (fraction of overscroll) */
-#define COLLAPSING_MAX      32      /* max simultaneously tracked collapsible sections */
-#define CMENU_ITEM_H        34      /* context menu item height */
-
 enum { MASK_FILL = 0, MASK_OUTLINE = 1 };
 
 /* ------------------------------------------------------------------ types */
@@ -164,44 +156,6 @@ struct XGui {
     char  tip_text[256];
     int   tip_x, tip_y;
     bool  tip_show;
-
-    /* ── Momentum + rubber-band scroll ───────────────────── */
-    float scroll_momentum;      /* current velocity in px/frame */
-    float scroll_rubber;        /* rubber-band overscroll (px beyond content bounds) */
-    int   scroll_delta_frame;   /* raw wheel delta accumulated this frame (xgui_scroll_delta) */
-
-    /* ── Single-frame key-pressed map ────────────────────── */
-    bool  key_pressed_map[256]; /* true for one frame when that char was pressed */
-
-    /* ── Modal dialog ─────────────────────────────────────── */
-    char  modal_id[64];
-    bool  modal_open;
-    bool  in_modal;
-    int   modal_x, modal_y, modal_w, modal_h;
-
-    /* ── Collapsing sections ──────────────────────────────── */
-    char  coll_ids[COLLAPSING_MAX][64];
-    bool  coll_open[COLLAPSING_MAX];
-    int   coll_count;
-
-    /* ── Data table ───────────────────────────────────────── */
-    bool  in_table;
-    int   table_cols;           /* column count */
-    int   table_col;            /* current column (0-based) */
-    int   table_col_w;          /* computed column width */
-    int   table_row_idx;        /* 0=header, 1..N=data rows (for zebra-stripe) */
-    int   table_row_y;          /* y of current row top */
-    int   table_row_h;          /* height of current row */
-    char  table_sel_id[64];     /* selected row id */
-
-    /* ── Tree view ────────────────────────────────────────── */
-    char  tree_sel[64];         /* selected node id */
-
-    /* ── Context menu ─────────────────────────────────────── */
-    char  cmenu_id[64];
-    bool  cmenu_open;
-    int   cmenu_x, cmenu_y;
-    int   cmenu_item_y;         /* current item draw y */
 
     bool  running;
 };
@@ -443,40 +397,6 @@ static void draw_outline(XGui *g, int x, int y, int w, int h,
 }
 
 /* Perfect AA circle via IQ SDF on a circle mask */
-static void fill_rect_alpha(XGui *g, int x, int y, int w, int h, uint32_t rgb, int alpha) {
-    if (alpha <= 0) return;
-    if (alpha >= 255) { fill_rect(g, x, y, w, h, rgb); return; }
-    /* Blend over existing backbuffer pixels using XRender if available, otherwise approximate */
-    /* Simple software blend: draw a semi-transparent overlay by drawing two rects via XRender */
-#ifdef HAVE_X11
-    if (g->backbuf_pic) {
-        XRenderColor rc;
-        rc.red   = (unsigned short)(((rgb >> 16) & 0xff) * alpha * 257 / 255);
-        rc.green = (unsigned short)(((rgb >>  8) & 0xff) * alpha * 257 / 255);
-        rc.blue  = (unsigned short)(((rgb      ) & 0xff) * alpha * 257 / 255);
-        rc.alpha = (unsigned short)(alpha * 257);
-        Picture src_pic = XRenderCreateSolidFill(g->dpy, &rc);
-        if (src_pic) {
-            XRenderComposite(g->dpy, PictOpOver, src_pic, None, g->backbuf_pic,
-                             0, 0, 0, 0, x, y, (unsigned)w, (unsigned)h);
-            XRenderFreePicture(g->dpy, src_pic);
-        }
-        return;
-    }
-#endif
-    /* Fallback: just draw opaque (no blending path available) */
-    fill_rect(g, x, y, w, h, rgb);
-}
-
-static void draw_circle_outline(XGui *g, int cx2, int cy2, int r, int lw, uint32_t rgb) {
-    if (r <= 0 || lw <= 0) return;
-    XSetForeground(g->dpy, g->gc, alloc_color(g, rgb));
-    XSetLineAttributes(g->dpy, g->gc, (unsigned)lw, LineSolid, CapRound, JoinRound);
-    XDrawArc(g->dpy, g->backbuf, g->gc,
-             cx2 - r, cy2 - r, (unsigned)(2*r), (unsigned)(2*r), 0, 360*64);
-    XSetLineAttributes(g->dpy, g->gc, 1, LineSolid, CapButt, JoinMiter);
-}
-
 static void fill_circle(XGui *g, int x, int y, int r, uint32_t rgb) {
     int d = 2 * r;
     if (d <= 0) return;
@@ -693,15 +613,13 @@ void xgui_begin(XGui *g) {
     g->last_frame_t = now_t;
 
     g->frame = (g->frame + 1) & 0x7fffffff;
-    g->mouse_released    = false;
-    g->key_count         = 0;
-    g->key_backspace     = false;
-    g->key_enter         = false;
+    g->mouse_released   = false;
+    g->key_count        = 0;
+    g->key_backspace    = false;
+    g->key_enter        = false;
     g->key_esc_this_frame = false;
-    g->tip_show          = false;
-    g->dd.active         = false;
-    g->scroll_delta_frame = 0;
-    memset(g->key_pressed_map, 0, sizeof(g->key_pressed_map));
+    g->tip_show         = false;
+    g->dd.active        = false;
 
     /* Scrollbar geometry for event hit-testing */
     int sbx, sby, sbh, thy, thh;
@@ -739,13 +657,13 @@ void xgui_begin(XGui *g) {
                     }
                 }
             } else if (e.xbutton.button == Button4) {
-                /* Scroll up — add negative momentum */
-                g->scroll_momentum -= (float)SCROLL_STEP;
-                g->scroll_delta_frame -= 1;
+                g->scroll_target -= SCROLL_STEP;
+                if (g->scroll_target < -50) g->scroll_target = -50;
             } else if (e.xbutton.button == Button5) {
-                /* Scroll down — add positive momentum */
-                g->scroll_momentum += (float)SCROLL_STEP;
-                g->scroll_delta_frame += 1;
+                int ms = g->content_h - g->height;
+                if (ms < 0) ms = 0;
+                g->scroll_target += SCROLL_STEP;
+                if (g->scroll_target > ms + 50) g->scroll_target = ms + 50;
             }
             break;
 
@@ -785,13 +703,9 @@ void xgui_begin(XGui *g) {
             else if (ks == XK_Escape)           { g->key_esc_this_frame = true; g->focused_id[0] = '\0'; }
             else if (buf[0] >= 32 && g->key_count < KEY_BUF - 1)
                 g->key_chars[g->key_count++] = buf[0];
-            /* hold state + single-frame pressed map */
+            /* hold state */
             { unsigned char _c0 = (unsigned char)buf[0];
-              if (_c0 >= 32 && _c0 < 128) {
-                  g->key_held[(int)_c0]         = true;
-                  g->key_pressed_map[(int)_c0]  = true;
-              }
-            }
+              if (_c0 >= 32 && _c0 < 128) g->key_held[(int)_c0] = true; }
             if (ks == XK_Up    || ks == XK_KP_Up)    g->key_up    = true;
             if (ks == XK_Down  || ks == XK_KP_Down)  g->key_down  = true;
             if (ks == XK_Left  || ks == XK_KP_Left)  g->key_left  = true;
@@ -846,60 +760,27 @@ void xgui_begin(XGui *g) {
         inp->buf[len] = '\0';
     }
 
-    /* ── Momentum + rubber-band + spring-physics scroll ─────────── */
+    /* Spring-physics smooth scroll (critically damped, framerate independent) */
     if (!g->sb_dragging) {
-        int max_scroll = g->content_h - g->height;
-        if (max_scroll < 0) max_scroll = 0;
+        float dt = g->delta_ms / 1000.0f;
+        if (dt > 0.1f) dt = 0.1f; /* cap dt to avoid instability on huge lag */
 
-        /* Phase 1: momentum (from wheel/flick) */
-        if (fabsf(g->scroll_momentum) >= MOMENTUM_THRESH) {
-            float proposed = g->scroll_pos_f + g->scroll_momentum;
-            /* rubber-band: reduce effective movement past bounds */
-            if (proposed < 0.0f) {
-                float over = -proposed;
-                g->scroll_pos_f = -(over * RUBBER_BAND_K);
-            } else if (proposed > (float)max_scroll) {
-                float over = proposed - (float)max_scroll;
-                g->scroll_pos_f = (float)max_scroll + over * RUBBER_BAND_K;
-            } else {
-                g->scroll_pos_f = proposed;
-            }
-            g->scroll_target = (int)(g->scroll_pos_f + 0.5f);
-            if (g->scroll_target < 0) g->scroll_target = 0;
-            if (g->scroll_target > max_scroll) g->scroll_target = max_scroll;
-            /* friction decay */
-            g->scroll_momentum *= MOMENTUM_FRICTION;
-        } else {
-            g->scroll_momentum = 0.0f;
+        float omega = SCROLL_OMEGA;
+        float exp_term = expf(-omega * dt);
+        float diff_pos = g->scroll_pos_f - (float)g->scroll_target;
 
-            /* Phase 2: rubber-band spring-back when out of bounds */
-            if (g->scroll_pos_f < 0.0f) {
-                g->scroll_pos_f += (-g->scroll_pos_f) * RUBBER_SPRING;
-                if (g->scroll_pos_f >= -0.5f) g->scroll_pos_f = 0.0f;
-                g->scroll_target = 0;
-            } else if (g->scroll_pos_f > (float)max_scroll) {
-                g->scroll_pos_f += ((float)max_scroll - g->scroll_pos_f) * RUBBER_SPRING;
-                if (fabsf(g->scroll_pos_f - (float)max_scroll) < 0.5f)
-                    g->scroll_pos_f = (float)max_scroll;
-                g->scroll_target = max_scroll;
-            } else {
-                /* Phase 3: critically-damped spring to scroll_target */
-                float dt = g->delta_ms / 1000.0f;
-                if (dt > 0.1f) dt = 0.1f;
-                float omega     = SCROLL_OMEGA;
-                float exp_term  = expf(-omega * dt);
-                float diff_pos  = g->scroll_pos_f - (float)g->scroll_target;
-                float n1        = g->scroll_vel + omega * diff_pos;
-                float next_pos  = (float)g->scroll_target + (diff_pos + n1 * dt) * exp_term;
-                float next_vel  = (g->scroll_vel - omega * n1 * dt) * exp_term;
-                g->scroll_pos_f = next_pos;
-                g->scroll_vel   = next_vel;
-                if (fabsf(g->scroll_pos_f - (float)g->scroll_target) < SNAP_THRESH &&
-                    fabsf(g->scroll_vel) < SNAP_THRESH) {
-                    g->scroll_pos_f = (float)g->scroll_target;
-                    g->scroll_vel   = 0.0f;
-                }
-            }
+        /* Critically damped spring integration */
+        float n1 = g->scroll_vel + omega * diff_pos;
+        float next_pos = (float)g->scroll_target + (diff_pos + n1 * dt) * exp_term;
+        float next_vel = (g->scroll_vel - omega * n1 * dt) * exp_term;
+
+        g->scroll_pos_f = next_pos;
+        g->scroll_vel   = next_vel;
+
+        if (fabsf(g->scroll_pos_f - (float)g->scroll_target) < SNAP_THRESH &&
+            fabsf(g->scroll_vel) < SNAP_THRESH) {
+            g->scroll_pos_f = (float)g->scroll_target;
+            g->scroll_vel   = 0.0f;
         }
         g->scroll_y = (int)(g->scroll_pos_f + 0.5f);
     }
@@ -1891,679 +1772,6 @@ bool xgui_mouse_down(XGui *g) { return g && g->mouse_down; }
 int  xgui_mouse_x(XGui *g)    { return g ? g->mx : 0; }
 int  xgui_mouse_y(XGui *g)    { return g ? g->my : 0; }
 
-/* ------------------------------------------------------------------ scroll queries */
-
-int xgui_scroll_y(XGui *g)     { return g ? g->scroll_y : 0; }
-int xgui_scroll_delta(XGui *g) { return g ? g->scroll_delta_frame : 0; }
-
-/* ------------------------------------------------------------------ key_pressed (single-frame) */
-
-bool xgui_key_pressed(XGui *g, char c) {
-    if (!g) return false;
-    int idx = (int)(unsigned char)c;
-    return (idx >= 0 && idx < 256) && g->key_pressed_map[idx];
-}
-
-/* ------------------------------------------------------------------ radio group */
-
-int xgui_radio(XGui *g, const char *id, const char **labels, int count, int current) {
-    if (!g || !labels || count <= 0) return current;
-    PssStyle *sr  = &g->theme.radio;
-    PssStyle *src = &g->theme.radio_checked;
-    XftFont  *f   = get_font(g, "sans", 13, 400);
-
-    int sel = current;
-    for (int i = 0; i < count; i++) {
-        /* Radio circle */
-        int rx = g->cx, ry = g->cy;
-        int rd = 18;  /* diameter */
-        int bh = rd + 2 * (sr->padding_y > 0 ? sr->padding_y : 2);
-
-        bool hov   = (g->mx >= rx && g->mx < rx + rd &&
-                      g->my >= ry && g->my < ry + rd);
-        bool clicked = hov && g->mouse_released;
-        if (clicked) sel = i;
-
-        if (vis(g, ry, bh)) {
-            PssStyle *suse = (i == sel) ? src : sr;
-            /* outer circle */
-            fill_circle(g, rx, ry, rd / 2,
-                        suse->background ? suse->background : 0xffffff);
-            draw_circle_outline(g, rx + rd/2, ry + rd/2, rd/2,
-                                suse->border_width > 0 ? suse->border_width : 2,
-                                suse->border_color ? suse->border_color
-                                                   : (i == sel ? 0x0078d4 : 0xbcbcbc));
-            /* inner fill dot when selected */
-            if (i == sel) {
-                int ir = rd / 4;
-                fill_circle(g, rx + rd/2 - ir, ry + rd/2 - ir, ir,
-                            suse->accent_color ? suse->accent_color : 0x0078d4);
-            }
-            /* label */
-            if (f && labels[i]) {
-                draw_text(g, f, labels[i], rx + rd + 8, ry + f->ascent + (rd - f->ascent - f->descent)/2,
-                          0x222222);
-            }
-        }
-        /* build id for input collision */
-        char rid[128];
-        snprintf(rid, sizeof(rid), "%s#%d", id ? id : "radio", i);
-        (void)rid;
-        g->cy += bh + (WIDGET_GAP / 2);
-    }
-    return sel;
-}
-
-/* ------------------------------------------------------------------ collapsing section */
-
-/* Returns index of id in coll_ids, or -1. */
-static int coll_find(XGui *g, const char *id) {
-    for (int i = 0; i < g->coll_count; i++)
-        if (strcmp(g->coll_ids[i], id) == 0) return i;
-    return -1;
-}
-
-bool xgui_collapsing(XGui *g, const char *id, const char *label) {
-    if (!g || !id || !label) return false;
-
-    /* Find or register this section */
-    int ci = coll_find(g, id);
-    if (ci < 0 && g->coll_count < COLLAPSING_MAX) {
-        ci = g->coll_count++;
-        snprintf(g->coll_ids[ci], 64, "%s", id);
-        g->coll_open[ci] = false;
-    }
-    if (ci < 0) return false;
-
-    bool open  = g->coll_open[ci];
-    PssStyle *s = open ? &g->theme.collapsing_open : &g->theme.collapsing;
-    int px  = s->padding_x > 0 ? s->padding_x : 12;
-    int py  = s->padding_y > 0 ? s->padding_y : 8;
-    int fsz = s->font_size > 0 ? s->font_size : 13;
-    int fw  = s->font_weight > 0 ? s->font_weight : 400;
-    XftFont *f = get_font(g, "sans", fsz, fw);
-    int th = f ? f->ascent + f->descent : 16;
-    int bh = th + 2 * py;
-    int bw = g->width - g->cx - g->margin;
-
-    bool hov = (g->mx >= g->cx && g->mx < g->cx + bw &&
-                g->my >= g->cy && g->my < g->cy + bh);
-
-    if (vis(g, g->cy, bh)) {
-        uint32_t bg = s->background ? s->background : 0xf8f8f8;
-        if (hov) bg = open ? (g->theme.collapsing_open.background ? g->theme.collapsing_open.background : 0xeef4ff)
-                           : 0xeeeef4;
-        fill_rounded_rect(g, g->cx, g->cy, bw, bh, s->border_radius > 0 ? s->border_radius : 6, bg);
-        if (s->border_width > 0)
-            draw_outline(g, g->cx, g->cy, bw, bh, s->border_radius > 0 ? s->border_radius : 6,
-                         s->border_width, s->border_color ? s->border_color : 0xeeeeee);
-        /* arrow triangle */
-        int ay = g->cy + bh / 2;
-        int ax = g->cx + px;
-        if (open) {
-            /* ▼ */
-            XSetForeground(g->dpy, g->gc, alloc_color(g, s->color ? s->color : 0x555555));
-            XPoint tri[3] = { {(short)(ax), (short)(ay-4)},
-                              {(short)(ax+8), (short)(ay-4)},
-                              {(short)(ax+4), (short)(ay+4)} };
-            XFillPolygon(g->dpy, g->backbuf, g->gc, tri, 3, Convex, CoordModeOrigin);
-        } else {
-            /* ▶ */
-            XSetForeground(g->dpy, g->gc, alloc_color(g, s->color ? s->color : 0x888888));
-            XPoint tri[3] = { {(short)(ax), (short)(ay-5)},
-                              {(short)(ax), (short)(ay+5)},
-                              {(short)(ax+8), (short)(ay)} };
-            XFillPolygon(g->dpy, g->backbuf, g->gc, tri, 3, Convex, CoordModeOrigin);
-        }
-        /* label */
-        if (f)
-            draw_text(g, f, label, ax + 14, g->cy + py + f->ascent,
-                      s->color ? s->color : 0x333333);
-    }
-
-    if (hov && g->mouse_released)
-        g->coll_open[ci] = !g->coll_open[ci];
-
-    advance(g, bw, bh);
-    return g->coll_open[ci];
-}
-
-void xgui_collapsing_end(XGui *g) {
-    /* Visual bottom margin when a collapsing section closes */
-    if (g) g->cy += WIDGET_GAP / 2;
-}
-
-/* ------------------------------------------------------------------ modal dialog */
-
-void xgui_modal_open(XGui *g, const char *id) {
-    if (!g || !id) return;
-    snprintf(g->modal_id, sizeof(g->modal_id), "%s", id);
-    g->modal_open = true;
-}
-
-void xgui_modal_close(XGui *g) {
-    if (!g) return;
-    g->modal_open = false;
-    g->modal_id[0] = '\0';
-    g->in_modal = false;
-}
-
-bool xgui_modal_begin(XGui *g, const char *id, const char *title, int mw, int mh) {
-    if (!g || !id) return false;
-    if (!g->modal_open || strcmp(g->modal_id, id) != 0) return false;
-
-    PssStyle *ov = &g->theme.modal_overlay;
-    PssStyle *ms = &g->theme.modal;
-    PssStyle *mt = &g->theme.modal_title;
-
-    /* Dim overlay */
-    int alpha = ov->opacity > 0 ? (ov->opacity * 255 / 100) : 140;
-    fill_rect_alpha(g, 0, 0, g->width, g->height,
-                    ov->background ? ov->background : 0x000000, alpha);
-
-    /* Modal box */
-    if (mw <= 0) mw = 480;
-    if (mh <= 0) mh = 320;
-    int mx2 = (g->width  - mw) / 2;
-    int my2 = (g->height - mh) / 2;
-    g->modal_x = mx2; g->modal_y = my2;
-    g->modal_w = mw;  g->modal_h = mh;
-
-    /* Shadow */
-    draw_shadow(g, mx2, my2, mw, mh, ms->border_radius > 0 ? ms->border_radius : 10);
-
-    /* Background */
-    fill_rounded_rect(g, mx2, my2, mw, mh,
-                      ms->border_radius > 0 ? ms->border_radius : 10,
-                      ms->background ? ms->background : 0xffffff);
-
-    /* Title bar */
-    int tpy = mt->padding_y > 0 ? mt->padding_y : 8;
-    int tfsz = mt->font_size > 0 ? mt->font_size : 18;
-    XftFont *tf = get_font(g, "sans", tfsz, 700);
-    int title_h = tf ? (tf->ascent + tf->descent + 2*tpy + 8) : 48;
-    if (tf && title) {
-        draw_text(g, tf, title, mx2 + 24, my2 + tpy + tf->ascent,
-                  mt->color ? mt->color : 0x111111);
-    }
-    /* Divider below title */
-    fill_rect(g, mx2, my2 + title_h - 1, mw, 1,
-              mt->border_color ? mt->border_color : 0xeeeeee);
-
-    /* Close button (X) in top right */
-    int cx2 = mx2 + mw - 36, cy2 = my2 + (title_h - 24) / 2;
-    bool xhov = (g->mx >= cx2 && g->mx < cx2 + 24 && g->my >= cy2 && g->my < cy2 + 24);
-    if (xhov) fill_rounded_rect(g, cx2, cy2, 24, 24, 4, 0xeeeeee);
-    XftFont *xf = get_font(g, "sans", 14, 400);
-    if (xf) draw_text(g, xf, "✕", cx2 + 4, cy2 + xf->ascent + 2, 0x666666);
-    if (xhov && g->mouse_released) { xgui_modal_close(g); return false; }
-
-    /* Push layout cursor into modal content area */
-    g->in_modal = true;
-    g->cx       = mx2 + (ms->padding_x > 0 ? ms->padding_x : 24);
-    g->cy       = my2 + title_h + 8;
-    g->margin   = mx2 + (ms->padding_x > 0 ? ms->padding_x : 24);
-
-    return true;
-}
-
-void xgui_modal_end(XGui *g) {
-    if (!g || !g->in_modal) return;
-    /* restore layout cursor outside modal */
-    g->in_modal = false;
-    g->cx       = g->theme.window.padding_x;
-    g->cy       = g->content_h;  /* continue below previous content */
-    g->margin   = g->theme.window.padding_x;
-}
-
-bool xgui_modal_button(XGui *g, const char *label) {
-    bool clicked = xgui_button(g, label);
-    if (clicked) xgui_modal_close(g);
-    return clicked;
-}
-
-/* ------------------------------------------------------------------ spinbox */
-
-double xgui_spinbox(XGui *g, const char *id, double min_v, double max_v,
-                    double current, double step) {
-    if (!g || !id) return current;
-    if (step == 0.0) step = 1.0;
-
-    /* Get/create an input buffer for this spinbox value */
-    InputState *inp = find_input(g, id);
-    /* Initialise buffer from current if it doesn't match */
-    double stored = atof(inp->buf);
-    if (inp->buf[0] == '\0') {
-        snprintf(inp->buf, sizeof(inp->buf), "%g", current);
-        stored = current;
-    }
-
-    PssStyle *ss  = &g->theme.spinbox;
-    PssStyle *ssb = &g->theme.spinbox_button;
-    PssStyle *sbh = &g->theme.spinbox_button_hover;
-
-    int bw = (g->width - g->cx - g->margin);
-    if (bw < 100) bw = 100;
-    int btn_w = ssb->min_width > 0 ? ssb->min_width : 26;
-    int inp_w = bw - 2 * btn_w - 4;
-    int bh    = 32;
-
-    XftFont *f = get_font(g, "sans", ss->font_size > 0 ? ss->font_size : 13, 400);
-
-    if (vis(g, g->cy, bh)) {
-        int ix = g->cx, iy = g->cy;
-
-        /* minus button */
-        int mbx = ix, mby = iy;
-        bool mbhov = (g->mx >= mbx && g->mx < mbx + btn_w &&
-                      g->my >= mby && g->my < mby + bh);
-        PssStyle *bu = mbhov ? sbh : ssb;
-        fill_rounded_rect(g, mbx, mby, btn_w, bh,
-                          bu->border_radius > 0 ? bu->border_radius : 4,
-                          bu->background ? bu->background : 0xf4f4f4);
-        draw_outline(g, mbx, mby, btn_w, bh,
-                     bu->border_radius > 0 ? bu->border_radius : 4, 1,
-                     bu->border_color ? bu->border_color : 0xbcbcbc);
-        XftFont *bf = get_font(g, "sans", 16, 700);
-        if (bf) {
-            int tw, th; text_size(g, bf, "−", &tw, &th);
-            draw_text(g, bf, "−", mbx + (btn_w - tw)/2, mby + bf->ascent + (bh - th)/2,
-                      bu->color ? bu->color : 0x444444);
-        }
-        if (mbhov && g->mouse_released) {
-            stored -= step;
-            if (stored < min_v) stored = min_v;
-            snprintf(inp->buf, sizeof(inp->buf), "%g", stored);
-        }
-
-        /* input field */
-        int ifx = ix + btn_w + 2;
-        bool focused = (strcmp(g->focused_id, id) == 0);
-        fill_rounded_rect(g, ifx, iy, inp_w, bh,
-                          ss->border_radius > 0 ? ss->border_radius : 4,
-                          ss->background ? ss->background : 0xffffff);
-        draw_outline(g, ifx, iy, inp_w, bh,
-                     ss->border_radius > 0 ? ss->border_radius : 4,
-                     focused ? 2 : 1,
-                     focused ? 0x0078d4 : (ss->border_color ? ss->border_color : 0xbcbcbc));
-        if (f && inp->buf[0]) {
-            int tw, th; text_size(g, f, inp->buf, &tw, &th);
-            draw_text(g, f, inp->buf, ifx + (inp_w - tw)/2,
-                      iy + f->ascent + (bh - th)/2,
-                      ss->color ? ss->color : 0x222222);
-        }
-        /* click to focus */
-        if (g->mx >= ifx && g->mx < ifx + inp_w &&
-            g->my >= iy   && g->my < iy + bh && g->mouse_released) {
-            snprintf(g->focused_id, sizeof(g->focused_id), "%s", id);
-        }
-
-        /* plus button */
-        int pbx = ifx + inp_w + 2, pby = iy;
-        bool pbhov = (g->mx >= pbx && g->mx < pbx + btn_w &&
-                      g->my >= pby && g->my < pby + bh);
-        PssStyle *pb = pbhov ? sbh : ssb;
-        fill_rounded_rect(g, pbx, pby, btn_w, bh,
-                          pb->border_radius > 0 ? pb->border_radius : 4,
-                          pb->background ? pb->background : 0xf4f4f4);
-        draw_outline(g, pbx, pby, btn_w, bh,
-                     pb->border_radius > 0 ? pb->border_radius : 4, 1,
-                     pb->border_color ? pb->border_color : 0xbcbcbc);
-        if (bf) {
-            int tw, th; text_size(g, bf, "+", &tw, &th);
-            draw_text(g, bf, "+", pbx + (btn_w - tw)/2, pby + bf->ascent + (bh - th)/2,
-                      pb->color ? pb->color : 0x444444);
-        }
-        if (pbhov && g->mouse_released) {
-            stored += step;
-            if (stored > max_v) stored = max_v;
-            snprintf(inp->buf, sizeof(inp->buf), "%g", stored);
-        }
-    }
-
-    advance(g, bw, bh);
-
-    /* Clamp and return current value */
-    double val = atof(inp->buf);
-    if (val < min_v) val = min_v;
-    if (val > max_v) val = max_v;
-    return val;
-}
-
-/* ------------------------------------------------------------------ status bar */
-
-void xgui_status_bar(XGui *g, const char *text) {
-    if (!g || !text) return;
-    PssStyle *s = &g->theme.status_bar;
-    int fsz  = s->font_size  > 0 ? s->font_size  : 12;
-    int px   = s->padding_x  > 0 ? s->padding_x  : 12;
-    int py   = s->padding_y  > 0 ? s->padding_y  : 4;
-    int minh = s->min_height > 0 ? s->min_height : 24;
-    XftFont *f = get_font(g, "sans", fsz, 400);
-    int th = f ? f->ascent + f->descent : 16;
-    int bh = (th + 2*py > minh) ? th + 2*py : minh;
-
-    /* Always drawn at the physical bottom of the window */
-    int sy = g->height - bh;
-    fill_rect(g, 0, sy, g->width, bh,
-              s->background ? s->background : 0xf0f0f0);
-    if (s->border_top > 0)
-        fill_rect(g, 0, sy, g->width, s->border_top,
-                  s->border_color ? s->border_color : 0xdddddd);
-    if (f)
-        draw_text(g, f, text, px, sy + py + f->ascent,
-                  s->color ? s->color : 0x666666);
-}
-
-/* ------------------------------------------------------------------ data table */
-
-void xgui_table_begin(XGui *g, const char *id, int cols) {
-    if (!g || cols <= 0) return;
-    (void)id;
-    g->in_table     = true;
-    g->table_cols   = cols;
-    g->table_col    = 0;
-    g->table_row_idx = 0;
-    /* column width: equal split of usable width */
-    int usable = g->width - g->cx - g->margin;
-    g->table_col_w = usable / cols;
-    /* outer border */
-    PssStyle *st = &g->theme.table;
-    if (st->border_width > 0) {
-        /* We'll draw the outer border in xgui_table_end */
-    }
-}
-
-void xgui_table_header(XGui *g, const char **headers, int count) {
-    if (!g || !g->in_table || !headers) return;
-    PssStyle *sh = &g->theme.table_header;
-    int fsz = sh->font_size  > 0 ? sh->font_size  : 12;
-    int fw  = sh->font_weight > 0 ? sh->font_weight : 600;
-    int px  = sh->padding_x  > 0 ? sh->padding_x  : 12;
-    int py  = sh->padding_y  > 0 ? sh->padding_y  :  8;
-    XftFont *f = get_font(g, "sans", fsz, fw);
-    int th = f ? f->ascent + f->descent : 16;
-    int bh = th + 2 * py;
-    int n  = count < g->table_cols ? count : g->table_cols;
-
-    if (vis(g, g->cy, bh)) {
-        fill_rect(g, g->cx, g->cy, g->width - g->cx - g->margin, bh,
-                  sh->background ? sh->background : 0xf4f4f4);
-        for (int i = 0; i < n; i++) {
-            int cx2 = g->cx + i * g->table_col_w;
-            if (f && headers[i])
-                draw_text(g, f, headers[i], cx2 + px, g->cy + py + f->ascent,
-                          sh->color ? sh->color : 0x444444);
-            /* right separator */
-            if (i < n - 1)
-                fill_rect(g, cx2 + g->table_col_w - 1, g->cy, 1, bh,
-                          sh->border_color ? sh->border_color : 0xcccccc);
-        }
-        /* bottom border */
-        fill_rect(g, g->cx, g->cy + bh - (sh->border_bottom > 0 ? sh->border_bottom : 2),
-                  g->width - g->cx - g->margin, sh->border_bottom > 0 ? sh->border_bottom : 2,
-                  sh->border_color ? sh->border_color : 0xcccccc);
-    }
-    g->cy += bh;
-    g->table_row_idx = 1;
-}
-
-bool xgui_table_row_begin(XGui *g, const char *row_id) {
-    if (!g || !g->in_table) return false;
-    bool alt      = (g->table_row_idx % 2 == 0);
-    bool selected = (row_id && strcmp(g->table_sel_id, row_id) == 0);
-    PssStyle *sr;
-    if      (selected) sr = &g->theme.table_row_selected;
-    else if (alt)      sr = &g->theme.table_row_alt;
-    else               sr = &g->theme.table_row;
-
-    int py  = sr->padding_y > 0 ? sr->padding_y : 8;
-    XftFont *f = get_font(g, "sans", 13, 400);
-    int th = f ? f->ascent + f->descent : 16;
-    g->table_row_h = th + 2 * py;
-    g->table_row_y = g->cy;
-    g->table_col   = 0;
-
-    bool hov = (g->mx >= g->cx && g->mx < g->width - g->margin &&
-                g->my >= g->cy && g->my < g->cy + g->table_row_h);
-    PssStyle *draw_s = hov && !selected ? &g->theme.table_row_hover : sr;
-    if (vis(g, g->cy, g->table_row_h))
-        fill_rect(g, g->cx, g->cy, g->width - g->cx - g->margin, g->table_row_h,
-                  draw_s->background ? draw_s->background : (alt ? 0xfafafa : 0xffffff));
-
-    if (hov && g->mouse_released && row_id)
-        snprintf(g->table_sel_id, sizeof(g->table_sel_id), "%s", row_id);
-
-    return selected;
-}
-
-void xgui_table_cell(XGui *g, const char *text) {
-    if (!g || !g->in_table || !text) return;
-    PssStyle *sc = &g->theme.table_cell;
-    int px = sc->padding_x > 0 ? sc->padding_x : 12;
-    int py = sc->padding_y > 0 ? sc->padding_y : 8;
-    XftFont *f = get_font(g, "sans", 13, 400);
-
-    int cx2 = g->cx + g->table_col * g->table_col_w;
-    if (vis(g, g->table_row_y, g->table_row_h)) {
-        /* clip cell text */
-        if (f) draw_text(g, f, text, cx2 + px, g->table_row_y + py + f->ascent,
-                         sc->color ? sc->color : 0x333333);
-        /* right-side separator */
-        if (g->table_col < g->table_cols - 1)
-            fill_rect(g, cx2 + g->table_col_w - 1, g->table_row_y, 1, g->table_row_h,
-                      0xeeeeee);
-    }
-    g->table_col++;
-}
-
-void xgui_table_row_end(XGui *g) {
-    if (!g || !g->in_table) return;
-    /* bottom separator */
-    if (vis(g, g->table_row_y, g->table_row_h))
-        fill_rect(g, g->cx, g->table_row_y + g->table_row_h - 1,
-                  g->width - g->cx - g->margin, 1, 0xeeeeee);
-    g->cy += g->table_row_h;
-    g->table_row_idx++;
-}
-
-void xgui_table_end(XGui *g) {
-    if (!g) return;
-    g->in_table = false;
-    /* outer table border */
-    PssStyle *st = &g->theme.table;
-    if (st->border_width > 0) {
-        int bw = g->width - g->cx - g->margin;
-        int bh = g->cy - g->table_row_y - g->table_row_h;  /* approx */
-        (void)bw; (void)bh;
-    }
-    g->cy += WIDGET_GAP;
-}
-
-/* ------------------------------------------------------------------ tree view */
-
-void xgui_tree_begin(XGui *g, const char *id) {
-    if (!g) return;
-    (void)id;
-}
-
-bool xgui_tree_node(XGui *g, const char *node_id, const char *label,
-                    bool has_children, int depth) {
-    if (!g || !label) return false;
-    /* Determine expanded state via coll_ids system */
-    int ci = coll_find(g, node_id ? node_id : label);
-    if (ci < 0 && g->coll_count < COLLAPSING_MAX) {
-        ci = g->coll_count++;
-        snprintf(g->coll_ids[ci], 64, "%s", node_id ? node_id : label);
-        g->coll_open[ci] = false;
-    }
-    bool expanded = (ci >= 0) ? g->coll_open[ci] : false;
-    bool selected  = (node_id && strcmp(g->tree_sel, node_id) == 0);
-
-    PssStyle *sn = selected ? &g->theme.tree_node_selected
-                 : expanded ? &g->theme.tree_node_expanded
-                 :            &g->theme.tree_node;
-    int indent = depth * 20;
-    int px  = (sn->padding_x > 0 ? sn->padding_x : 8) + indent;
-    int py  = sn->padding_y > 0 ? sn->padding_y : 5;
-    int fsz = sn->font_size  > 0 ? sn->font_size : 13;
-    int fw  = sn->font_weight > 0 ? sn->font_weight : 400;
-    XftFont *f = get_font(g, "sans", fsz, fw);
-    int th = f ? f->ascent + f->descent : 16;
-    int bh = th + 2 * py;
-    int bw = g->width - g->cx - g->margin;
-
-    bool hov = (g->mx >= g->cx && g->mx < g->cx + bw &&
-                g->my >= g->cy && g->my < g->cy + bh);
-
-    if (vis(g, g->cy, bh)) {
-        uint32_t bg = 0;
-        if (selected) bg = sn->background ? sn->background : 0x0078d4;
-        else if (hov)  bg = 0xf0f5ff;
-        if (bg) fill_rounded_rect(g, g->cx, g->cy, bw, bh,
-                                  sn->border_radius > 0 ? sn->border_radius : 4, bg);
-
-        /* expand/collapse arrow */
-        if (has_children) {
-            int ax = g->cx + px - 14;
-            int ay = g->cy + bh / 2;
-            XSetForeground(g->dpy, g->gc, alloc_color(g, selected ? 0xffffff : 0x888888));
-            if (expanded) {
-                XPoint tri[3] = { {(short)(ax), (short)(ay-3)},
-                                  {(short)(ax+7), (short)(ay-3)},
-                                  {(short)(ax+3), (short)(ay+3)} };
-                XFillPolygon(g->dpy, g->backbuf, g->gc, tri, 3, Convex, CoordModeOrigin);
-            } else {
-                XPoint tri[3] = { {(short)(ax), (short)(ay-4)},
-                                  {(short)(ax), (short)(ay+4)},
-                                  {(short)(ax+6), (short)(ay)} };
-                XFillPolygon(g->dpy, g->backbuf, g->gc, tri, 3, Convex, CoordModeOrigin);
-            }
-        }
-        if (f)
-            draw_text(g, f, label, g->cx + px, g->cy + py + f->ascent,
-                      selected ? (sn->color ? sn->color : 0xffffff)
-                               : (sn->color ? sn->color : 0x333333));
-    }
-
-    if (hov && g->mouse_released) {
-        if (node_id) snprintf(g->tree_sel, sizeof(g->tree_sel), "%s", node_id);
-        if (has_children && ci >= 0) g->coll_open[ci] = !g->coll_open[ci];
-    }
-
-    advance(g, bw, bh);
-    return expanded;
-}
-
-void xgui_tree_end(XGui *g) {
-    if (!g) return;
-    g->cy += WIDGET_GAP / 2;
-}
-
-/* ------------------------------------------------------------------ context menu */
-
-bool xgui_context_menu_begin(XGui *g, const char *id, int region_w, int region_h) {
-    if (!g || !id) return false;
-
-    int rx = g->cx, ry = g->cy;
-    /* Check for right-click in region */
-    bool right_click = false;
-    /* We approximate right-click via Button3 — detected in the event loop.
-       Since xgui doesn't track right-click natively yet, we use a simple heuristic:
-       check if the context menu was already opened for this id, or detect via
-       the mouse-released + no focus approach (simplified: track right button state). */
-
-    /* If this context menu is already open, keep it open */
-    bool already_open = (g->cmenu_open && strcmp(g->cmenu_id, id) == 0);
-    (void)right_click;
-
-    /* Right-click detection: look for mouse_released in region with middle y logic
-       Since X11 right-click is Button3 and we track Button1, we use a Prism-level
-       workaround: context_menu_begin returns true when already opened programmatically.
-       For right-click to work properly: the user can call xgui_modal_open(g, id) on
-       right-click via a surrounding right-button check. Here we just handle showing. */
-    if (!already_open) {
-        /* Check if right mouse button was pressed in the region — approximated by
-           setting cmenu_open when g->mouse_released AND mouse is in region AND
-           we detect some external signal. Since X11 right-click isn't yet tracked
-           in xgui_begin, we'll auto-open on right-click by checking a special flag. */
-        bool in_region = (g->mx >= rx && g->mx < rx + region_w &&
-                          g->my >= ry && g->my < ry + region_h);
-        /* We'll add right_click detection simply: if mouse is released over the region
-           and ESC hasn't been pressed, and this id matches cmenu_id that was set
-           externally — for now fall through so external code can call modal_open. */
-        (void)in_region;
-        return false;
-    }
-
-    /* Draw the popup */
-    PssStyle *sm = &g->theme.context_menu;
-    (void)CMENU_ITEM_H;
-    /* We draw from cmenu_x, cmenu_y (set when opened) */
-    int mx2 = g->cmenu_x, my2 = g->cmenu_y;
-    int mw = 180;
-    draw_shadow(g, mx2, my2, mw, 4, sm->border_radius > 0 ? sm->border_radius : 6);
-    fill_rounded_rect(g, mx2, my2, mw, 4,
-                      sm->border_radius > 0 ? sm->border_radius : 6,
-                      sm->background ? sm->background : 0xffffff);
-    draw_outline(g, mx2, my2, mw, 4,
-                 sm->border_radius > 0 ? sm->border_radius : 6, 1,
-                 sm->border_color ? sm->border_color : 0xdddddd);
-    g->cmenu_item_y = my2 + (sm->padding_y > 0 ? sm->padding_y : 4);
-
-    /* Close on Escape or click outside */
-    bool outside = g->mouse_released &&
-                   !(g->mx >= mx2 && g->mx < mx2 + mw &&
-                     g->my >= my2 && g->my < my2 + 500);
-    if (outside || g->key_esc_this_frame) {
-        g->cmenu_open = false;
-        g->cmenu_id[0] = '\0';
-        return false;
-    }
-    return true;
-}
-
-bool xgui_context_menu_item(XGui *g, const char *label) {
-    if (!g || !label) return false;
-    if (!g->cmenu_open) return false;
-
-    PssStyle *si  = &g->theme.context_menu_item;
-    PssStyle *sih = &g->theme.context_menu_item_hover;
-    int mw  = 180;
-    int mx2 = g->cmenu_x;
-    int px  = si->padding_x > 0 ? si->padding_x : 14;
-    int py  = si->padding_y > 0 ? si->padding_y :  8;
-    int fsz = si->font_size  > 0 ? si->font_size : 13;
-    XftFont *f  = get_font(g, "sans", fsz, 400);
-    int th = f ? f->ascent + f->descent : 16;
-    int ih = th + 2 * py;
-
-    int iy = g->cmenu_item_y;
-    bool hov = (g->mx >= mx2 && g->mx < mx2 + mw &&
-                g->my >= iy   && g->my < iy + ih);
-    PssStyle *sd = hov ? sih : si;
-    if (hov)
-        fill_rounded_rect(g, mx2 + 4, iy, mw - 8, ih,
-                          sd->border_radius > 0 ? sd->border_radius : 4,
-                          sd->background ? sd->background : 0xf0f5ff);
-    if (f)
-        draw_text(g, f, label, mx2 + px, iy + py + f->ascent,
-                  sd->color ? sd->color : (hov ? 0x0078d4 : 0x333333));
-
-    g->cmenu_item_y += ih;
-
-    if (hov && g->mouse_released) {
-        g->cmenu_open = false;
-        g->cmenu_id[0] = '\0';
-        return true;
-    }
-    return false;
-}
-
-void xgui_context_menu_end(XGui *g) {
-    (void)g; /* Nothing required — items were drawn inline */
-}
-
 /* ------------------------------------------------------------------ stubs for non-X11 */
 
 #else /* !HAVE_X11 */
@@ -2642,36 +1850,5 @@ int         xgui_win_h(XGui *g)                 { (void)g; return 0; }
 float       xgui_delta_ms(XGui *g)              { (void)g; return 16.0f; }
 long long   xgui_clock_ms(XGui *g)              { (void)g; return 0LL; }
 void        xgui_sleep_ms(XGui *g, int ms)      { (void)g;(void)ms; }
-
-/* ── new widget stubs (no-X11) ────────────────────────────────────── */
-int    xgui_scroll_y(XGui *g)     { (void)g; return 0; }
-int    xgui_scroll_delta(XGui *g) { (void)g; return 0; }
-bool   xgui_key_pressed(XGui *g, char c) { (void)g;(void)c; return false; }
-int    xgui_radio(XGui *g, const char *id, const char **ls, int n, int cur)
-           { (void)g;(void)id;(void)ls;(void)n; return cur; }
-bool   xgui_collapsing(XGui *g, const char *id, const char *l)  { (void)g;(void)id;(void)l; return false; }
-void   xgui_collapsing_end(XGui *g)                             { (void)g; }
-void   xgui_modal_open(XGui *g, const char *id)                 { (void)g;(void)id; }
-void   xgui_modal_close(XGui *g)                                { (void)g; }
-bool   xgui_modal_begin(XGui *g, const char *id, const char *t, int w, int h) { (void)g;(void)id;(void)t;(void)w;(void)h; return false; }
-void   xgui_modal_end(XGui *g)                                  { (void)g; }
-bool   xgui_modal_button(XGui *g, const char *l)                { (void)g;(void)l; return false; }
-double xgui_spinbox(XGui *g, const char *id, double mn, double mx, double cur, double s)
-           { (void)g;(void)id;(void)mn;(void)mx;(void)s; return cur; }
-void   xgui_status_bar(XGui *g, const char *t)                  { (void)g;(void)t; }
-void   xgui_table_begin(XGui *g, const char *id, int c)         { (void)g;(void)id;(void)c; }
-void   xgui_table_header(XGui *g, const char **h, int n)        { (void)g;(void)h;(void)n; }
-bool   xgui_table_row_begin(XGui *g, const char *rid)           { (void)g;(void)rid; return false; }
-void   xgui_table_cell(XGui *g, const char *t)                  { (void)g;(void)t; }
-void   xgui_table_row_end(XGui *g)                              { (void)g; }
-void   xgui_table_end(XGui *g)                                  { (void)g; }
-void   xgui_tree_begin(XGui *g, const char *id)                 { (void)g;(void)id; }
-bool   xgui_tree_node(XGui *g, const char *nid, const char *l, bool ch, int d)
-           { (void)g;(void)nid;(void)l;(void)ch;(void)d; return false; }
-void   xgui_tree_end(XGui *g)                                   { (void)g; }
-bool   xgui_context_menu_begin(XGui *g, const char *id, int rw, int rh)
-           { (void)g;(void)id;(void)rw;(void)rh; return false; }
-bool   xgui_context_menu_item(XGui *g, const char *l)           { (void)g;(void)l; return false; }
-void   xgui_context_menu_end(XGui *g)                           { (void)g; }
 
 #endif /* HAVE_X11 */

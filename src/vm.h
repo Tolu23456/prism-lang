@@ -21,6 +21,8 @@ typedef struct CallFrame {
     int           owns_env;
     int           owns_chunk; /* 1 if this frame allocated the chunk and must free it */
 
+    Value         func;       /* callee function object (retained) */
+
     /* Local variable flat array (O(1) access — no hash lookup).
      * Compiler emits OP_LOAD_LOCAL / OP_STORE_LOCAL with slot indices. */
     Value locals[VM_LOCALS_MAX];

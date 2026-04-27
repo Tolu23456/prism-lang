@@ -1,6 +1,0 @@
-let x = range 0..10 step 2
-for i in x {
-    output(i)
-}
-let y = 1..5
-output(y)
