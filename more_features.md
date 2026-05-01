@@ -2,7 +2,96 @@
 
 ---
 
-## 1. `seq` — Syntax-based Sequences
+## 1. List Modifiers — Postfix `:` Syntax
+
+A concise postfix syntax for sorting, filtering, and transforming lists and
+sequences. A colon after any list or `seq` applies a modifier.
+
+### Sorting
+
+```prism
+[1, 2, 4, 3, 5]:        # sort ascending  → [1, 2, 3, 4, 5]
+[1, 2, 4, 3, 5]:d       # sort descending → [5, 4, 3, 2, 1]
+["banana", "apple", "cherry"]:   # → ["apple", "banana", "cherry"]
+```
+
+### Numeric filters
+
+```prism
+[1, 2, 3, 4, 5, 6]:e    # even numbers only  → [2, 4, 6]
+[1, 2, 3, 4, 5, 6]:o    # odd numbers only   → [1, 3, 5]
+[1, 2, 3, 4, 5, 6]:p    # prime numbers only → [2, 3, 5]
+[-3, -1, 0, 2, 4]:+     # positives only     → [2, 4]
+[-3, -1, 0, 2, 4]:-     # negatives only     → [-3, -1]
+```
+
+### Structure modifiers
+
+```prism
+[3, 1, 2, 1, 3]:u       # unique, preserve order → [3, 1, 2]
+[3, 1, 2, 1, 3]:        # sort             → [1, 1, 2, 3, 3]
+[3, 1, 2, 1, 3]:u:      # unique then sort → [1, 2, 3]
+[1, 2, 3, 4, 5]:r       # reverse          → [5, 4, 3, 2, 1]
+[1, null, 2, null, 3]:n # remove nulls     → [1, 2, 3]
+[[1,2],[3,4]]:f         # flatten one level → [1, 2, 3, 4]
+```
+
+### Works with `seq` too
+
+```prism
+1..50:p                  # primes from 1 to 50  → [2, 3, 5, 7, 11, ...]
+1..20:e                  # evens 1..20           → [2, 4, 6, 8, 10, 12, 14, 16, 18, 20]
+1..20:o                  # odds 1..20            → [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
+```
+
+### Custom filter with a function
+
+```prism
+[1, 2, 3, 4, 5]:(fn x { x > 3 })   # → [4, 5]
+[1, 2, 3, 4, 5]:(fn x { x ** 2 })  # treated as map when fn returns non-bool
+```
+
+When the function returns a `bool` it acts as a **filter**.
+When it returns any other type it acts as a **map**.
+
+### Chaining modifiers
+
+Modifiers can be chained left to right:
+
+```prism
+[5, 3, 1, 4, 2, 1]:u:       # unique → sort  → [1, 2, 3, 4, 5]
+1..100:p:r                   # primes reversed → [97, 89, 83, ...]
+[4, -1, 2, -3, 0]:+:         # positives → sorted → [2, 4]
+```
+
+### Full modifier reference
+
+| Modifier | Meaning                         |
+|----------|---------------------------------|
+| `:`      | Sort ascending (natural order)  |
+| `:d`     | Sort descending                 |
+| `:r`     | Reverse order                   |
+| `:u`     | Unique — remove duplicates      |
+| `:e`     | Even numbers only               |
+| `:o`     | Odd numbers only                |
+| `:p`     | Prime numbers only              |
+| `:+`     | Positive numbers only (> 0)     |
+| `:-`     | Negative numbers only (< 0)     |
+| `:n`     | Remove null values              |
+| `:f`     | Flatten one level of nesting    |
+| `:(fn)`  | Custom filter or map function   |
+
+### Design notes
+
+- Modifiers are evaluated lazily when applied to a `seq`; eagerly on arrays.
+- `:p`, `:e`, `:o` only operate on numeric elements; non-numeric elements are
+  passed through unchanged (or can emit a warning).
+- `:` alone (bare colon, no letter) always means sort ascending.
+- Modifier chains apply left to right: `:u:` = unique first, then sort.
+
+---
+
+## 2. `seq` — Syntax-based Sequences
 
 `seq` is the literal/expression form of range, created using the `..` operator.
 It is distinct from `range()` (function-call form). `seq` produces a lazy
