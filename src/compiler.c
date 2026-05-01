@@ -312,22 +312,50 @@ static void compile_node(Compiler *c, ASTNode *node) {
     /* ---- compound assignment (+=, -=, *=, /=) ---- */
     case NODE_COMPOUND_ASSIGN: {
         ASTNode *tgt = node->assign.target;
-        if ((tgt->type) != NODE_IDENT) {
-            compiler_error(c, "compound assignment only supported for simple names", ln);
-            break;
-        }
-        /* load current value */
-        uint16_t idx = name_const(c, tgt->ident.name);
-        emit3(c, OP_LOAD_NAME, idx, ln);
-        compile_expr(c, node->assign.value);
         const char *op = node->assign.op;
-        if      (op[0] == '+') emit1(c, OP_ADD, ln);
-        else if (op[0] == '-') emit1(c, OP_SUB, ln);
-        else if (op[0] == '*') emit1(c, OP_MUL, ln);
-        else if (op[0] == '/') emit1(c, OP_DIV, ln);
-        else if (op[0] == '%') emit1(c, OP_MOD, ln);
-        else compiler_error(c, "unknown compound operator", ln);
-        emit3(c, OP_STORE_NAME, idx, ln);
+        if ((tgt->type) == NODE_IDENT) {
+            uint16_t idx = name_const(c, tgt->ident.name);
+            emit3(c, OP_LOAD_NAME, idx, ln);
+            compile_expr(c, node->assign.value);
+            if      (op[0] == '+') emit1(c, OP_ADD, ln);
+            else if (op[0] == '-') emit1(c, OP_SUB, ln);
+            else if (op[0] == '*') emit1(c, OP_MUL, ln);
+            else if (op[0] == '/') emit1(c, OP_DIV, ln);
+            else if (op[0] == '%') emit1(c, OP_MOD, ln);
+            else compiler_error(c, "unknown compound operator", ln);
+            emit3(c, OP_STORE_NAME, idx, ln);
+        } else if ((tgt->type) == NODE_INDEX) {
+            /* arr[i] += x  →  stack: [arr, i, arr, i] GET_INDEX [arr, i, old] x op SET_INDEX */
+            compile_expr(c, tgt->index_expr.obj);   /* arr (for SET) */
+            compile_expr(c, tgt->index_expr.index); /* i   (for SET) */
+            compile_expr(c, tgt->index_expr.obj);   /* arr (for GET) */
+            compile_expr(c, tgt->index_expr.index); /* i   (for GET) */
+            emit1(c, OP_GET_INDEX, ln);
+            compile_expr(c, node->assign.value);
+            if      (op[0] == '+') emit1(c, OP_ADD, ln);
+            else if (op[0] == '-') emit1(c, OP_SUB, ln);
+            else if (op[0] == '*') emit1(c, OP_MUL, ln);
+            else if (op[0] == '/') emit1(c, OP_DIV, ln);
+            else if (op[0] == '%') emit1(c, OP_MOD, ln);
+            else compiler_error(c, "unknown compound operator", ln);
+            emit1(c, OP_SET_INDEX, ln);
+        } else if ((tgt->type) == NODE_MEMBER) {
+            /* obj.field += x  →  obj obj GET_ATTR x op SET_ATTR */
+            compile_expr(c, tgt->member.obj);   /* obj (for SET) */
+            compile_expr(c, tgt->member.obj);   /* obj (for GET) */
+            uint16_t midx = name_const(c, tgt->member.name);
+            emit3(c, OP_GET_ATTR, midx, ln);
+            compile_expr(c, node->assign.value);
+            if      (op[0] == '+') emit1(c, OP_ADD, ln);
+            else if (op[0] == '-') emit1(c, OP_SUB, ln);
+            else if (op[0] == '*') emit1(c, OP_MUL, ln);
+            else if (op[0] == '/') emit1(c, OP_DIV, ln);
+            else if (op[0] == '%') emit1(c, OP_MOD, ln);
+            else compiler_error(c, "unknown compound operator", ln);
+            emit3(c, OP_SET_ATTR, midx, ln);
+        } else {
+            compiler_error(c, "invalid compound assignment target", ln);
+        }
         break;
     }
 

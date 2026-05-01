@@ -1,6 +1,6 @@
 /* examples/csv_processor.pr — CSV parsing and statistical analysis */
 
-print("=== CSV Processor Demo ===")
+output("=== CSV Processor Demo ===")
 
 /* Parse CSV text into array of arrays */
 func parse_csv(text, delimiter) {
@@ -92,33 +92,33 @@ Jack,Engineering,97000,10"""
 
 let data = parse_csv(csv_text, ",")
 let headers = data[0]
-print("\nHeaders:", headers)
-print("Rows (excl. header):", len(data) - 1)
+output("\nHeaders:", headers)
+output("Rows (excl. header):", len(data) - 1)
 
 /* Extract salary column and convert to numbers */
 let salary_strs = get_column(data, 2, true)
 let salaries = []
 for s in salary_strs { push(salaries, int(s)) }
 
-print("\n--- Salary Statistics ---")
-print("Mean:    $" + str(int(stats_mean(salaries))))
-print("Min:     $" + str(stats_min(salaries)))
-print("Max:     $" + str(stats_max(salaries)))
-print("Std Dev: $" + str(int(sqrt(stats_variance(salaries)))))
+output("\n--- Salary Statistics ---")
+output("Mean:    $" + str(int(stats_mean(salaries))))
+output("Min:     $" + str(stats_min(salaries)))
+output("Max:     $" + str(stats_max(salaries)))
+output("Std Dev: $" + str(int(sqrt(stats_variance(salaries)))))
 
 /* Group by department */
 let by_dept = group_by(data, 1, true)
-print("\n--- Salaries by Department ---")
+output("\n--- Salaries by Department ---")
 for dept in keys(by_dept) {
     let dept_rows = by_dept[dept]
     let dept_sals = []
     for row in dept_rows { push(dept_sals, int(row[2])) }
     let avg = int(stats_mean(dept_sals))
-    print(dept + ": avg $" + str(avg) + " (" + str(len(dept_rows)) + " employees)")
+    output(dept + ": avg $" + str(avg) + " (" + str(len(dept_rows)) + " employees)")
 }
 
 /* Find highest earner per department */
-print("\n--- Top Earner per Department ---")
+output("\n--- Top Earner per Department ---")
 for dept in keys(by_dept) {
     let dept_rows = by_dept[dept]
     let best_name = dept_rows[0][0]
@@ -129,11 +129,11 @@ for dept in keys(by_dept) {
             best_name = row[0]
         }
     }
-    print(dept + ": " + best_name + " ($" + str(best_sal) + ")")
+    output(dept + ": " + best_name + " ($" + str(best_sal) + ")")
 }
 
 /* Employees with 5+ years */
-print("\n--- Employees with 5+ years experience ---")
+output("\n--- Employees with 5+ years experience ---")
 let veterans = []
 let r = 1
 while r < len(data) {
@@ -142,6 +142,6 @@ while r < len(data) {
     }
     r = r + 1
 }
-for v in veterans { print("  " + v) }
+for v in veterans { output("  " + v) }
 
-print("\n=== CSV processing complete ===")
+output("\n=== CSV processing complete ===")

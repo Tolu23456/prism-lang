@@ -1,6 +1,6 @@
 /* Prism example: Data pipeline — filter, map, reduce, group */
 
-print("=== Data Pipeline Example ===\n")
+output("=== Data Pipeline Example ===\n")
 
 /* Dataset: list of (name, score, category) tuples */
 let students = [
@@ -18,16 +18,16 @@ let students = [
 
 /* ── filter: passing students (score >= 70) ──────────────── */
 let passing = filter(students, func(s) { return s["score"] >= 70 })
-print("Passing students:", len(passing), "out of", len(students))
+output("Passing students:", len(passing), "out of", len(students))
 
 /* ── map: extract names ───────────────────────────────────── */
 let names = map(passing, func(s) { return s["name"] })
-print("Names:", join(", ", names))
+output("Names:", join(", ", names))
 
 /* ── reduce: average score ────────────────────────────────── */
 let total = reduce(students, func(acc, s) { return acc + s["score"] }, 0)
 let avg = total / len(students)
-print("Class average:", round(avg, 1))
+output("Class average:", round(avg, 1))
 
 /* ── Group by grade ──────────────────────────────────────── */
 let by_grade = {}
@@ -37,20 +37,20 @@ for s in students {
     push(by_grade[g], s["name"])
 }
 
-print("\nBy grade:")
+output("\nBy grade:")
 for grade in ["A", "B", "C", "D"] {
     if has(by_grade, grade) {
-        print(" ", grade, ":", join(", ", by_grade[grade]))
+        output(" ", grade, ":", join(", ", by_grade[grade]))
     }
 }
 
 /* ── Top 3 students ──────────────────────────────────────── */
 let sorted_students = sorted(students, func(a, b) { return b["score"] - a["score"] })
-print("\nTop 3 students:")
+output("\nTop 3 students:")
 let i = 0
 while i < 3 {
     let s = sorted_students[i]
-    print(" ", i+1, ".", s["name"], "-", s["score"])
+    output(" ", i+1, ".", s["name"], "-", s["score"])
     i += 1
 }
 
@@ -64,9 +64,9 @@ for s in students {
     else               { histogram["60-69"] += 1 }
 }
 
-print("\nScore distribution:")
+output("\nScore distribution:")
 for band in ["90-100", "80-89", "70-79", "60-69"] {
     let count = histogram[band]
     let bar = repeat("█", count)
-    print(" ", band, ":", bar, count)
+    output(" ", band, ":", bar, count)
 }

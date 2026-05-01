@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdint.h>
 #include <math.h>
+#include <ctype.h>
 #include "vm.h"
 #include "opcode.h"
 #include "chunk.h"
@@ -350,6 +351,487 @@ static Value vm_builtin_assert_eq(Value *args, int argc) {
         exit(1);
     }
     return value_null();
+}
+
+static Value vm_builtin_round(Value *args, int argc) {
+    if (argc < 1) return value_null();
+    double v = VAL_TYPE(args[0]) == VAL_INT ? (double)AS_INT(args[0]) : AS_FLOAT(args[0]);
+    int places = (argc >= 2 && VAL_TYPE(args[1]) == VAL_INT) ? (int)AS_INT(args[1]) : 0;
+    double factor = pow(10.0, places);
+    double r = round(v * factor) / factor;
+    return places == 0 ? value_int((long long)r) : value_float(r);
+}
+static Value vm_builtin_abs(Value *args, int argc) {
+    if (argc < 1) return value_null();
+    if (VAL_TYPE(args[0]) == VAL_INT) return value_int(llabs(AS_INT(args[0])));
+    if (VAL_TYPE(args[0]) == VAL_FLOAT) return value_float(fabs(AS_FLOAT(args[0])));
+    return value_null();
+}
+static Value vm_builtin_floor(Value *args, int argc) {
+    if (argc < 1) return value_null();
+    double v = VAL_TYPE(args[0]) == VAL_INT ? (double)AS_INT(args[0]) : AS_FLOAT(args[0]);
+    return value_int((long long)floor(v));
+}
+static Value vm_builtin_ceil(Value *args, int argc) {
+    if (argc < 1) return value_null();
+    double v = VAL_TYPE(args[0]) == VAL_INT ? (double)AS_INT(args[0]) : AS_FLOAT(args[0]);
+    return value_int((long long)ceil(v));
+}
+static Value vm_builtin_min(Value *args, int argc) {
+    if (argc == 0) return value_null();
+    if (argc == 1 && VAL_TYPE(args[0]) == VAL_ARRAY) {
+        int n = AS_ARRAY(args[0]).len;
+        if (n == 0) return value_null();
+        Value m = AS_ARRAY(args[0]).items[0];
+        for (int i = 1; i < n; i++) {
+            Value el = AS_ARRAY(args[0]).items[i];
+            if (value_compare(el, m) < 0) m = el;
+        }
+        return value_retain(m);
+    }
+    Value m = args[0];
+    for (int i = 1; i < argc; i++) if (value_compare(args[i], m) < 0) m = args[i];
+    return value_retain(m);
+}
+static Value vm_builtin_max(Value *args, int argc) {
+    if (argc == 0) return value_null();
+    if (argc == 1 && VAL_TYPE(args[0]) == VAL_ARRAY) {
+        int n = AS_ARRAY(args[0]).len;
+        if (n == 0) return value_null();
+        Value m = AS_ARRAY(args[0]).items[0];
+        for (int i = 1; i < n; i++) {
+            Value el = AS_ARRAY(args[0]).items[i];
+            if (value_compare(el, m) > 0) m = el;
+        }
+        return value_retain(m);
+    }
+    Value m = args[0];
+    for (int i = 1; i < argc; i++) if (value_compare(args[i], m) > 0) m = args[i];
+    return value_retain(m);
+}
+static Value vm_builtin_pow(Value *args, int argc) {
+    if (argc < 2) return value_null();
+    double base = VAL_TYPE(args[0]) == VAL_INT ? (double)AS_INT(args[0]) : AS_FLOAT(args[0]);
+    double exp  = VAL_TYPE(args[1]) == VAL_INT ? (double)AS_INT(args[1]) : AS_FLOAT(args[1]);
+    return value_float(pow(base, exp));
+}
+static Value vm_builtin_sqrt(Value *args, int argc) {
+    if (argc < 1) return value_null();
+    double v = VAL_TYPE(args[0]) == VAL_INT ? (double)AS_INT(args[0]) : AS_FLOAT(args[0]);
+    return value_float(sqrt(v));
+}
+static Value vm_builtin_print(Value *args, int argc) {
+    for (int i = 0; i < argc; i++) {
+        if (i > 0) printf(" ");
+        char *s = value_to_string(args[i]);
+        printf("%s", s);
+        free(s);
+    }
+    printf("\n");
+    return value_null();
+}
+
+/* ================================================================== stdlib builtins */
+
+/* --- Array mutating --- */
+static Value vm_builtin_push(Value *args, int argc) {
+    if (argc < 2 || VAL_TYPE(args[0]) != VAL_ARRAY) return value_null();
+    value_array_push(args[0], value_retain(args[1]));
+    return value_null();
+}
+static Value vm_builtin_pop(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY) return value_null();
+    int n = AS_ARRAY(args[0]).len;
+    if (n == 0) return value_null();
+    Value v = value_array_pop(args[0], (long long)(n - 1));
+    return v;
+}
+static Value vm_builtin_append(Value *args, int argc) {
+    return vm_builtin_push(args, argc);
+}
+
+/* --- Array non-mutating --- */
+static Value vm_builtin_reverse(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY) return value_array_new();
+    int n = AS_ARRAY(args[0]).len;
+    Value out = value_array_new();
+    for (int i = n - 1; i >= 0; i--)
+        value_array_push(out, value_retain(AS_ARRAY(args[0]).items[i]));
+    return out;
+}
+static Value vm_builtin_copy(Value *args, int argc) {
+    if (argc < 1) return value_array_new();
+    if (VAL_TYPE(args[0]) == VAL_ARRAY) {
+        Value out = value_array_new();
+        for (int i = 0; i < AS_ARRAY(args[0]).len; i++)
+            value_array_push(out, value_retain(AS_ARRAY(args[0]).items[i]));
+        return out;
+    }
+    return value_retain(args[0]);
+}
+static Value vm_builtin_sorted(Value *args, int argc) {
+    Value cp = vm_builtin_copy(args, argc);
+    if (VAL_TYPE(cp) == VAL_ARRAY) value_array_sort(cp);
+    return cp;
+}
+static Value vm_builtin_sum(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY) return value_int(0);
+    double s = 0; int is_float = 0;
+    for (int i = 0; i < AS_ARRAY(args[0]).len; i++) {
+        Value v = AS_ARRAY(args[0]).items[i];
+        if (VAL_TYPE(v) == VAL_INT) s += (double)AS_INT(v);
+        else if (VAL_TYPE(v) == VAL_FLOAT) { s += AS_FLOAT(v); is_float = 1; }
+    }
+    return is_float ? value_float(s) : value_int((long long)s);
+}
+static Value vm_builtin_unique(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY) return value_array_new();
+    Value out = value_array_new();
+    Value seen = value_set_new();
+    for (int i = 0; i < AS_ARRAY(args[0]).len; i++) {
+        Value v = AS_ARRAY(args[0]).items[i];
+        if (!value_set_has(seen, v)) {
+            value_set_add(seen, v);
+            value_array_push(out, value_retain(v));
+        }
+    }
+    value_release(seen);
+    return out;
+}
+static Value vm_builtin_enumerate(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY) return value_array_new();
+    Value out = value_array_new();
+    for (int i = 0; i < AS_ARRAY(args[0]).len; i++) {
+        Value items[2] = { value_int(i), value_retain(AS_ARRAY(args[0]).items[i]) };
+        Value pair = value_tuple_new(items, 2);
+        value_release(items[0]); value_release(items[1]);
+        value_array_push(out, pair);
+    }
+    return out;
+}
+static Value vm_builtin_zip2(Value *args, int argc) {
+    if (argc < 2 || VAL_TYPE(args[0]) != VAL_ARRAY || VAL_TYPE(args[1]) != VAL_ARRAY)
+        return value_array_new();
+    int n = AS_ARRAY(args[0]).len;
+    if (AS_ARRAY(args[1]).len < n) n = AS_ARRAY(args[1]).len;
+    Value out = value_array_new();
+    for (int i = 0; i < n; i++) {
+        Value items[2] = { value_retain(AS_ARRAY(args[0]).items[i]),
+                           value_retain(AS_ARRAY(args[1]).items[i]) };
+        Value pair = value_tuple_new(items, 2);
+        value_release(items[0]); value_release(items[1]);
+        value_array_push(out, pair);
+    }
+    return out;
+}
+static Value vm_builtin_contains(Value *args, int argc) {
+    if (argc < 2) return value_bool(0);
+    if (VAL_TYPE(args[0]) == VAL_ARRAY) {
+        for (int i = 0; i < AS_ARRAY(args[0]).len; i++)
+            if (value_equals(AS_ARRAY(args[0]).items[i], args[1])) return value_bool(1);
+        return value_bool(0);
+    }
+    if (VAL_TYPE(args[0]) == VAL_STRING && VAL_TYPE(args[1]) == VAL_STRING)
+        return value_bool(strstr(AS_STR(args[0]), AS_STR(args[1])) != NULL);
+    if (VAL_TYPE(args[0]) == VAL_DICT) {
+        int idx = value_dict_find_index(args[0], args[1]);
+        return value_bool(idx >= 0);
+    }
+    if (VAL_TYPE(args[0]) == VAL_SET)
+        return value_bool(value_set_has(args[0], args[1]));
+    return value_bool(0);
+}
+static Value vm_builtin_has(Value *args, int argc) {
+    if (argc < 2) return value_bool(0);
+    if (VAL_TYPE(args[0]) == VAL_DICT) {
+        int idx = value_dict_find_index(args[0], args[1]);
+        return value_bool(idx >= 0);
+    }
+    return vm_builtin_contains(args, argc);
+}
+static Value vm_builtin_all_arr(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY) return value_bool(1);
+    for (int i = 0; i < AS_ARRAY(args[0]).len; i++)
+        if (!value_truthy(AS_ARRAY(args[0]).items[i])) return value_bool(0);
+    return value_bool(1);
+}
+static Value vm_builtin_any_arr(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY) return value_bool(0);
+    for (int i = 0; i < AS_ARRAY(args[0]).len; i++)
+        if (value_truthy(AS_ARRAY(args[0]).items[i])) return value_bool(1);
+    return value_bool(0);
+}
+
+/* --- Dict --- */
+static Value vm_builtin_keys(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_DICT) return value_array_new();
+    Value out = value_array_new();
+    for (int i = 0; i < AS_DICT(args[0]).cap; i++) {
+        if (AS_DICT(args[0]).entries[i].key)
+            value_array_push(out, value_retain(AS_DICT(args[0]).entries[i].key));
+    }
+    return out;
+}
+static Value vm_builtin_values(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_DICT) return value_array_new();
+    Value out = value_array_new();
+    for (int i = 0; i < AS_DICT(args[0]).cap; i++) {
+        if (AS_DICT(args[0]).entries[i].key)
+            value_array_push(out, value_retain(AS_DICT(args[0]).entries[i].val));
+    }
+    return out;
+}
+static Value vm_builtin_merge(Value *args, int argc) {
+    Value out = value_dict_new();
+    for (int a = 0; a < argc; a++) {
+        if (VAL_TYPE(args[a]) != VAL_DICT) continue;
+        for (int i = 0; i < AS_DICT(args[a]).cap; i++) {
+            if (AS_DICT(args[a]).entries[i].key)
+                value_dict_set(out, AS_DICT(args[a]).entries[i].key,
+                               AS_DICT(args[a]).entries[i].val);
+        }
+    }
+    return out;
+}
+
+/* --- String --- */
+static Value vm_builtin_split(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_array_new();
+    const char *s   = AS_STR(args[0]);
+    const char *sep = (argc >= 2 && VAL_TYPE(args[1]) == VAL_STRING) ? AS_STR(args[1]) : " ";
+    Value out = value_array_new();
+    if (sep[0] == '\0') {
+        for (size_t i = 0; s[i]; i++) {
+            char buf[2] = { s[i], '\0' };
+            value_array_push(out, value_string(buf));
+        }
+        return out;
+    }
+    size_t seplen = strlen(sep);
+    const char *p = s;
+    while (1) {
+        const char *found = strstr(p, sep);
+        if (!found) { value_array_push(out, value_string(p)); break; }
+        size_t chunk = (size_t)(found - p);
+        char *piece = strndup(p, chunk);
+        value_array_push(out, value_string_take(piece));
+        p = found + seplen;
+    }
+    return out;
+}
+static Value vm_builtin_join(Value *args, int argc) {
+    const char *sep = "";
+    Value arr_val;
+    if (argc >= 2 && VAL_TYPE(args[0]) == VAL_STRING && VAL_TYPE(args[1]) == VAL_ARRAY) {
+        sep = AS_STR(args[0]); arr_val = args[1];
+    } else if (argc >= 1 && VAL_TYPE(args[0]) == VAL_ARRAY) {
+        arr_val = args[0];
+        if (argc >= 2 && VAL_TYPE(args[1]) == VAL_STRING) sep = AS_STR(args[1]);
+    } else return value_string("");
+    int n = AS_ARRAY(arr_val).len;
+    if (n == 0) return value_string("");
+    size_t total = 0; size_t seplen = strlen(sep);
+    char **parts = malloc((size_t)n * sizeof(char *));
+    for (int i = 0; i < n; i++) {
+        parts[i] = value_to_string(AS_ARRAY(arr_val).items[i]);
+        total += strlen(parts[i]) + (i > 0 ? seplen : 0);
+    }
+    char *buf = malloc(total + 1); buf[0] = '\0';
+    for (int i = 0; i < n; i++) {
+        if (i > 0) strcat(buf, sep);
+        strcat(buf, parts[i]);
+        free(parts[i]);
+    }
+    free(parts);
+    return value_string_take(buf);
+}
+static Value vm_builtin_trim(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_string("");
+    const char *s = AS_STR(args[0]);
+    while (*s == ' ' || *s == '\t' || *s == '\n' || *s == '\r') s++;
+    size_t len = strlen(s);
+    while (len > 0 && (s[len-1]==' '||s[len-1]=='\t'||s[len-1]=='\n'||s[len-1]=='\r')) len--;
+    char *buf = strndup(s, len);
+    return value_string_take(buf);
+}
+static Value vm_builtin_upper(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_string("");
+    char *s = strdup(AS_STR(args[0]));
+    for (int i = 0; s[i]; i++) s[i] = (char)toupper((unsigned char)s[i]);
+    return value_string_take(s);
+}
+static Value vm_builtin_lower(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_string("");
+    char *s = strdup(AS_STR(args[0]));
+    for (int i = 0; s[i]; i++) s[i] = (char)tolower((unsigned char)s[i]);
+    return value_string_take(s);
+}
+static Value vm_builtin_replace(Value *args, int argc) {
+    if (argc < 3 || VAL_TYPE(args[0]) != VAL_STRING ||
+        VAL_TYPE(args[1]) != VAL_STRING || VAL_TYPE(args[2]) != VAL_STRING)
+        return argc >= 1 ? value_retain(args[0]) : value_string("");
+    const char *src = AS_STR(args[0]);
+    const char *old = AS_STR(args[1]);
+    const char *rep = AS_STR(args[2]);
+    size_t oldlen = strlen(old); size_t replen = strlen(rep);
+    if (oldlen == 0) return value_retain(args[0]);
+    size_t count = 0;
+    const char *p = src;
+    while ((p = strstr(p, old))) { count++; p += oldlen; }
+    size_t srclen = strlen(src);
+    char *buf = malloc(srclen + count * (replen + oldlen) + 1);
+    char *w = buf; p = src;
+    while (1) {
+        const char *f = strstr(p, old);
+        if (!f) { strcpy(w, p); break; }
+        size_t n = (size_t)(f - p); memcpy(w, p, n); w += n;
+        memcpy(w, rep, replen); w += replen;
+        p = f + oldlen;
+    }
+    return value_string_take(buf);
+}
+static Value vm_builtin_startswith(Value *args, int argc) {
+    if (argc < 2 || VAL_TYPE(args[0]) != VAL_STRING || VAL_TYPE(args[1]) != VAL_STRING)
+        return value_bool(0);
+    return value_bool(strncmp(AS_STR(args[0]), AS_STR(args[1]), strlen(AS_STR(args[1]))) == 0);
+}
+static Value vm_builtin_endswith(Value *args, int argc) {
+    if (argc < 2 || VAL_TYPE(args[0]) != VAL_STRING || VAL_TYPE(args[1]) != VAL_STRING)
+        return value_bool(0);
+    size_t sl = strlen(AS_STR(args[0])); size_t pl = strlen(AS_STR(args[1]));
+    if (pl > sl) return value_bool(0);
+    return value_bool(strcmp(AS_STR(args[0]) + sl - pl, AS_STR(args[1])) == 0);
+}
+static Value vm_builtin_padleft(Value *args, int argc) {
+    if (argc < 2 || VAL_TYPE(args[0]) != VAL_STRING) return argc >= 1 ? value_retain(args[0]) : value_string("");
+    const char *s = AS_STR(args[0]);
+    int width = (int)AS_INT(args[1]);
+    const char *pad = (argc >= 3 && VAL_TYPE(args[2]) == VAL_STRING) ? AS_STR(args[2]) : " ";
+    int slen = (int)strlen(s); int padlen = (int)strlen(pad);
+    if (slen >= width || padlen == 0) return value_retain(args[0]);
+    int need = width - slen;
+    char *buf = malloc((size_t)(width + 1));
+    char *w = buf;
+    for (int i = 0; i < need; i++) *w++ = pad[i % padlen];
+    memcpy(w, s, (size_t)slen + 1);
+    return value_string_take(buf);
+}
+static Value vm_builtin_padright(Value *args, int argc) {
+    if (argc < 2 || VAL_TYPE(args[0]) != VAL_STRING) return argc >= 1 ? value_retain(args[0]) : value_string("");
+    const char *s = AS_STR(args[0]);
+    int width = (int)AS_INT(args[1]);
+    const char *pad = (argc >= 3 && VAL_TYPE(args[2]) == VAL_STRING) ? AS_STR(args[2]) : " ";
+    int slen = (int)strlen(s); int padlen = (int)strlen(pad);
+    if (slen >= width || padlen == 0) return value_retain(args[0]);
+    int need = width - slen;
+    char *buf = malloc((size_t)(width + 1));
+    memcpy(buf, s, (size_t)slen);
+    for (int i = 0; i < need; i++) buf[slen + i] = pad[i % padlen];
+    buf[width] = '\0';
+    return value_string_take(buf);
+}
+static Value vm_builtin_repeat_str(Value *args, int argc) {
+    if (argc < 2 || VAL_TYPE(args[0]) != VAL_STRING) return value_string("");
+    const char *s = AS_STR(args[0]);
+    int n = (VAL_TYPE(args[1]) == VAL_INT) ? (int)AS_INT(args[1]) : 0;
+    if (n <= 0) return value_string("");
+    size_t slen = strlen(s);
+    char *buf = malloc(slen * (size_t)n + 1);
+    buf[0] = '\0';
+    for (int i = 0; i < n; i++) memcpy(buf + i * slen, s, slen);
+    buf[slen * (size_t)n] = '\0';
+    return value_string_take(buf);
+}
+static Value vm_builtin_chr(Value *args, int argc) {
+    if (argc < 1) return value_string("");
+    int code = (VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : (int)AS_FLOAT(args[0]);
+    char buf[4] = {0};
+    buf[0] = (char)(code & 0x7f);
+    return value_string(buf);
+}
+static Value vm_builtin_ord(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING || !AS_STR(args[0])[0]) return value_int(0);
+    return value_int((long long)(unsigned char)AS_STR(args[0])[0]);
+}
+static Value vm_builtin_hex(Value *args, int argc) {
+    if (argc < 1) return value_string("0x0");
+    long long n = (VAL_TYPE(args[0]) == VAL_INT) ? AS_INT(args[0]) : (long long)AS_FLOAT(args[0]);
+    char buf[32]; snprintf(buf, sizeof(buf), "0x%llx", n);
+    return value_string(buf);
+}
+static Value vm_builtin_bin(Value *args, int argc) {
+    if (argc < 1) return value_string("0b0");
+    long long n = (VAL_TYPE(args[0]) == VAL_INT) ? AS_INT(args[0]) : (long long)AS_FLOAT(args[0]);
+    if (n == 0) return value_string("0b0");
+    char buf[68]; int pos = (int)sizeof(buf) - 1; buf[pos] = '\0';
+    unsigned long long u = (unsigned long long)n;
+    while (u) { buf[--pos] = '0' + (int)(u & 1); u >>= 1; }
+    buf[--pos] = 'b'; buf[--pos] = '0';
+    return value_string(buf + pos);
+}
+static Value vm_builtin_oct(Value *args, int argc) {
+    if (argc < 1) return value_string("0o0");
+    long long n = (VAL_TYPE(args[0]) == VAL_INT) ? AS_INT(args[0]) : (long long)AS_FLOAT(args[0]);
+    char buf[32]; snprintf(buf, sizeof(buf), "0o%llo", n);
+    return value_string(buf);
+}
+
+/* --- File I/O --- */
+static Value vm_builtin_write_file(Value *args, int argc) {
+    if (argc < 2 || VAL_TYPE(args[0]) != VAL_STRING || VAL_TYPE(args[1]) != VAL_STRING)
+        return value_bool(0);
+    FILE *f = fopen(AS_STR(args[0]), "w");
+    if (!f) return value_bool(0);
+    fputs(AS_STR(args[1]), f);
+    fclose(f);
+    return value_bool(1);
+}
+static Value vm_builtin_read_file(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_null();
+    FILE *f = fopen(AS_STR(args[0]), "r");
+    if (!f) return value_null();
+    fseek(f, 0, SEEK_END); long size = ftell(f); rewind(f);
+    char *buf = malloc((size_t)size + 1);
+    size_t nr = fread(buf, 1, (size_t)size, f); fclose(f);
+    buf[nr] = '\0';
+    return value_string_take(buf);
+}
+static Value vm_builtin_file_exists(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_bool(0);
+    FILE *f = fopen(AS_STR(args[0]), "r");
+    if (!f) return value_bool(0);
+    fclose(f); return value_bool(1);
+}
+
+/* --- Index / find --- */
+static Value vm_builtin_index_of(Value *args, int argc) {
+    if (argc < 2) return value_int(-1);
+    if (VAL_TYPE(args[0]) == VAL_ARRAY) {
+        for (int i = 0; i < AS_ARRAY(args[0]).len; i++)
+            if (value_equals(AS_ARRAY(args[0]).items[i], args[1])) return value_int(i);
+        return value_int(-1);
+    }
+    if (VAL_TYPE(args[0]) == VAL_STRING && VAL_TYPE(args[1]) == VAL_STRING) {
+        const char *p = strstr(AS_STR(args[0]), AS_STR(args[1]));
+        return p ? value_int(p - AS_STR(args[0])) : value_int(-1);
+    }
+    return value_int(-1);
+}
+static Value vm_builtin_count_fn(Value *args, int argc) {
+    if (argc < 2) return value_int(0);
+    if (VAL_TYPE(args[0]) == VAL_ARRAY) {
+        long long c = 0;
+        for (int i = 0; i < AS_ARRAY(args[0]).len; i++)
+            if (value_equals(AS_ARRAY(args[0]).items[i], args[1])) c++;
+        return value_int(c);
+    }
+    if (VAL_TYPE(args[0]) == VAL_STRING && VAL_TYPE(args[1]) == VAL_STRING) {
+        const char *s = AS_STR(args[0]); const char *p = AS_STR(args[1]);
+        size_t pl = strlen(p); long long c = 0;
+        while ((s = strstr(s, p))) { c++; s += pl; }
+        return value_int(c);
+    }
+    return value_int(0);
 }
 
 static bool vm_is_memory_module(Value obj) {
@@ -820,6 +1302,54 @@ void vm_register_builtins(VM *vm) {
         {"type",       vm_builtin_type_fn},
         {"assert",     vm_builtin_assert},
         {"assert_eq",  vm_builtin_assert_eq},
+        {"round",      vm_builtin_round},
+        {"abs",        vm_builtin_abs},
+        {"floor",      vm_builtin_floor},
+        {"ceil",       vm_builtin_ceil},
+        {"min",        vm_builtin_min},
+        {"max",        vm_builtin_max},
+        {"pow",        vm_builtin_pow},
+        {"sqrt",       vm_builtin_sqrt},
+        {"print",      vm_builtin_print},
+        /* stdlib */
+        {"push",       vm_builtin_push},
+        {"append",     vm_builtin_append},
+        {"pop",        vm_builtin_pop},
+        {"reverse",    vm_builtin_reverse},
+        {"copy",       vm_builtin_copy},
+        {"sorted",     vm_builtin_sorted},
+        {"sum",        vm_builtin_sum},
+        {"unique",     vm_builtin_unique},
+        {"enumerate",  vm_builtin_enumerate},
+        {"zip",        vm_builtin_zip2},
+        {"contains",   vm_builtin_contains},
+        {"has",        vm_builtin_has},
+        {"all",        vm_builtin_all_arr},
+        {"any",        vm_builtin_any_arr},
+        {"keys",       vm_builtin_keys},
+        {"values",     vm_builtin_values},
+        {"merge",      vm_builtin_merge},
+        {"split",      vm_builtin_split},
+        {"join",       vm_builtin_join},
+        {"trim",       vm_builtin_trim},
+        {"upper",      vm_builtin_upper},
+        {"lower",      vm_builtin_lower},
+        {"replace",    vm_builtin_replace},
+        {"startsWith", vm_builtin_startswith},
+        {"endsWith",   vm_builtin_endswith},
+        {"padLeft",    vm_builtin_padleft},
+        {"padRight",   vm_builtin_padright},
+        {"repeat",     vm_builtin_repeat_str},
+        {"chr",        vm_builtin_chr},
+        {"ord",        vm_builtin_ord},
+        {"hex",        vm_builtin_hex},
+        {"bin",        vm_builtin_bin},
+        {"oct",        vm_builtin_oct},
+        {"write_file", vm_builtin_write_file},
+        {"read_file",  vm_builtin_read_file},
+        {"file_exists",vm_builtin_file_exists},
+        {"index_of",   vm_builtin_index_of},
+        {"count",      vm_builtin_count_fn},
         {"gui_window", vmbi_gui_window},
         {"gui_label",  vmbi_gui_label},
         {"gui_button", vmbi_gui_button},
@@ -967,8 +1497,7 @@ void vm_free(VM *vm) {
         jit_free(vm->jit);
         vm->jit = NULL;
     }
-    gc_collect_audit(vm->gc, vm->globals, vm, NULL);
-    env_free(vm->globals);
+    env_free_root(vm->globals);
     /* Item 5: free the static HTML-GUI body buffer allocated by vmgui_append */
     if (g_vmgui.body) {
         free(g_vmgui.body);
@@ -1618,9 +2147,14 @@ static const char *PRISM_PRELUDE =
     "    for x in arr { if fn(x) { push(out, x) } }\n"
     "    return out\n"
     "}\n"
-    "func map(arr, fn) {\n"
+    /* map(arr, fn) OR map(fn, arr) — detect by first arg type */
+    "func map(a, b) {\n"
     "    let out = []\n"
-    "    for x in arr { push(out, fn(x)) }\n"
+    "    if type(a) == \"array\" {\n"
+    "        for x in a { push(out, b(x)) }\n"
+    "    } else {\n"
+    "        for x in b { push(out, a(x)) }\n"
+    "    }\n"
     "    return out\n"
     "}\n"
     "func reduce(arr, fn, init) {\n"
@@ -1640,21 +2174,36 @@ static const char *PRISM_PRELUDE =
     "    }\n"
     "    return out\n"
     "}\n"
-    "func zip(a, b) {\n"
-    "    let out = []\n"
-    "    let n = len(a)\n"
-    "    if len(b) < n { n = len(b) }\n"
+    "func find(arr, fn) {\n"
+    "    for x in arr { if fn(x) { return x } }\n"
+    "    return null\n"
+    "}\n"
+    "func sortBy(arr, fn) {\n"
+    "    let cp = copy(arr)\n"
+    "    let n = len(cp)\n"
     "    let i = 0\n"
-    "    while i < n { push(out, [a[i], b[i]]); i += 1 }\n"
+    "    while i < n {\n"
+    "        let j = i + 1\n"
+    "        while j < n {\n"
+    "            if fn(cp[i]) > fn(cp[j]) {\n"
+    "                let tmp = cp[i]\n"
+    "                cp[i] = cp[j]\n"
+    "                cp[j] = tmp\n"
+    "            }\n"
+    "            j += 1\n"
+    "        }\n"
+    "        i += 1\n"
+    "    }\n"
+    "    return cp\n"
+    "}\n"
+    "func groupBy(arr, fn) {\n"
+    "    let out = {}\n"
+    "    for x in arr {\n"
+    "        let k = str(fn(x))\n"
+    "        if !has(out, k) { out[k] = [] }\n"
+    "        push(out[k], x)\n"
+    "    }\n"
     "    return out\n"
-    "}\n"
-    "func all(arr, fn) {\n"
-    "    for x in arr { if not fn(x) { return false } }\n"
-    "    return true\n"
-    "}\n"
-    "func any(arr, fn) {\n"
-    "    for x in arr { if fn(x) { return true } }\n"
-    "    return false\n"
     "}\n";
 
 int vm_run_prelude(VM *vm) {
@@ -1904,9 +2453,13 @@ int vm_run(VM *vm, Chunk *chunk) {
             Value top = POP();
             if (PRISM_UNLIKELY(!env_assign(frame->env, name, top))) {
                 char msg[256];
-                snprintf(msg, sizeof(msg),
-                    "variable '%s' is not declared; use 'let %s = ...' to declare it",
-                    name, name);
+                if (env_is_const(frame->env, name))
+                    snprintf(msg, sizeof(msg),
+                        "cannot assign to '%s': it was declared as a constant", name);
+                else
+                    snprintf(msg, sizeof(msg),
+                        "variable '%s' is not declared; use 'let %s = ...' to declare it",
+                        name, name);
                 vm_error(vm, msg, line);
             }
             value_release(top);

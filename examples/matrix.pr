@@ -1,6 +1,6 @@
 /* examples/matrix.pr — Matrix operations: multiply, transpose, determinant */
 
-print("=== Matrix Operations Demo ===")
+output("=== Matrix Operations Demo ===")
 
 /* Create a rows x cols matrix filled with val */
 func matrix_new(rows, cols, val) {
@@ -126,7 +126,7 @@ func matrix_print(m) {
             s = s + str(val)
             first = false
         }
-        print(s + "]")
+        output(s + "]")
     }
 }
 
@@ -139,44 +139,44 @@ let B = [[9, 8, 7],
          [6, 5, 4],
          [3, 2, 1]]
 
-print("\nMatrix A:")
+output("\nMatrix A:")
 matrix_print(A)
 
-print("\nMatrix B:")
+output("\nMatrix B:")
 matrix_print(B)
 
-print("\nA + B:")
+output("\nA + B:")
 matrix_print(matrix_add(A, B))
 
-print("\nA * 2:")
+output("\nA * 2:")
 matrix_print(matrix_scale(A, 2))
 
-print("\nA^T (transpose):")
+output("\nA^T (transpose):")
 matrix_print(matrix_transpose(A))
 
 /* 2x2 multiply */
 let C = [[1, 2], [3, 4]]
 let D = [[5, 6], [7, 8]]
-print("\n2x2 C * D:")
+output("\n2x2 C * D:")
 matrix_print(matrix_mul(C, D))
 
-print("\ndet(C):", det2(C))
+output("\ndet(C):", det2(C))
 
 /* Identity */
 let I3 = matrix_identity(3)
-print("\nIdentity 3x3:")
+output("\nIdentity 3x3:")
 matrix_print(I3)
 
-print("\nA * I3 = A:")
+output("\nA * I3 = A:")
 matrix_print(matrix_mul(A, I3))
 
 /* Determinant of A */
-print("\ndet(A):", det3(A))
+output("\ndet(A):", det3(A))
 
 let M = [[2, -1, 0],
          [1,  3, 1],
          [0,  1, 2]]
-print("\ndet(M):", det3(M))
+output("\ndet(M):", det3(M))
 
 /* Power of matrix (A^k) */
 func matrix_pow(m, k) {
@@ -190,5 +190,5 @@ func matrix_pow(m, k) {
     return result
 }
 
-print("\nC^3:")
+output("\nC^3:")
 matrix_print(matrix_pow(C, 3))

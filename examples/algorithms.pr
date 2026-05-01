@@ -1,6 +1,6 @@
 /* Prism example: Classic algorithms showcase */
 
-print("=== Classic Algorithms ===\n")
+output("=== Classic Algorithms ===\n")
 
 /* ── Binary search ──────────────────────────────────────── */
 func binary_search(arr, target) {
@@ -16,12 +16,12 @@ func binary_search(arr, target) {
 }
 
 let sorted = [2, 5, 8, 12, 16, 23, 38, 56, 72, 91]
-print("Array:", sorted)
-print("Search 23: index", binary_search(sorted, 23))   /* 5 */
-print("Search 72: index", binary_search(sorted, 72))   /* 8 */
-print("Search 99: index", binary_search(sorted, 99))   /* -1 */
+output("Array:", sorted)
+output("Search 23: index", binary_search(sorted, 23))   /* 5 */
+output("Search 72: index", binary_search(sorted, 72))   /* 8 */
+output("Search 99: index", binary_search(sorted, 99))   /* -1 */
 
-print()
+output()
 
 /* ── Quicksort ───────────────────────────────────────────── */
 func quicksort(arr) {
@@ -35,11 +35,11 @@ func quicksort(arr) {
 }
 
 let unsorted = [64, 34, 25, 12, 22, 11, 90, 3, 47, 58]
-print("Unsorted:", unsorted)
+output("Unsorted:", unsorted)
 let sorted2 = quicksort(unsorted)
-print("Quicksorted:", sorted2)
+output("Quicksorted:", sorted2)
 
-print()
+output()
 
 /* ── Stack using array ───────────────────────────────────── */
 func Stack() {
@@ -57,13 +57,13 @@ let stack = Stack()
 stack["push"](1)
 stack["push"](2)
 stack["push"](3)
-print("Stack size:", stack["size"]())       /* 3 */
-print("Peek:", stack["peek"]())             /* 3 */
-print("Pop:", stack["pop"]())               /* 3 */
-print("Pop:", stack["pop"]())               /* 2 */
-print("Size after 2 pops:", stack["size"]()) /* 1 */
+output("Stack size:", stack["size"]())       /* 3 */
+output("Peek:", stack["peek"]())             /* 3 */
+output("Pop:", stack["pop"]())               /* 3 */
+output("Pop:", stack["pop"]())               /* 2 */
+output("Size after 2 pops:", stack["size"]()) /* 1 */
 
-print()
+output()
 
 /* ── Balanced parentheses check ─────────────────────────── */
 func is_balanced(s) {
@@ -85,10 +85,10 @@ func is_balanced(s) {
 
 let tests = ["()", "()[]{}", "(]", "([)]", "{[]}"]
 for t in tests {
-    print(f'"{t}" balanced:', is_balanced(t))
+    output(f'"{t}" balanced:', is_balanced(t))
 }
 
-print()
+output()
 
 /* ── Longest common subsequence ─────────────────────────── */
 func lcs(a, b) {
@@ -118,10 +118,10 @@ func lcs(a, b) {
     return dp[m * (n+1) + n]
 }
 
-print("LCS('ABCBDAB', 'BDCAB'):", lcs("ABCBDAB", "BDCAB"))   /* 4 */
-print("LCS('AGGTAB', 'GXTXAYB'):", lcs("AGGTAB", "GXTXAYB")) /* 4 */
+output("LCS('ABCBDAB', 'BDCAB'):", lcs("ABCBDAB", "BDCAB"))   /* 4 */
+output("LCS('AGGTAB', 'GXTXAYB'):", lcs("AGGTAB", "GXTXAYB")) /* 4 */
 
-print()
+output()
 
 /* ── Sieve of Eratosthenes ───────────────────────────────── */
 func sieve(limit) {
@@ -151,5 +151,5 @@ func sieve(limit) {
 }
 
 let p50 = sieve(50)
-print("Primes up to 50:", p50)
-print("Count:", len(p50))  /* 15 */
+output("Primes up to 50:", p50)
+output("Count:", len(p50))  /* 15 */

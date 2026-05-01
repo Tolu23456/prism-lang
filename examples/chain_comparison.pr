@@ -1,16 +1,16 @@
 /* Prism example: Chain comparisons — a < b < c style */
 
-print("=== Chain Comparison Examples ===\n")
+output("=== Chain Comparison Examples ===\n")
 
 /* Basic chain comparison */
 let x = 5
-print("x =", x)
-print("1 < x < 10:", 1 < x < 10)       /* true */
-print("1 < x < 5:", 1 < x < 5)         /* false (x = 5 is not < 5) */
-print("5 <= x <= 5:", 5 <= x <= 5)     /* true */
-print("5 < x < 6:", 5 < x < 6)         /* false */
+output("x =", x)
+output("1 < x < 10:", 1 < x < 10)       /* true */
+output("1 < x < 5:", 1 < x < 5)         /* false (x = 5 is not < 5) */
+output("5 <= x <= 5:", 5 <= x <= 5)     /* true */
+output("5 < x < 6:", 5 < x < 6)         /* false */
 
-print()
+output()
 
 /* Grade validation */
 func grade(score) {
@@ -23,33 +23,33 @@ func grade(score) {
 
 let scores = [100, 95, 87, 73, 62, 45]
 for s in scores {
-    print("score:", s, "→ grade:", grade(s))
+    output("score:", s, "→ grade:", grade(s))
 }
 
-print()
+output()
 
 /* Range check */
 func in_range(val, lo, hi) {
     return lo <= val <= hi
 }
 
-print("in_range(5, 1, 10):", in_range(5, 1, 10))     /* true */
-print("in_range(0, 1, 10):", in_range(0, 1, 10))     /* false */
-print("in_range(10, 1, 10):", in_range(10, 1, 10))   /* true */
-print("in_range(11, 1, 10):", in_range(11, 1, 10))   /* false */
+output("in_range(5, 1, 10):", in_range(5, 1, 10))     /* true */
+output("in_range(0, 1, 10):", in_range(0, 1, 10))     /* false */
+output("in_range(10, 1, 10):", in_range(10, 1, 10))   /* true */
+output("in_range(11, 1, 10):", in_range(11, 1, 10))   /* false */
 
-print()
+output()
 
 /* Sorted check */
 func is_sorted_triple(a, b, c) {
     return a <= b <= c
 }
 
-print("1, 2, 3 sorted:", is_sorted_triple(1, 2, 3))  /* true */
-print("1, 3, 2 sorted:", is_sorted_triple(1, 3, 2))  /* false */
-print("2, 2, 2 sorted:", is_sorted_triple(2, 2, 2))  /* true */
+output("1, 2, 3 sorted:", is_sorted_triple(1, 2, 3))  /* true */
+output("1, 3, 2 sorted:", is_sorted_triple(1, 3, 2))  /* false */
+output("2, 2, 2 sorted:", is_sorted_triple(2, 2, 2))  /* true */
 
-print()
+output()
 
 /* Long chain */
 let a = 1
@@ -57,10 +57,10 @@ let b = 2
 let c = 3
 let d = 4
 let e = 5
-print("a < b < c < d < e:", a < b < c < d < e)      /* true */
-print("(all ascending)")
+output("a < b < c < d < e:", a < b < c < d < e)      /* true */
+output("(all ascending)")
 
 /* Floating point chain */
 let pi = 3.14159
-print("3.0 < pi < 3.5:", 3.0 < pi < 3.5)            /* true */
-print("3.14 <= pi <= 3.15:", 3.14 <= pi <= 3.15)     /* true */
+output("3.0 < pi < 3.5:", 3.0 < pi < 3.5)            /* true */
+output("3.14 <= pi <= 3.15:", 3.14 <= pi <= 3.15)     /* true */

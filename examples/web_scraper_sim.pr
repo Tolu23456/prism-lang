@@ -1,8 +1,8 @@
 /* examples/web_scraper_sim.pr — simulated HTTP requests and HTML parsing */
 
-print("=== Web Scraper Simulation ===")
-print("(Simulates network requests and HTML parsing in Prism)")
-print("")
+output("=== Web Scraper Simulation ===")
+output("(Simulates network requests and HTML parsing in Prism)")
+output("")
 
 /* Simulate fetching a URL (returns mock HTML) */
 func fetch_mock(url) {
@@ -91,7 +91,7 @@ func strip_tags(html) {
 }
 
 /* ── Scrape Example Domain ─────────────────────────────────── */
-print("Fetching https://example.com ...")
+output("Fetching https://example.com ...")
 let html1 = fetch_mock("https://example.com")
 
 let titles = extract_between(html1, "<title>", "</title>")
@@ -99,28 +99,28 @@ let h1s    = extract_between(html1, "<h1>",    "</h1>")
 let paras  = extract_between(html1, "<p>",     "</p>")
 let links  = extract_links(html1)
 
-print("Title:", titles[0])
-print("H1:", h1s[0])
-print("Paragraphs found:", len(paras))
-for p in paras { print("  •", strip_tags(p)) }
-print("Links:", links)
-print("")
+output("Title:", titles[0])
+output("H1:", h1s[0])
+output("Paragraphs found:", len(paras))
+for p in paras { output("  •", strip_tags(p)) }
+output("Links:", links)
+output("")
 
 /* ── Scrape News Site ──────────────────────────────────────── */
-print("Fetching https://news.example.com ...")
+output("Fetching https://news.example.com ...")
 let html2 = fetch_mock("https://news.example.com")
 
 let headlines = extract_between(html2, "<h2>", "</h2>")
 let articles  = extract_between(html2, "<p>",  "</p>")
 
-print("Found", len(headlines), "articles:")
+output("Found", len(headlines), "articles:")
 let i = 0
 while i < len(headlines) {
-    print("\n  [" + str(i+1) + "] " + headlines[i])
-    if i < len(articles) { print("      " + articles[i]) }
+    output("\n  [" + str(i+1) + "] " + headlines[i])
+    if i < len(articles) { output("      " + articles[i]) }
     i = i + 1
 }
-print("")
+output("")
 
 /* ── URL parsing ──────────────────────────────────────────── */
 func parse_url(url) {
@@ -157,13 +157,13 @@ let test_urls = [
     "https://news.example.com/articles/1"
 ]
 
-print("URL Parsing:")
+output("URL Parsing:")
 for url in test_urls {
     let parsed = parse_url(url)
-    print("  " + url)
-    print("    protocol: " + str(parsed["protocol"]))
-    print("    host:     " + str(parsed["host"]))
-    print("    path:     " + str(parsed["path"]))
+    output("  " + url)
+    output("    protocol: " + str(parsed["protocol"]))
+    output("    host:     " + str(parsed["host"]))
+    output("    path:     " + str(parsed["path"]))
 }
 
-print("\n=== Scraper simulation complete ===")
+output("\n=== Scraper simulation complete ===")

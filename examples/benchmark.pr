@@ -5,7 +5,7 @@ func bench(name, f) {
     let result = f()
     let t1 = clock()
     let ms = round((t1 - t0) * 1000, 2)
-    print(name + ": " + str(ms) + " ms  (result=" + str(result) + ")")
+    output(name + ": " + str(ms) + " ms  (result=" + str(result) + ")")
 }
 
 /* 1. Fibonacci (recursive) */
@@ -86,4 +86,4 @@ bench("dict set/get x10000", func() {
     return d["9999"]
 })
 
-print("\nBenchmark complete.")
+output("\nBenchmark complete.")

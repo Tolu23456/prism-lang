@@ -150,7 +150,7 @@ Env *env_retain(Env *env) {
 
 void env_free(Env *env) {
     if (!env) return;
-    if (!env->parent) return;
+    if (!env->parent) return; /* root envs are freed only by their explicit owner */
     if (--env->refcount > 0) return;
     for (int i = 0; i < env->cap; i++) {
         if (env->slots[i].key)
@@ -162,8 +162,19 @@ void env_free(Env *env) {
     env_free(parent);
 }
 
-static void env_free_root(Env *env) {
+/* Free a root (global) env — call only from vm_free / interpreter_free, never
+ * from refcount paths. */
+void env_free_root(Env *env) {
     if (!env) return;
+    /* Break closure back-refs before releasing values to prevent cycles. */
+    for (int i = 0; i < env->cap; i++) {
+        if (!env->slots[i].key) continue;
+        Value v = env->slots[i].val;
+        if (IS_PTR(v) && AS_PTR(v)->type == VAL_FUNCTION) {
+            if (AS_PTR(v)->func.closure == env)
+                AS_PTR(v)->func.closure = NULL;
+        }
+    }
     for (int i = 0; i < env->cap; i++) {
         if (env->slots[i].key)
             value_release(env->slots[i].val);

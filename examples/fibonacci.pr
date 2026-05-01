@@ -19,12 +19,12 @@ func fib_rec(n) {
     return fib_rec(n - 1) + fib_rec(n - 2)
 }
 
-print("First 15 Fibonacci numbers:")
+output("First 15 Fibonacci numbers:")
 for i in range(15) {
-    print("fib(" + str(i) + ") =", fib_iter(i))
+    output("fib(" + str(i) + ") =", fib_iter(i))
 }
 
-print("\nRecursive fib(10) =", fib_rec(10))
+output("\nRecursive fib(10) =", fib_rec(10))
 
 /* Memoised version using a dict */
 let memo = {}
@@ -36,4 +36,4 @@ func fib_memo(n) {
     return result
 }
 
-print("Memoised fib(30) =", fib_memo(30))
+output("Memoised fib(30) =", fib_memo(30))

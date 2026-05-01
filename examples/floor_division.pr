@@ -1,16 +1,16 @@
 /* Prism example: Floor division (//) and integer arithmetic */
 
-print("=== Floor Division Examples ===\n")
+output("=== Floor Division Examples ===\n")
 
 /* Basic floor division */
-print("7 // 2   =", 7 // 2)      /* 3 */
-print("-7 // 2  =", -7 // 2)     /* -4 (rounds toward -infinity) */
-print("7 // -2  =", 7 // -2)     /* -4 */
-print("-7 // -2 =", -7 // -2)    /* 3 */
-print("10 // 3  =", 10 // 3)     /* 3 */
-print("10 // 10 =", 10 // 10)    /* 1 */
-print("1 // 2   =", 1 // 2)      /* 0 */
-print()
+output("7 // 2   =", 7 // 2)      /* 3 */
+output("-7 // 2  =", -7 // 2)     /* -4 (rounds toward -infinity) */
+output("7 // -2  =", 7 // -2)     /* -4 */
+output("-7 // -2 =", -7 // -2)    /* 3 */
+output("10 // 3  =", 10 // 3)     /* 3 */
+output("10 // 10 =", 10 // 10)    /* 1 */
+output("1 // 2   =", 1 // 2)      /* 0 */
+output()
 
 /* Integer quotient and remainder */
 func divmod(a, b) {
@@ -22,10 +22,10 @@ func divmod(a, b) {
 let pairs = [(17, 5), (-17, 5), (17, -5), (-17, -5)]
 for pair in pairs {
     let q_r = divmod(pair[0], pair[1])
-    print(pair[0], "//", pair[1], "=", q_r[0],
+    output(pair[0], "//", pair[1], "=", q_r[0],
           "  remainder:", q_r[1])
 }
-print()
+output()
 
 /* Integer digit extraction */
 func digits(n) {
@@ -40,20 +40,20 @@ func digits(n) {
     return reverse(result)
 }
 
-print("digits(12345) =", digits(12345))
-print("digits(1000)  =", digits(1000))
-print("digits(7)     =", digits(7))
-print()
+output("digits(12345) =", digits(12345))
+output("digits(1000)  =", digits(1000))
+output("digits(7)     =", digits(7))
+output()
 
 /* Page calculation */
 func page_count(items, per_page) {
     return (items + per_page - 1) // per_page
 }
 
-print("100 items, 10 per page:", page_count(100, 10), "pages")
-print("101 items, 10 per page:", page_count(101, 10), "pages")
-print("99  items, 10 per page:", page_count(99, 10),  "pages")
-print()
+output("100 items, 10 per page:", page_count(100, 10), "pages")
+output("101 items, 10 per page:", page_count(101, 10), "pages")
+output("99  items, 10 per page:", page_count(99, 10),  "pages")
+output()
 
 /* Integer square root */
 func isqrt(n) {
@@ -68,7 +68,7 @@ func isqrt(n) {
     return x
 }
 
-print("isqrt(16)  =", isqrt(16))    /* 4 */
-print("isqrt(17)  =", isqrt(17))    /* 4 */
-print("isqrt(100) =", isqrt(100))   /* 10 */
-print("isqrt(99)  =", isqrt(99))    /* 9 */
+output("isqrt(16)  =", isqrt(16))    /* 4 */
+output("isqrt(17)  =", isqrt(17))    /* 4 */
+output("isqrt(100) =", isqrt(100))   /* 10 */
+output("isqrt(99)  =", isqrt(99))    /* 9 */

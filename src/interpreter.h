@@ -35,7 +35,8 @@ typedef struct {
 
 Env         *env_new(Env *parent);
 Env         *env_retain(Env *env);  /* increment refcount, returns env */
-void         env_free(Env *env);    /* decrement refcount, free when 0  */
+void         env_free(Env *env);    /* decrement refcount, free when 0 (skips root) */
+void         env_free_root(Env *env); /* explicitly free root (global) env */
 Value env_get(Env *env, const char *name);
 bool         env_set(Env *env, const char *name, Value val, bool is_const);
 bool         env_assign(Env *env, const char *name, Value val);

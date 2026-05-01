@@ -1,6 +1,6 @@
 /* Prism example: Object-oriented programming via closures */
 
-print("=== OOP via Closures ===\n")
+output("=== OOP via Closures ===\n")
 
 /* ── Class-like pattern ──────────────────────────────────── */
 func Animal(name, sound) {
@@ -12,17 +12,17 @@ func Animal(name, sound) {
     /* "methods" via returned dict */
     return {
         "name":  func()    { return _name },
-        "speak": func()    { print(_name, "says", _sound + "!") },
+        "speak": func()    { output(_name, "says", _sound + "!") },
         "eat":   func(n) {
             _energy = min(100, _energy + n)
-            print(_name, "eats", n, "energy →", _energy)
+            output(_name, "eats", n, "energy →", _energy)
         },
         "run": func(n) {
             _energy = max(0, _energy - n)
-            print(_name, "runs, energy →", _energy)
+            output(_name, "runs, energy →", _energy)
         },
         "status": func() {
-            print(_name, "energy:", _energy)
+            output(_name, "energy:", _energy)
         }
     }
 }
@@ -37,7 +37,7 @@ dog["run"](30)
 cat["status"]()
 dog["status"]()
 
-print()
+output()
 
 /* ── Inheritance-like via delegation ─────────────────────── */
 func Dog(name) {
@@ -45,11 +45,11 @@ func Dog(name) {
 
     /* extend with dog-specific methods */
     base["fetch"] = func(item) {
-        print(base["name"](), "fetches the", item)
+        output(base["name"](), "fetches the", item)
         base["run"](10)
     }
     base["shake"] = func() {
-        print(base["name"](), "shakes paw! 🐾")
+        output(base["name"](), "shakes paw! 🐾")
     }
     return base
 }
@@ -60,7 +60,7 @@ buddy["fetch"]("ball")
 buddy["shake"]()
 buddy["status"]()
 
-print()
+output()
 
 /* ── Counter with observer ───────────────────────────────── */
 func Counter(start, on_change) {
@@ -75,15 +75,15 @@ func Counter(start, on_change) {
     }
 }
 
-let log_changes = func(v) { print("  counter →", v) }
+let log_changes = func(v) { output("  counter →", v) }
 let c = Counter(0, log_changes)
 c["inc"]()
 c["inc"]()
 c["inc"]()
 c["dec"]()
-print("final:", c["get"]())
+output("final:", c["get"]())
 
-print()
+output()
 
 /* ── Linked list ─────────────────────────────────────────── */
 func Node(val) {
@@ -122,5 +122,5 @@ let ll = LinkedList()
 ll["push"](3)
 ll["push"](2)
 ll["push"](1)
-print("LinkedList:", ll["list"]())    /* [1, 2, 3] */
-print("size:", ll["size"]())          /* 3 */
+output("LinkedList:", ll["list"]())    /* [1, 2, 3] */
+output("size:", ll["size"]())          /* 3 */

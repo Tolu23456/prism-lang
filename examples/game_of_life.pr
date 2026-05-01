@@ -1,6 +1,6 @@
 /* examples/game_of_life.pr — Conway's Game of Life */
 
-print("=== Conway's Game of Life ===")
+output("=== Conway's Game of Life ===")
 
 /* Create grid: rows x cols of zeros */
 func grid_new(rows, cols) {
@@ -89,16 +89,16 @@ func grid_population(g) {
 
 /* Print grid */
 func grid_print(g, gen, pop) {
-    print("Generation " + str(gen) + " | Population: " + str(pop))
+    output("Generation " + str(gen) + " | Population: " + str(pop))
     for row in g {
         let s = ""
         for cell in row {
             if cell == 1 { s = s + "█" }
             else { s = s + "·" }
         }
-        print(s)
+        output(s)
     }
-    print("")
+    output("")
 }
 
 /* Place a pattern at (r0, c0) */
@@ -145,5 +145,5 @@ while gen < 10 {
     grid_print(g, gen, grid_population(g))
 }
 
-print("Simulation complete!")
-print("Final population:", grid_population(g))
+output("Simulation complete!")
+output("Final population:", grid_population(g))

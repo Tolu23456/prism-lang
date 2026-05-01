@@ -3,9 +3,9 @@
 /* Basic try/catch */
 try {
     let x = 10 / 0
-    print("Should not reach here")
+    output("Should not reach here")
 } catch e {
-    print("Caught:", e)
+    output("Caught:", e)
 }
 
 /* Throwing custom errors */
@@ -17,10 +17,10 @@ func divide(a, b) {
 }
 
 try {
-    print(divide(10, 2))    /* 5 */
-    print(divide(10, 0))    /* throws */
+    output(divide(10, 2))    /* 5 */
+    output(divide(10, 0))    /* throws */
 } catch e {
-    print("Error:", e)
+    output("Error:", e)
 }
 
 /* Nested try/catch */
@@ -32,8 +32,8 @@ func safe_parse_int(s) {
     }
 }
 
-print(safe_parse_int("42"))      /* 42 */
-print(safe_parse_int("hello"))   /* null */
+output(safe_parse_int("42"))      /* 42 */
+output(safe_parse_int("hello"))   /* null */
 
 /* Error propagation */
 func validate_age(age) {
@@ -49,10 +49,10 @@ func greet_person(name, age) {
 }
 
 try {
-    print(greet_person("Alice", 30))
-    print(greet_person("Bob", -5))
+    output(greet_person("Alice", 30))
+    output(greet_person("Bob", -5))
 } catch e {
-    print("Validation error:", e)
+    output("Validation error:", e)
 }
 
 /* Finally-style cleanup with multiple catches */
@@ -66,8 +66,8 @@ let tests = [-1, 50, 200, 25]
 for val in tests {
     try {
         let result = risky_operation(val)
-        print("sqrt(" + str(val) + ") =", result)
+        output("sqrt(" + str(val) + ") =", result)
     } catch e {
-        print("Error for", val, ":", e)
+        output("Error for", val, ":", e)
     }
 }

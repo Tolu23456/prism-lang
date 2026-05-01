@@ -1,6 +1,6 @@
 /* Prism example: Advanced function patterns — closures, higher-order, currying */
 
-print("=== Advanced Function Examples ===\n")
+output("=== Advanced Function Examples ===\n")
 
 /* ── Higher-order functions ──────────────────────────────── */
 func apply(f, x) { return f(x) }
@@ -11,13 +11,13 @@ let double  = func(x) { return x * 2 }
 let add1    = func(x) { return x + 1 }
 let square  = func(x) { return x * x }
 
-print("apply double 5:", apply(double, 5))           /* 10 */
-print("apply square 5:", apply(square, 5))           /* 25 */
-print("compose double add1 of 5:", compose(double, add1)(5))  /* 12 */
-print("twice double 5:", twice(double)(5))           /* 20 */
-print("twice add1 5:", twice(add1)(5))               /* 7 */
+output("apply double 5:", apply(double, 5))           /* 10 */
+output("apply square 5:", apply(square, 5))           /* 25 */
+output("compose double add1 of 5:", compose(double, add1)(5))  /* 12 */
+output("twice double 5:", twice(double)(5))           /* 20 */
+output("twice add1 5:", twice(add1)(5))               /* 7 */
 
-print()
+output()
 
 /* ── Currying ────────────────────────────────────────────── */
 func curry_add(a) {
@@ -26,11 +26,11 @@ func curry_add(a) {
 
 let add5  = curry_add(5)
 let add10 = curry_add(10)
-print("add5(3):", add5(3))        /* 8 */
-print("add10(3):", add10(3))      /* 13 */
-print("add5(add10(2)):", add5(add10(2)))   /* 17 */
+output("add5(3):", add5(3))        /* 8 */
+output("add10(3):", add10(3))      /* 13 */
+output("add5(add10(2)):", add5(add10(2)))   /* 17 */
 
-print()
+output()
 
 /* ── Memoization ─────────────────────────────────────────── */
 func memoize(f) {
@@ -58,10 +58,10 @@ memo_fib = memoize(func(n) {
 })
 
 let t = clock()
-print("memo_fib(35):", memo_fib(35))
-print("time:", clock() - t, "ms  (memoized = fast)")
+output("memo_fib(35):", memo_fib(35))
+output("time:", clock() - t, "ms  (memoized = fast)")
 
-print()
+output()
 
 /* ── Partial application ─────────────────────────────────── */
 func partial(f, fixed_arg) {
@@ -75,10 +75,10 @@ func power(base, exp) {
 let square2  = partial(power, 2)    /* 2^x */
 let cube_of3 = partial(power, 3)    /* 3^x */
 
-print("square2(8):", square2(8))    /* 256.0 */
-print("cube_of3(4):", cube_of3(4))  /* 81.0 */
+output("square2(8):", square2(8))    /* 256.0 */
+output("cube_of3(4):", cube_of3(4))  /* 81.0 */
 
-print()
+output()
 
 /* ── Function pipelines ──────────────────────────────────── */
 func pipeline(fns) {
@@ -95,10 +95,10 @@ let process = pipeline([
     func(x) { return x * x }
 ])
 
-print("pipeline(5):", process(5))   /* ((5*2)+1)^2 = 11^2 = 121 */
-print("pipeline(3):", process(3))   /* ((3*2)+1)^2 = 7^2  = 49 */
+output("pipeline(5):", process(5))   /* ((5*2)+1)^2 = 11^2 = 121 */
+output("pipeline(3):", process(3))   /* ((3*2)+1)^2 = 7^2  = 49 */
 
-print()
+output()
 
 /* ── Accumulator pattern ─────────────────────────────────── */
 func make_accumulator(initial) {
@@ -115,6 +115,6 @@ let acc = make_accumulator(0)
 acc["add"](10)
 acc["add"](5)
 acc["sub"](3)
-print("acc value:", acc["value"]())    /* 12 */
+output("acc value:", acc["value"]())    /* 12 */
 acc["reset"]()
-print("acc after reset:", acc["value"]())  /* 0 */
+output("acc after reset:", acc["value"]())  /* 0 */

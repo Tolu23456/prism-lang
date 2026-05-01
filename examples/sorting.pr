@@ -61,8 +61,8 @@ func merge_arrays(a, b) {
 }
 
 let data = [64, 34, 25, 12, 22, 11, 90, 1, 55, 42]
-print("Original:", data)
-print("Bubble sort:", bubble_sort(copy(data)))
-print("Insertion sort:", insertion_sort(copy(data)))
-print("Merge sort:", merge_sort(copy(data)))
-print("Built-in sorted:", sorted(data))
+output("Original:", data)
+output("Bubble sort:", bubble_sort(copy(data)))
+output("Insertion sort:", insertion_sort(copy(data)))
+output("Merge sort:", merge_sort(copy(data)))
+output("Built-in sorted:", sorted(data))

@@ -11,8 +11,8 @@ func make_counter(start) {
 
 let c1 = make_counter(0)
 let c2 = make_counter(10)
-print("c1:", c1(), c1(), c1())   /* 1 2 3 */
-print("c2:", c2(), c2())          /* 11 12 */
+output("c1:", c1(), c1(), c1())   /* 1 2 3 */
+output("c2:", c2(), c2())          /* 11 12 */
 
 /* Adder factory */
 func make_adder(x) {
@@ -21,8 +21,8 @@ func make_adder(x) {
 
 let add5  = make_adder(5)
 let add10 = make_adder(10)
-print("add5(3):", add5(3))     /* 8 */
-print("add10(3):", add10(3))   /* 13 */
+output("add5(3):", add5(3))     /* 8 */
+output("add10(3):", add10(3))   /* 13 */
 
 /* Compose two functions */
 func compose(f, g) {
@@ -34,8 +34,8 @@ let inc     = func(x) { return x + 1 }
 let double_then_inc = compose(inc, double)
 let inc_then_double = compose(double, inc)
 
-print("double_then_inc(5):", double_then_inc(5))   /* 11 */
-print("inc_then_double(5):", inc_then_double(5))   /* 12 */
+output("double_then_inc(5):", double_then_inc(5))   /* 11 */
+output("inc_then_double(5):", inc_then_double(5))   /* 12 */
 
 /* Memoize decorator */
 func memoize(f) {
@@ -62,8 +62,8 @@ let fast_fib = memoize(func(n) {
     return slow_fib(n-1) + slow_fib(n-2)
 })
 
-print("fib(15):", fast_fib(15))
-print("fib(20):", fast_fib(20))
+output("fib(15):", fast_fib(15))
+output("fib(20):", fast_fib(20))
 
 /* Partial application */
 func partial(f, first_arg) {
@@ -76,5 +76,5 @@ func power(base, exp) {
 
 let square  = partial(power, 2)
 let cube_of = partial(power, 3)
-print("2^8:", square(8))
-print("3^5:", cube_of(5))
+output("2^8:", square(8))
+output("3^5:", cube_of(5))
