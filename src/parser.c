@@ -406,10 +406,13 @@ static ASTNode *parse_primary(Parser *p) {
         }
     }
 
-    /* fn(params) { body }  or  fn(params) => expr */
+    /* fn(params) { body }  or  fn(params) => expr
+     * If neither '=>' nor '{' follows the param list, treat 'fn' as an
+     * identifier so that variables / parameters named 'fn' can be called. */
     if (check(p, TOKEN_FN)) {
         advance(p); /* consume 'fn' */
         expect(p, TOKEN_LPAREN, "expected '(' after 'fn'");
+        if (p->had_error) { return ast_node_new(NODE_NULL_LIT, line); }
         int param_count = 0;
         Param *params = parse_param_list(p, &param_count);
         if (p->had_error) { free_params(params, param_count); return ast_node_new(NODE_NULL_LIT, line); }
@@ -418,6 +421,26 @@ static ASTNode *parse_primary(Parser *p) {
         /* optional return type hint */
         if (check(p, TOKEN_ARROW)) { advance(p); if (check(p, TOKEN_IDENT)) advance(p); }
         skip_newlines(p);
+        /* Disambiguate: if no '=>' or '{' follows, 'fn' was used as an
+         * identifier (e.g. a parameter named 'fn' being called).  Re-build
+         * the parse result as a NODE_FUNC_CALL instead of a lambda. */
+        if (!check(p, TOKEN_FAT_ARROW) && !check(p, TOKEN_LBRACE)) {
+            /* Convert collected param names back to argument expressions. */
+            ASTNode *callee = ast_node_new(NODE_IDENT, line);
+            callee->ident.name = strdup("fn");
+            ASTNode **args = malloc((size_t)(param_count ? param_count : 1) * sizeof(ASTNode *));
+            for (int i = 0; i < param_count; i++) {
+                ASTNode *arg = ast_node_new(NODE_IDENT, line);
+                arg->ident.name = strdup(params[i].name);
+                args[i] = arg;
+            }
+            free_params(params, param_count);
+            ASTNode *call = ast_node_new(NODE_FUNC_CALL, line);
+            call->func_call.callee    = callee;
+            call->func_call.args      = args;
+            call->func_call.arg_count = param_count;
+            return call;
+        }
         ASTNode *body;
         bool is_arrow = false;
         if (check(p, TOKEN_FAT_ARROW)) {

@@ -1497,7 +1497,15 @@ void vm_free(VM *vm) {
         jit_free(vm->jit);
         vm->jit = NULL;
     }
+    /* Release globals first (this releases function objects whose chunk pointers
+     * come from the prelude_chunk constants pool). */
     env_free_root(vm->globals);
+    /* Now safe to free the prelude chunk and its constants (function protos). */
+    if (vm->prelude_chunk) {
+        chunk_free(vm->prelude_chunk);
+        free(vm->prelude_chunk);
+        vm->prelude_chunk = NULL;
+    }
     /* Item 5: free the static HTML-GUI body buffer allocated by vmgui_append */
     if (g_vmgui.body) {
         free(g_vmgui.body);
@@ -2142,12 +2150,12 @@ static Value vm_do_slice(VM *vm, Value obj, Value start_v, Value stop_v, Value s
 /* ================================================================== prelude */
 
 static const char *PRISM_PRELUDE =
-    "func filter(arr, fn) {\n"
+    "func filter(arr, f) {\n"
     "    let out = []\n"
-    "    for x in arr { if fn(x) { push(out, x) } }\n"
+    "    for x in arr { if f(x) { push(out, x) } }\n"
     "    return out\n"
     "}\n"
-    /* map(arr, fn) OR map(fn, arr) — detect by first arg type */
+    /* map(arr, f) OR map(f, arr) — detect by first arg type */
     "func map(a, b) {\n"
     "    let out = []\n"
     "    if type(a) == \"array\" {\n"
@@ -2157,35 +2165,35 @@ static const char *PRISM_PRELUDE =
     "    }\n"
     "    return out\n"
     "}\n"
-    "func reduce(arr, fn, init) {\n"
+    "func reduce(arr, f, init) {\n"
     "    let acc = init\n"
-    "    for x in arr { acc = fn(acc, x) }\n"
+    "    for x in arr { acc = f(acc, x) }\n"
     "    return acc\n"
     "}\n"
-    "func forEach(arr, fn) {\n"
-    "    for x in arr { fn(x) }\n"
+    "func forEach(arr, f) {\n"
+    "    for x in arr { f(x) }\n"
     "}\n"
-    "func flatMap(arr, fn) {\n"
+    "func flatMap(arr, f) {\n"
     "    let out = []\n"
     "    for x in arr {\n"
-    "        let r = fn(x)\n"
+    "        let r = f(x)\n"
     "        if type(r) == \"array\" { for y in r { push(out, y) } }\n"
     "        else { push(out, r) }\n"
     "    }\n"
     "    return out\n"
     "}\n"
-    "func find(arr, fn) {\n"
-    "    for x in arr { if fn(x) { return x } }\n"
+    "func find(arr, f) {\n"
+    "    for x in arr { if f(x) { return x } }\n"
     "    return null\n"
     "}\n"
-    "func sortBy(arr, fn) {\n"
+    "func sortBy(arr, f) {\n"
     "    let cp = copy(arr)\n"
     "    let n = len(cp)\n"
     "    let i = 0\n"
     "    while i < n {\n"
     "        let j = i + 1\n"
     "        while j < n {\n"
-    "            if fn(cp[i]) > fn(cp[j]) {\n"
+    "            if f(cp[i]) > f(cp[j]) {\n"
     "                let tmp = cp[i]\n"
     "                cp[i] = cp[j]\n"
     "                cp[j] = tmp\n"
@@ -2196,10 +2204,10 @@ static const char *PRISM_PRELUDE =
     "    }\n"
     "    return cp\n"
     "}\n"
-    "func groupBy(arr, fn) {\n"
+    "func groupBy(arr, f) {\n"
     "    let out = {}\n"
     "    for x in arr {\n"
-    "        let k = str(fn(x))\n"
+    "        let k = str(f(x))\n"
     "        if !has(out, k) { out[k] = [] }\n"
     "        push(out[k], x)\n"
     "    }\n"
@@ -2211,18 +2219,23 @@ int vm_run_prelude(VM *vm) {
     ASTNode *ast = parser_parse(p);
     if (p->had_error) { parser_free(p); if (ast) ast_node_free(ast); return 1; }
 
-    Chunk prelude_chunk;
+    /* Allocate the prelude chunk on the heap and keep it alive in vm->prelude_chunk
+     * for the full lifetime of the VM.  The function objects created from the
+     * prelude (filter, map, reduce, …) hold non-owning pointers into this
+     * chunk's sub-chunks; freeing it early would leave those pointers dangling. */
+    Chunk *prelude_chunk = malloc(sizeof(Chunk));
+    if (!prelude_chunk) { ast_node_free(ast); parser_free(p); return 1; }
     char  errbuf[256] = {0};
-    /* compile() emits OP_HALT; vm_run() will push a frame with env=vm->globals
-     * and all function declarations will be stored directly in vm->globals. */
-    if (compile(ast, &prelude_chunk, errbuf, sizeof(errbuf))) {
+    if (compile(ast, prelude_chunk, errbuf, sizeof(errbuf))) {
+        free(prelude_chunk);
         ast_node_free(ast); parser_free(p); return 1;
     }
     ast_node_free(ast);
     parser_free(p);
 
-    int rc = vm_run(vm, &prelude_chunk);
-    chunk_free(&prelude_chunk);
+    int rc = vm_run(vm, prelude_chunk);
+    /* Store chunk; freed in vm_free() after the VM has finished. */
+    vm->prelude_chunk = prelude_chunk;
     return rc;
 }
 
@@ -2435,13 +2448,13 @@ int vm_run(VM *vm, Chunk *chunk) {
             uint16_t idx = READ_U16();
             const char *name = AS_STR(CONST(idx));
             Value v = env_get(frame->env, name);
-            if (PRISM_UNLIKELY(v == VAL_SPEC_UNKNOWN)) {
+            if (PRISM_UNLIKELY(!v)) {
                 char msg[256];
                 snprintf(msg, sizeof(msg), "name '%s' is not defined", name);
                 vm_error(vm, msg, line);
                 PUSH(value_null());
             } else {
-                PUSH(value_retain(v));
+                PUSH(v); /* env_get already retained; no additional retain needed */
             }
             DISPATCH();
         }

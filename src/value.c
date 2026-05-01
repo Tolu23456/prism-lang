@@ -192,7 +192,17 @@ Value value_function_copy(Value proto, Env *closure) {
 Value value_builtin(const char *name, BuiltinFn fn) { Value v = alloc_v(VAL_BUILTIN); AS_BUILTIN(v).name = strdup(name); AS_BUILTIN(v).fn = fn; return v; }
 
 bool value_equals(Value a, Value b) {
-    if (a == b) return true; ValueType ta = VAL_TYPE(a), tb = VAL_TYPE(b); if (ta != tb) return false;
+    if (a == b) return true;
+    ValueType ta = VAL_TYPE(a), tb = VAL_TYPE(b);
+    /* Cross-type numeric comparison: int == float or float == int */
+    if (ta != tb) {
+        if ((ta == VAL_INT || ta == VAL_FLOAT) && (tb == VAL_INT || tb == VAL_FLOAT)) {
+            double va = (ta == VAL_INT) ? (double)AS_INT(a) : AS_FLOAT(a);
+            double vb = (tb == VAL_INT) ? (double)AS_INT(b) : AS_FLOAT(b);
+            return va == vb;
+        }
+        return false;
+    }
     switch (ta) {
         case VAL_INT: return AS_INT(a) == AS_INT(b); case VAL_FLOAT: return AS_FLOAT(a) == AS_FLOAT(b);
         case VAL_STRING: return strcmp(AS_STR(a), AS_STR(b)) == 0; case VAL_BOOL: return a == b; case VAL_NULL: return true; default: return false;
@@ -241,6 +251,20 @@ Value value_add(Value a, Value b) {
     if (ta == VAL_STRING && tb == VAL_STRING) {
         size_t la = strlen(AS_STR(a)), lb = strlen(AS_STR(b)); char *s = malloc(la + lb + 1); memcpy(s, AS_STR(a), la); memcpy(s + la, AS_STR(b), lb); s[la+lb] = '\0'; return value_string_take(s);
     }
+    /* Array concatenation */
+    if (ta == VAL_ARRAY && tb == VAL_ARRAY) {
+        int la = AS_ARRAY(a).len, lb = AS_ARRAY(b).len;
+        Value r = value_array_new();
+        ValueStruct *rv = AS_PTR(r);
+        int total = la + lb;
+        free(rv->array.items); /* free the default-allocated items from value_array_new */
+        rv->array.items = malloc((total > 0 ? total : 1) * sizeof(Value));
+        rv->array.cap = total > 0 ? total : 1;
+        rv->array.len = 0;
+        for (int i = 0; i < la; i++) rv->array.items[rv->array.len++] = value_retain(AS_ARRAY(a).items[i]);
+        for (int i = 0; i < lb; i++) rv->array.items[rv->array.len++] = value_retain(AS_ARRAY(b).items[i]);
+        return r;
+    }
     return 0;
 }
 Value value_sub(Value a, Value b) {
@@ -248,6 +272,13 @@ Value value_sub(Value a, Value b) {
     ValueType ta = VAL_TYPE(a), tb = VAL_TYPE(b);
     if ((ta == VAL_INT || ta == VAL_FLOAT) && (tb == VAL_INT || tb == VAL_FLOAT)) {
         double va = (ta == VAL_INT) ? (double)AS_INT(a) : AS_FLOAT(a); double vb = (tb == VAL_INT) ? (double)AS_INT(b) : AS_FLOAT(b); return value_float(va - vb);
+    }
+    /* Set difference: a - b removes elements of b from a */
+    if (ta == VAL_SET && tb == VAL_SET) {
+        Value r = value_set_new();
+        for (int i = 0; i < AS_SET(a).len; i++)
+            if (!value_set_has(b, AS_SET(a).items[i])) value_set_add(r, AS_SET(a).items[i]);
+        return r;
     }
     return 0;
 }
@@ -257,11 +288,38 @@ Value value_mul(Value a, Value b) {
     if ((ta == VAL_INT || ta == VAL_FLOAT) && (tb == VAL_INT || tb == VAL_FLOAT)) {
         double va = (ta == VAL_INT) ? (double)AS_INT(a) : AS_FLOAT(a); double vb = (tb == VAL_INT) ? (double)AS_INT(b) : AS_FLOAT(b); return value_float(va * vb);
     }
+    /* String repetition: str * int or int * str */
+    const char *src = NULL; long long count = 0;
+    if (ta == VAL_STRING && tb == VAL_INT) { src = AS_STR(a); count = AS_INT(b); }
+    else if (ta == VAL_INT && tb == VAL_STRING) { src = AS_STR(b); count = AS_INT(a); }
+    if (src) {
+        if (count <= 0) return value_string("");
+        size_t slen = strlen(src);
+        char *buf = malloc(slen * (size_t)count + 1);
+        for (long long i = 0; i < count; i++) memcpy(buf + i * slen, src, slen);
+        buf[slen * count] = '\0';
+        return value_string_take(buf);
+    }
     return 0;
 }
 Value value_div(Value a, Value b) { double va = (VAL_TYPE(a) == VAL_INT) ? (double)AS_INT(a) : AS_FLOAT(a); double vb = (VAL_TYPE(b) == VAL_INT) ? (double)AS_INT(b) : AS_FLOAT(b); return (vb == 0) ? 0 : value_float(va / vb); }
 Value value_mod(Value a, Value b) { if (IS_INT(a) && IS_INT(b)) return (AS_INT(b) == 0) ? 0 : value_int(AS_INT(a) % AS_INT(b)); return 0; }
-Value value_pow(Value a, Value b) { double va = (VAL_TYPE(a) == VAL_INT) ? (double)AS_INT(a) : AS_FLOAT(a); double vb = (VAL_TYPE(b) == VAL_INT) ? (double)AS_INT(b) : AS_FLOAT(b); return value_float(pow(va, vb)); }
+Value value_pow(Value a, Value b) {
+    /* Integer ** non-negative integer => return integer result */
+    if (VAL_TYPE(a) == VAL_INT && VAL_TYPE(b) == VAL_INT) {
+        long long base = AS_INT(a), exp = AS_INT(b);
+        if (exp >= 0) {
+            long long result = 1;
+            long long bb = base;
+            long long ee = exp;
+            while (ee > 0) { if (ee & 1) result *= bb; bb *= bb; ee >>= 1; }
+            return value_int(result);
+        }
+    }
+    double va = (VAL_TYPE(a) == VAL_INT) ? (double)AS_INT(a) : AS_FLOAT(a);
+    double vb = (VAL_TYPE(b) == VAL_INT) ? (double)AS_INT(b) : AS_FLOAT(b);
+    return value_float(pow(va, vb));
+}
 Value value_neg(Value v) { if (IS_INT(v)) return value_int(-AS_INT(v)); if (VAL_TYPE(v) == VAL_FLOAT) return value_float(-AS_FLOAT(v)); return 0; }
 void value_immortals_init(void) {}
 void value_immortals_free(void) {}

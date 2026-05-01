@@ -184,7 +184,7 @@ void env_free_root(Env *env) {
 }
 
 Value env_get(Env *env, const char *name) {
-    if (!name) return VAL_SPEC_UNKNOWN;
+    if (!name) return 0;
     unsigned h = env_hash(name);
     for (Env *e = env; e; e = e->parent) {
         unsigned idx = h % e->cap;
@@ -194,7 +194,7 @@ Value env_get(Env *env, const char *name) {
             if (strcmp(e->slots[curr].key, name) == 0) return value_retain(e->slots[curr].val);
         }
     }
-    return VAL_SPEC_UNKNOWN;
+    return 0;
 }
 
 bool env_set(Env *env, const char *name, Value val, bool is_const) {
@@ -2441,7 +2441,7 @@ static Value eval_node(Interpreter *interp, ASTNode *node, Env *env) {
     /* ---- identifier ---- */
     case NODE_IDENT: {
         Value v = env_get(env, node->ident.name);
-        if (v == VAL_SPEC_UNKNOWN) {
+        if (!v) {
             char emsg[128];
             snprintf(emsg, sizeof(emsg), "undefined variable '%s'", node->ident.name);
             runtime_error(interp, emsg, node->line);

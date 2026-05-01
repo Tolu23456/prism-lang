@@ -123,7 +123,7 @@ static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body, const char
  * integer or float literals.  Returns NULL when it cannot fold.
  */
 static Value try_constant_fold(ASTNode *node) {
-    if (node->type != NODE_BINOP) return VAL_SPEC_NULL;
+    if (node->type != NODE_BINOP) return (Value)0;
 
     ASTNode *L = node->binop.left;
     ASTNode *R = node->binop.right;
@@ -151,12 +151,12 @@ static Value try_constant_fold(ASTNode *node) {
     bool R_int   = ((R->type) == NODE_INT_LIT);
     bool R_float = ((R->type) == NODE_FLOAT_LIT);
 
-    if (!((L_int || L_float) && (R_int || R_float))) return VAL_SPEC_NULL;
+    if (!((L_int || L_float) && (R_int || R_float))) return (Value)0;
 
     /* Avoid folding division by zero — leave it to runtime for proper error */
     if ((strcmp(op, "/") == 0 || strcmp(op, "%") == 0 || strcmp(op, "//") == 0) &&
         ((R_int && R->int_lit.value == 0) || (R_float && R->float_lit.value == 0.0)))
-        return VAL_SPEC_NULL;
+        return (Value)0;
 
     if (L_int && R_int) {
         long long a = L->int_lit.value;
@@ -171,7 +171,7 @@ static Value try_constant_fold(ASTNode *node) {
             return value_int(q);
         }
         if      (strcmp(op, "%")  == 0) return value_int(a % b);
-        if      (strcmp(op, "**") == 0) return value_float(pow((double)a, (double)b));
+        if      (strcmp(op, "**") == 0) { if (b >= 0) { long long r=1,bb=a,ee=b; while(ee>0){if(ee&1)r*=bb;bb*=bb;ee>>=1;} return value_int(r); } return value_float(pow((double)a,(double)b)); }
         if      (strcmp(op, "==") == 0) return value_bool(a == b ? 1 : 0);
         if      (strcmp(op, "!=") == 0) return value_bool(a != b ? 1 : 0);
         if      (strcmp(op, "<")  == 0) return value_bool(a <  b ? 1 : 0);
@@ -183,7 +183,7 @@ static Value try_constant_fold(ASTNode *node) {
         if      (strcmp(op, "^")  == 0) return value_int(a ^ b);
         if      (strcmp(op, "<<") == 0) return (b >= 0 && b < 64) ? value_int(a << b) : value_int(0);
         if      (strcmp(op, ">>") == 0) return (b >= 0 && b < 64) ? value_int(a >> b) : value_int(0);
-        return VAL_SPEC_NULL;
+        return (Value)0;
     }
 
     /* Mixed int/float */
@@ -201,7 +201,7 @@ static Value try_constant_fold(ASTNode *node) {
     if      (strcmp(op, "<=") == 0) return value_bool(a <= b ? 1 : 0);
     if      (strcmp(op, ">")  == 0) return value_bool(a >  b ? 1 : 0);
     if      (strcmp(op, ">=") == 0) return value_bool(a >= b ? 1 : 0);
-    return VAL_SPEC_NULL;
+    return (Value)0;
 }
 
 /* Emit an integer value as efficiently as possible. */

@@ -50,6 +50,10 @@ typedef struct VM {
 
     /* Benchmarking */
     long long       instructions_executed;
+
+    /* Prelude chunk kept alive so function objects defined in the prelude
+     * retain valid bytecode pointers throughout the VM lifetime. */
+    Chunk          *prelude_chunk;
 } VM;
 
 VM  *vm_new(void);
