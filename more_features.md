@@ -2,6 +2,382 @@
 
 ---
 
+## 0. Unique Prism Features
+
+Ideas that don't exist (or don't exist in this form) in any mainstream language.
+
+---
+
+### 0.1 `repeat` Block
+
+Run a block exactly N times without needing a loop variable.
+
+```prism
+repeat 5 {
+    output "hello"
+}
+
+let board = repeat 8 { repeat 8 { 0 } }  # 8x8 grid of zeros
+```
+
+No index variable cluttering scope. If you need the index, use `for i in 0..n`.
+
+---
+
+### 0.2 Quantifier Keywords — `every`, `any`, `none`
+
+Math-style quantifiers as first-class expressions over collections.
+
+```prism
+let nums = [2, 4, 6, 8]
+
+every x in nums: x % 2 == 0   # → true  (all even)
+any   x in nums: x > 5        # → true  (at least one)
+none  x in nums: x < 0        # → true  (no negatives)
+
+every student in class: student.grade >= 50   # readable predicate
+```
+
+Works on arrays, dicts, and `seq`. The `:` separates variable from condition.
+Lazy — stops as soon as result is determined.
+
+---
+
+### 0.3 `between` Operator
+
+Readable range check without double comparisons.
+
+```prism
+x between 1 and 10       # equivalent to x >= 1 and x <= 10
+x between 0.0 and 1.0
+age between 18 and 65
+
+# Exclusive bounds with parens:
+x between (0 and 10)     # 0 < x < 10 (exclusive)
+```
+
+---
+
+### 0.4 `tally` Expression
+
+Count occurrences of each unique value — returns a dict.
+
+```prism
+tally [1, 2, 1, 3, 2, 1]        # → {1: 3, 2: 2, 3: 1}
+tally ["a", "b", "a", "c", "b"] # → {"a": 2, "b": 2, "c": 1}
+tally words in sentence          # count word frequencies in a string
+```
+
+Also works as a method: `arr.tally()`.
+Returns entries sorted by count descending by default.
+
+---
+
+### 0.5 `where` Bindings in Expressions
+
+Define local names inline, right where you need them — no temp variables.
+
+```prism
+output area where area = width * height
+
+let result = (a + b) / c
+    where a = sensor_x * 2,
+          b = sensor_y * 2,
+          c = scale_factor
+
+# In return statements:
+return disc where disc = b**2 - 4*a*c
+```
+
+`where` bindings are scoped to the single expression they attach to.
+
+---
+
+### 0.6 Aggregator Expressions — `sum`, `avg`, `count`, `product`
+
+Aggregate over a collection in one readable line.
+
+```prism
+sum     x in 1..100             # → 5050
+avg     x in scores             # → mean of scores array
+count   x in nums if x > 0      # → how many positives
+product x in 1..10              # → 10! = 3628800
+sum     x in students: x.grade  # field access in aggregation
+```
+
+These are expression-level keywords, not just method calls.
+
+---
+
+### 0.7 `swap` Statement
+
+Swap two variables with no temporary.
+
+```prism
+swap a, b
+swap arr[0], arr[-1]    # swap first and last element
+swap obj.x, obj.y
+```
+
+Works on any assignable target — variables, array indices, object fields.
+
+---
+
+### 0.8 `inspect` Keyword
+
+Like `output` but always prints the expression text AND its value — for
+debugging without removing code.
+
+```prism
+inspect x + y         # prints:  x + y = 42
+inspect arr.len()     # prints:  arr.len() = 7
+inspect user.name     # prints:  user.name = "Alice"
+```
+
+`inspect` lines can be left in code — they disappear in `--release` builds
+automatically. No need to search-and-remove debug prints before shipping.
+
+---
+
+### 0.9 Named Loop Labels — Multi-level `break` and `next`
+
+Break or continue an outer loop by name.
+
+```prism
+outer: for row in grid {
+    for col in row {
+        if col == target {
+            break outer      # exits the outer for loop entirely
+        }
+    }
+}
+
+search: for i in 0..n {
+    for j in 0..n {
+        if found { next search }   # skip to next iteration of outer loop
+    }
+}
+```
+
+---
+
+### 0.10 `~=` Fuzzy Match Operator
+
+Case-insensitive and pattern-flexible string comparison.
+
+```prism
+"Hello" ~= "hello"         # → true  (case-insensitive)
+"  hello  " ~= "hello"     # → true  (ignores surrounding whitespace)
+"café" ~= "cafe"           # → true  (accent-insensitive, best-effort)
+```
+
+Useful for user input, search, config matching. Distinct from `==` (exact)
+and `contains` (substring). Does not require regex.
+
+---
+
+### 0.11 `cascade` Operator (`..`)
+
+Call multiple methods on the same object without repeating the variable name.
+Returns the original object, not the method result.
+
+```prism
+let list = []
+    ..push(1)
+    ..push(2)
+    ..push(3)
+    ..reverse()
+
+# Equivalent to:
+let list = []
+list.push(1)
+list.push(2)
+list.push(3)
+list.reverse()
+```
+
+Works on any object. The `..` at the start of a new line binds to the last
+named value on the previous line.
+
+---
+
+### 0.12 `benchmark` Block
+
+Built-in performance measurement — no imports required.
+
+```prism
+benchmark "sort 10k items" {
+    let arr = 1..10000
+    arr:
+}
+
+# Output:
+# [benchmark] sort 10k items: 1.23ms (avg over 100 runs)
+```
+
+The runtime auto-runs the block multiple times and reports min/max/avg.
+In `--release` builds the block still runs once but timing output is suppressed
+unless `--bench` flag is passed.
+
+---
+
+### 0.13 `require` / `ensure` Function Contracts
+
+Declare preconditions and postconditions directly on a function.
+Failed contracts produce clear, located error messages.
+
+```prism
+func divide(a, b)
+    require b != 0, "divisor must not be zero"
+    require a is int and b is int
+    ensure result is float
+{
+    return a / b
+}
+
+func sqrt(x)
+    require x >= 0, "cannot take sqrt of negative number"
+    ensure result >= 0
+{
+    return x ** 0.5
+}
+```
+
+`require` checks run before the function body.
+`ensure` checks run after, with `result` bound to the return value.
+Both are stripped in `--release` builds (like assert).
+
+---
+
+### 0.14 `probe` — Structured Debug Snapshots
+
+Capture a labeled snapshot of multiple values at once, printed as a table.
+
+```prism
+probe "loop state" { i, total, arr.len() }
+
+# Output:
+# ── probe: loop state (line 14) ──────────────
+#   i         = 3
+#   total     = 42
+#   arr.len() = 10
+# ─────────────────────────────────────────────
+```
+
+Like `inspect` but for multiple values at once, with a label.
+Completely silent in `--release` builds.
+
+---
+
+### 0.15 `notebook` Mode
+
+Run a `.pr` file with `prism --notebook file.pr` — every expression at the
+top level automatically prints its value, like a REPL or Jupyter notebook.
+
+```prism
+# file: explore.pr
+1 + 1           # prints: 2
+"hello".upper() # prints: HELLO
+1..5            # prints: [1, 2, 3, 4, 5]
+```
+
+No `output` calls needed. Great for exploration and data scripts.
+Assignments are silent; bare expressions are printed with their source text.
+
+---
+
+### 0.16 Unit-Aware Number Literals
+
+Numbers can carry a unit tag that is preserved through operations.
+
+```prism
+let d = 100km
+let t = 2h
+let speed = d / t    # → 50.0 km/h  (unit inferred)
+
+let angle = 90deg
+let rad   = angle.to_rad()   # → 1.5707...
+
+let delay = 500ms
+sleep(delay)          # functions that take time accept ms/s/us units
+
+output 1_000_000 as currency   # → "$1,000,000.00"
+output 3600s as time           # → "1h 0m 0s"
+```
+
+Units are: `km`, `m`, `cm`, `mm`, `kg`, `g`, `ms`, `s`, `min`, `h`,
+`deg`, `rad`, `px`, `%`.
+Arithmetic between compatible units auto-converts.
+Incompatible unit operations produce a runtime error.
+
+---
+
+### 0.17 `given` / `otherwise` — Readable Conditional Assignment
+
+A more expressive alternative to ternary for assignment contexts.
+
+```prism
+let label = "pass" given score >= 50 otherwise "fail"
+
+let msg = "good morning"  given hour < 12
+        | "good afternoon" given hour < 17
+        | "good evening"
+```
+
+The `|` chains multiple conditions like a pattern ladder.
+The last `|` line without `given` is the default.
+
+---
+
+### 0.18 `track` — Change Tracking on Variables
+
+Mark a variable as tracked; Prism records every value it takes.
+
+```prism
+track let score = 0
+
+score = 10
+score = 25
+score = 18
+
+output score.history     # → [0, 10, 25, 18]
+output score.peak        # → 25
+output score.changes     # → 3
+```
+
+Useful for debugging state machines, game logic, and simulations.
+`track` adds a thin wrapper; disabled in `--release`.
+
+---
+
+### 0.19 String Multiplication & Repetition
+
+```prism
+"ha" * 3          # → "hahaha"
+"-" * 40          # → "----------------------------------------"
+[0] * 10          # → [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+```
+
+`*` on strings and arrays means repeat N times. Clean, no method call needed.
+
+---
+
+### 0.20 `format as` — Human Output Modes
+
+```prism
+output 1234567 as number     # → "1,234,567"
+output 0.753   as percent    # → "75.3%"
+output 3600    as duration   # → "1h 0m 0s"
+output 1500    as filesize   # → "1.5 KB"
+output "hello" as title      # → "Hello"
+output names   as table      # prints array of dicts as an ASCII table
+```
+
+`as` after `output` selects a human-friendly formatter.
+No imports needed — all formatters are built into the language.
+
+---
+
 ## 1. List Modifiers — Postfix `:` Syntax
 
 A concise postfix syntax for sorting, filtering, and transforming lists and
