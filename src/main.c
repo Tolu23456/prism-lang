@@ -17,8 +17,7 @@
 #include "gc.h"
 #include "jit.h"
 #include "transpiler.h"
-#include "compiler.h"
-#include "vm.h"
+#include "formatter.h"
 
 #define PRISM_VERSION "0.2.0"
 
@@ -252,14 +251,6 @@ static void run_repl(void) {
 
     Interpreter *interp = interpreter_new();
 
-    ReplHistory *hist = repl_hist_new();
-
-    bool is_tty = isatty(STDIN_FILENO);
-    if (is_tty) repl_raw_enter();
-
-    char accumulated[REPL_LINE_MAX * 8] = {0};  /* multiline buffer */
-    int  acc_len = 0;
-
     char line[4096];
     while (1) {
         printf(">>> ");
@@ -281,12 +272,6 @@ static void run_repl(void) {
             interp->had_error  = 0;
             interp->returning  = false;
             interp->return_val = VAL_SPEC_NULL;
-
-            Value result = interpreter_eval(interp, ast, interp->globals);
-            if (interp->had_error) {
-                fprintf(stderr, "Error: %s\n", interp->error_msg);
-            } else if (result && VAL_TYPE(result) != VAL_NULL) {
-            interp->return_val = TO_NULL();
 
             Value result = interpreter_eval(interp, ast, interp->globals);
             if (interp->had_error) {
@@ -375,9 +360,6 @@ static const char *configure_gc_from_args(int argc, char **argv) {
 
     return path;
 }
-
-/* ------------------------------------------------------------------ formatter */
-#include "formatter.h"
 
 /* ------------------------------------------------------------------ entry point */
 
@@ -482,13 +464,4 @@ int main(int argc, char **argv) {
     value_immortals_free();
     gc_shutdown(gc_global());
     return 1;
-    if (argc < 2) return 1;
-    gc_init(gc_global());
-    FILE *f = fopen(argv[argc-1], "r");
-    fseek(f, 0, SEEK_END); long sz = ftell(f); rewind(f);
-    char *src = malloc(sz + 1); { size_t _nr = fread(src, 1, (size_t)sz, f); (void)_nr; } src[sz] = 0; fclose(f);
-    Parser *p = parser_new(src); ASTNode *prog = parser_parse(p);
-    Interpreter *interp = interpreter_new();
-    interpreter_run(interp, prog);
-    return 0;
 }

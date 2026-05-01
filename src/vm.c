@@ -1815,13 +1815,7 @@ int vm_run(VM *vm, Chunk *chunk) {
 #  define DISPATCH() do { if (PRISM_UNLIKELY(vm->had_error)) goto done;  \
                           uint8_t _op = frame->chunk->code[frame->ip++]; \
                           line = frame->chunk->lines[frame->ip - 1];     \
-                          gc_set_alloc_site(frame->chunk->source_file, line);
-                          if (getenv("PRISM_TRACE")) {
-                            printf("[%d] OP %d | Stack (%d): ", frame->ip-1, _op, vm->stack_top);
-                            for(int _si=0; _si<vm->stack_top; _si++) { value_print(vm->stack[_si]); printf(" "); }
-                            printf("\n");
-                          }
- \
+                          gc_set_alloc_site(frame->chunk->source_file, line); \
                           goto *s_dt[_op]; } while(0)
 #else
 #  define DISPATCH() break  /* fallback for non-GCC compilers */

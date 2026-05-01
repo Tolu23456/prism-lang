@@ -494,6 +494,7 @@ const char *token_type_name(TokenType t) {
         case TOKEN_SELF:       return "self";
         case TOKEN_OUTPUT:     return "output";
         case TOKEN_INPUT:      return "input";
+        case TOKEN_RANGE_KW:   return "range";
         case TOKEN_IDENT:      return "IDENT";
         case TOKEN_PLUS:       return "+";
         case TOKEN_MINUS:      return "-";

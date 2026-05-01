@@ -9,6 +9,11 @@
 static void skip_newlines(Parser *p);
 static ASTNode *parse_stmt(Parser *p);
 static ASTNode *parse_expr(Parser *p);
+static ASTNode *parse_block(Parser *p);
+static ASTNode *parse_primary(Parser *p);
+
+static Param *parse_param_list(Parser *p, int *out_count);
+static void free_params(Param *params, int count);
 
 static Token *advance(Parser *p) {
     Token *prev = p->current;
@@ -31,6 +36,7 @@ static bool is_name_token(TokenType t) {
         case TOKEN_BOOL_KW:  case TOKEN_INT_KW:  case TOKEN_FLOAT_KW:
         case TOKEN_STR_KW:   case TOKEN_TYPE_KW: case TOKEN_LEN:
         case TOKEN_OUTPUT:   case TOKEN_INPUT:   case TOKEN_SELF:
+        case TOKEN_RANGE_KW:
         /* contextual keywords that may appear as param names, variable names, or function names */
         case TOKEN_STEP:     case TOKEN_REPEAT:
         case TOKEN_FN:       case TOKEN_CATCH:
@@ -391,24 +397,6 @@ static ASTNode *parse_primary(Parser *p) {
                 args[argc++] = parse_expr(p);
                 if (p->had_error) { ast_node_free(ident); free(args); return ast_node_new(NODE_NULL_LIT, line); }
                 if (!match(p, TOKEN_COMMA)) break;
-    if (!p->current) return NULL;
-    if (p->current->type == TOKEN_INT_LIT) { ASTNode *n = ast_node_new(NODE_INT_LIT, p->current->line); n->int_lit.value = atoll(p->current->value); advance(p); return n; }
-    if (p->current->type == TOKEN_STRING_LIT) { ASTNode *n = ast_node_new(NODE_STRING_LIT, p->current->line); n->string_lit.value = strdup(p->current->value); advance(p); return n; }
-    if (p->current->type == TOKEN_IDENT) {
-        ASTNode *n = ast_node_new(NODE_IDENT, p->current->line); n->ident.name = strdup(p->current->value); advance(p);
-        while (p->current->type == TOKEN_DOT) {
-            advance(p);
-            if (p->current->type != TOKEN_IDENT) break;
-            ASTNode *m = ast_node_new(NODE_MEMBER, p->current->line);
-            m->member.obj = n; m->member.name = strdup(p->current->value);
-            advance(p); n = m;
-        }
-        if (p->current->type == TOKEN_LPAREN) {
-            advance(p); ASTNode *call = ast_node_new(NODE_FUNC_CALL, n->line); call->func_call.callee = n;
-            call->func_call.args = malloc(sizeof(ASTNode*) * 64); int c = 0;
-            while (p->current->type != TOKEN_RPAREN && p->current->type != TOKEN_EOF) {
-                call->func_call.args[c++] = parse_expr(p);
-                if (p->current->type == TOKEN_COMMA) advance(p);
             }
             ASTNode *n = ast_node_new(NODE_FUNC_CALL, line);
             n->func_call.callee    = ident;
@@ -416,11 +404,6 @@ static ASTNode *parse_primary(Parser *p) {
             n->func_call.arg_count = argc;
             return n;
         }
-        /* input with no parens — just treat as identifier */
-        ASTNode *n = ast_node_new(NODE_IDENT, line);
-        n->ident.name = strdup(p->current->value);
-        advance(p);
-        return n;
     }
 
     /* fn(params) { body }  or  fn(params) => expr */
@@ -1723,79 +1706,6 @@ static ASTNode *parse_stmt(Parser *p) {
             advance(p);
             if (!check(p, TOKEN_COMMA)) break;
             advance(p); skip_newlines(p);
-    while (p->current->type == TOKEN_NEWLINE) advance(p);
-    if (p->current->type == TOKEN_PERCENT) {
-        int line = p->current->line; advance(p);
-        if (p->current->type != TOKEN_IDENT) return NULL;
-        char *path = strdup(p->current->value); advance(p);
-        char *alias = NULL;
-        if (p->current->type == TOKEN_AS) {
-            advance(p);
-            if (p->current->type == TOKEN_IDENT) { alias = strdup(p->current->value); advance(p); }
-        }
-        ASTNode *n = ast_node_new(NODE_IMPORT, line);
-        n->import_stmt.path = path; n->import_stmt.alias = alias; n->import_stmt.symbol = NULL;
-        return n;
-    }
-    if (p->current->type == TOKEN_LET || p->current->type == TOKEN_CONST) {
-        bool is_const = (p->current->type == TOKEN_CONST);
-        advance(p); if (p->current->type != TOKEN_IDENT) return NULL;
-        char *name = strdup(p->current->value); advance(p);
-        if (p->current->type == TOKEN_EQ) advance(p);
-        ASTNode *n = ast_node_new(NODE_VAR_DECL, p->current->line);
-        n->var_decl.name = name; n->var_decl.init = parse_expr(p); n->var_decl.is_const = is_const;
-        return n;
-    }
-    if (p->current->type == TOKEN_FUNC || p->current->type == TOKEN_FN) {
-        int line = p->current->line; advance(p);
-        if (p->current->type != TOKEN_IDENT) return NULL;
-        char *fname = strdup(p->current->value); advance(p);
-        Param *params = malloc(sizeof(Param) * 32); int pc = 0;
-        if (p->current->type == TOKEN_LPAREN) {
-            advance(p);
-            while (p->current->type != TOKEN_RPAREN && p->current->type != TOKEN_EOF) {
-                if (p->current->type == TOKEN_IDENT) {
-                    params[pc].name = strdup(p->current->value);
-                    params[pc].type_hint = NULL; params[pc].default_val = NULL;
-                    pc++; advance(p);
-                }
-                if (p->current->type == TOKEN_COMMA) advance(p);
-            }
-            if (p->current->type == TOKEN_RPAREN) advance(p);
-        }
-        while (p->current->type == TOKEN_NEWLINE) advance(p);
-        ASTNode *body = ast_node_new(NODE_BLOCK, line);
-        body->block.stmts = malloc(sizeof(ASTNode*) * 256); int bc = 0;
-        if (p->current->type == TOKEN_LBRACE) advance(p);
-        while (p->current->type != TOKEN_RBRACE && p->current->type != TOKEN_EOF) {
-            ASTNode *s = parse_stmt(p); if (s) body->block.stmts[bc++] = s;
-            while (p->current->type == TOKEN_NEWLINE) advance(p);
-        }
-        if (p->current->type == TOKEN_RBRACE) advance(p);
-        body->block.count = bc;
-        ASTNode *n = ast_node_new(NODE_FUNC_DECL, line);
-        n->func_decl.name = fname; n->func_decl.params = params;
-        n->func_decl.param_count = pc; n->func_decl.body = body;
-        return n;
-    }
-    if (p->current->type == TOKEN_RETURN) {
-        int line = p->current->line; advance(p);
-        ASTNode *n = ast_node_new(NODE_RETURN, line);
-        if (p->current->type != TOKEN_NEWLINE && p->current->type != TOKEN_RBRACE && p->current->type != TOKEN_EOF) {
-            n->ret.value = parse_expr(p);
-        } else { n->ret.value = NULL; }
-        return n;
-    }
-    if (p->current->type == TOKEN_FOR) {
-        advance(p); if (p->current->type != TOKEN_IDENT) return NULL;
-        char *v = strdup(p->current->value); advance(p);
-        if (p->current->type == TOKEN_IN) advance(p);
-        ASTNode *iter = parse_expr(p); while (p->current->type == TOKEN_NEWLINE) advance(p);
-        if (p->current->type == TOKEN_LBRACE) advance(p);
-        ASTNode *n = ast_node_new(NODE_FOR_IN, iter?iter->line:0); n->for_in.var = v; n->for_in.iter = iter;
-        n->for_in.body = ast_node_new(NODE_BLOCK, n->line); n->for_in.body->block.stmts = malloc(sizeof(ASTNode*) * 256); int c = 0;
-        while (p->current->type != TOKEN_RBRACE && p->current->type != TOKEN_EOF) {
-            ASTNode *s = parse_stmt(p); if (s) n->for_in.body->block.stmts[c++] = s;
         }
         ASTNode *ln_node = ast_node_new(NODE_LINK_STMT, line2);
         ln_node->link_stmt.paths      = paths;
@@ -1822,34 +1732,6 @@ static ASTNode *parse_stmt(Parser *p) {
 
 /* ================================================================== top-level */
 
-ASTNode *parser_parse_source(const char *source, char *errbuf, int errlen) {
-    Parser *p = parser_new(source);
-    ASTNode *prog = parser_parse(p);
-    if (p->had_error) {
-        if (errbuf && errlen > 0)
-            snprintf(errbuf, errlen, "%s", p->error_msg);
-        ast_node_free(prog);
-        parser_free(p);
-        return NULL;
-    }
-    parser_free(p);
-    return prog;
-}
-
-ASTNode *parser_parse_source(const char *source, char *errbuf, int errlen) {
-    Parser *p = parser_new(source);
-    ASTNode *program = parser_parse(p);
-    if (p->had_error) {
-        if (errbuf && errlen > 0)
-            snprintf(errbuf, (size_t)errlen, "%s", p->error_msg);
-        if (program) ast_node_free(program);
-        parser_free(p);
-        return NULL;
-    }
-    parser_free(p);
-    return program;
-}
-
 ASTNode *parser_parse(Parser *p) {
     ASTNode *program = ast_node_new(NODE_PROGRAM, 1);
     int cap = 16;
@@ -1875,44 +1757,17 @@ ASTNode *parser_parse(Parser *p) {
     return program;
 }
 
-/* ================================================================== error display */
-
-/* Print a single source line by number (1-based) into buf.  Returns length. */
-static int get_source_line(const char *src, int lineno, char *buf, int bufsz) {
-    if (!src) { buf[0] = '\0'; return 0; }
-    int cur = 1;
-    while (*src && cur < lineno) {
-        if (*src++ == '\n') cur++;
+ASTNode *parser_parse_source(const char *source, char *errbuf, int errlen) {
+    Parser *p = parser_new(source);
+    ASTNode *program = parser_parse(p);
+    if (p->had_error) {
+        if (errbuf && errlen > 0)
+            snprintf(errbuf, (size_t)errlen, "%s", p->error_msg);
+        if (program) ast_node_free(program);
+        parser_free(p);
+        return NULL;
     }
-    /* copy until newline or end */
-    int i = 0;
-    while (*src && *src != '\n' && i < bufsz - 1)
-        buf[i++] = *src++;
-    buf[i] = '\0';
-    return i;
+    parser_free(p);
+    return program;
 }
 
-void parser_print_errors(const Parser *p, const char *filename) {
-    if (!p || p->error_count == 0) return;
-    const char *file = filename ? filename : "<source>";
-    for (int i = 0; i < p->error_count; i++) {
-        const ParseError *e = &p->errors[i];
-        /* header line */
-        fprintf(stderr, "\033[1;31merror\033[0m: %s:%d:%d: %s\n",
-                file, e->line, e->col, e->msg);
-        /* source line if available */
-        if (p->source) {
-            char linebuf[512];
-            get_source_line(p->source, e->line, linebuf, sizeof(linebuf));
-            fprintf(stderr, "  %4d | %s\n", e->line, linebuf);
-            /* caret underline */
-            fprintf(stderr, "       | ");
-            int col = e->col > 0 ? e->col : 1;
-            for (int c = 1; c < col; c++) fputc(' ', stderr);
-            fprintf(stderr, "\033[1;33m^\033[0m\n");
-        }
-    }
-    if (p->error_count >= PARSER_MAX_ERRORS)
-        fprintf(stderr, "\033[33mnote\033[0m: too many errors, stopped after %d\n",
-                PARSER_MAX_ERRORS);
-}

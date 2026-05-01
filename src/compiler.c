@@ -13,6 +13,13 @@
 
 #define MAX_BREAK_PATCHES    256
 #define MAX_CONTINUE_PATCHES 256
+#define MAX_LOCALS           256
+
+typedef struct {
+    const char *name;
+    int         depth;
+    bool        is_const;
+} Local;
 
 typedef struct LoopCtx {
     int break_patches[MAX_BREAK_PATCHES];
@@ -82,9 +89,23 @@ static void emit_loop(Compiler *c, int target, int line) {
 static uint16_t name_const(Compiler *c, const char *name) {
     return (uint16_t)chunk_add_const_str(c->chunk, name);
 }
-static uint16_t name_const(Compiler *c, const char *name) { return (uint16_t)chunk_add_const_str(c->chunk, name); }
-static int resolve_local(Compiler *c, const char *name) { for (int i = c->local_count - 1; i >= 0; i--) if (strcmp(c->locals[i].name, name) == 0) return i; return -1; }
-static int add_local(Compiler *c, const char *name, bool is_const) { if (c->local_count >= MAX_LOCALS) return -1; for (int i = c->local_count - 1; i >= 0; i--) { if (c->locals[i].depth != -1 && c->locals[i].depth < c->scope_depth) break; if (strcmp(c->locals[i].name, name) == 0) return -1; } Local *l = &c->locals[c->local_count++]; l->name = name; l->depth = c->scope_depth; l->is_const = is_const; return c->local_count - 1; }
+static int resolve_local(Compiler *c, const char *name) {
+    for (int i = c->local_count - 1; i >= 0; i--)
+        if (strcmp(c->locals[i].name, name) == 0) return i;
+    return -1;
+}
+static int add_local(Compiler *c, const char *name, bool is_const) {
+    if (c->local_count >= MAX_LOCALS) return -1;
+    for (int i = c->local_count - 1; i >= 0; i--) {
+        if (c->locals[i].depth != -1 && c->locals[i].depth < c->scope_depth) break;
+        if (strcmp(c->locals[i].name, name) == 0) return -1;
+    }
+    Local *l = &c->locals[c->local_count++];
+    l->name = name;
+    l->depth = c->scope_depth;
+    l->is_const = is_const;
+    return c->local_count - 1;
+}
 static void begin_scope(Compiler *c) __attribute__((unused));
 static void begin_scope(Compiler *c) { c->scope_depth++; }
 static void end_scope(Compiler *c, int ln) __attribute__((unused));
@@ -94,7 +115,7 @@ static void end_scope(Compiler *c, int ln) { (void)ln; c->scope_depth--; while (
 /* ================================================================== Forward decl */
 static void compile_node(Compiler *c, ASTNode *node);
 static void compile_expr(Compiler *c, ASTNode *node);
-static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body);
+static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body, const char *name, Param *params, int param_count);
 
 /* ================================================================== Constant folding
  *
@@ -199,13 +220,6 @@ static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body, const char
     (void)name;
     Chunk *chunk = malloc(sizeof(Chunk));
     Compiler c;
-    c.chunk = chunk;
-    c.had_error = 0;
-    c.error_msg[0] = '\0';
-    c.loop = NULL;
-
-    chunk_init(chunk);
-    if (body && ((body->type) == NODE_BLOCK || (body->type) == NODE_PROGRAM)) {
     memset(&c, 0, sizeof(c));
     c.chunk      = chunk;
     c.dead_code  = 0;  /* always reachable at function entry */
@@ -487,7 +501,7 @@ static void compile_node(Compiler *c, ASTNode *node) {
 
     /* ---- function declaration ---- */
     case NODE_FUNC_DECL: {
-        Chunk *fn_chunk = compile_function_chunk(c, node->func_decl.body);
+        Chunk *fn_chunk = compile_function_chunk(c, node->func_decl.body, node->func_decl.name, node->func_decl.params, node->func_decl.param_count);
         if (!fn_chunk) break;
         Value fn = value_function(
             node->func_decl.name,
@@ -812,7 +826,7 @@ static void compile_expr(Compiler *c, ASTNode *node) {
 
     /* ---- anonymous function expression (fn or func without name) ---- */
     case NODE_FN_EXPR: {
-        Chunk *fn_chunk = compile_function_chunk(c, node->fn_expr.body);
+        Chunk *fn_chunk = compile_function_chunk(c, node->fn_expr.body, "<lambda>", node->fn_expr.params, node->fn_expr.param_count);
         if (!fn_chunk) break;
         Value fn = value_function(
             "<lambda>",

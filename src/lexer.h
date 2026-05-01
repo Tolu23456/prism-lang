@@ -64,6 +64,7 @@ typedef enum {
     TOKEN_ARR_KW,
     TOKEN_TYPE_KW,
     TOKEN_DICT_KW,
+    TOKEN_RANGE_KW,
 
     /* Identifier */
     TOKEN_IDENT,
