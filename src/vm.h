@@ -54,6 +54,13 @@ typedef struct VM {
     /* Prelude chunk kept alive so function objects defined in the prelude
      * retain valid bytecode pointers throughout the VM lifetime. */
     Chunk          *prelude_chunk;
+
+    /* Module chunks deferred for cleanup at vm_free time so that function
+     * objects created via OP_MAKE_FUNCTION (which borrow chunk pointers)
+     * remain valid for the entire VM lifetime. */
+    Chunk         **mod_chunks;
+    int             mod_chunks_count;
+    int             mod_chunks_cap;
 } VM;
 
 VM  *vm_new(void);

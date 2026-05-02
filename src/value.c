@@ -84,7 +84,14 @@ void value_array_extend(Value arr, Value other) {
     ValueStruct *src = AS_PTR(other);
     for (int i = 0; i < src->array.len; i++) value_array_push(arr, src->array.items[i]);
 }
-void value_array_sort(Value arr) { (void)arr; }
+static int cmp_values_qsort(const void *pa, const void *pb) {
+    return value_compare(*(const Value *)pa, *(const Value *)pb);
+}
+void value_array_sort(Value arr) {
+    ValueStruct *vs = AS_PTR(arr);
+    if (vs->array.len > 1)
+        qsort(vs->array.items, (size_t)vs->array.len, sizeof(Value), cmp_values_qsort);
+}
 void value_array_insert(Value arr, long long idx, Value item) {
     ValueStruct *vs = AS_PTR(arr);
     if (idx < 0) idx += vs->array.len; if (idx < 0) idx = 0; if (idx > vs->array.len) idx = vs->array.len;
@@ -204,8 +211,24 @@ bool value_equals(Value a, Value b) {
         return false;
     }
     switch (ta) {
-        case VAL_INT: return AS_INT(a) == AS_INT(b); case VAL_FLOAT: return AS_FLOAT(a) == AS_FLOAT(b);
-        case VAL_STRING: return strcmp(AS_STR(a), AS_STR(b)) == 0; case VAL_BOOL: return a == b; case VAL_NULL: return true; default: return false;
+        case VAL_INT:    return AS_INT(a) == AS_INT(b);
+        case VAL_FLOAT:  return AS_FLOAT(a) == AS_FLOAT(b);
+        case VAL_STRING: return strcmp(AS_STR(a), AS_STR(b)) == 0;
+        case VAL_BOOL:   return a == b;
+        case VAL_NULL:   return true;
+        case VAL_ARRAY: {
+            if (AS_ARRAY(a).len != AS_ARRAY(b).len) return false;
+            for (int i = 0; i < AS_ARRAY(a).len; i++)
+                if (!value_equals(AS_ARRAY(a).items[i], AS_ARRAY(b).items[i])) return false;
+            return true;
+        }
+        case VAL_TUPLE: {
+            if (AS_TUPLE(a).len != AS_TUPLE(b).len) return false;
+            for (int i = 0; i < AS_TUPLE(a).len; i++)
+                if (!value_equals(AS_TUPLE(a).items[i], AS_TUPLE(b).items[i])) return false;
+            return true;
+        }
+        default: return false;
     }
 }
 int value_compare(Value a, Value b) {

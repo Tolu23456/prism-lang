@@ -5,6 +5,9 @@
 #include <stdint.h>
 #include <math.h>
 #include <ctype.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <unistd.h>
 #include "interpreter.h"
 #include "parser.h"
 #include "value.h"
@@ -152,6 +155,17 @@ void env_free(Env *env) {
     if (!env) return;
     if (!env->parent) return; /* root envs are freed only by their explicit owner */
     if (--env->refcount > 0) return;
+    /* Break function-closure back-references before releasing slot values.
+     * Without this, functions whose closure IS this env would call env_free(env)
+     * again during their own cleanup, causing a double-free cycle. */
+    for (int i = 0; i < env->cap; i++) {
+        if (!env->slots[i].key) continue;
+        Value v = env->slots[i].val;
+        if (IS_PTR(v) && AS_PTR(v)->type == VAL_FUNCTION) {
+            if (AS_PTR(v)->func.closure == env)
+                AS_PTR(v)->func.closure = NULL;
+        }
+    }
     for (int i = 0; i < env->cap; i++) {
         if (env->slots[i].key)
             value_release(env->slots[i].val);
@@ -1059,6 +1073,227 @@ static Value builtin_math_tau(Value *a, int n){ (void)a;(void)n; return value_fl
 static Value builtin_math_inf(Value *a, int n){ (void)a;(void)n; return value_float(1.0/0.0); }
 static Value builtin_math_nan(Value *a, int n){ (void)a;(void)n; return value_float(0.0/0.0); }
 
+/* ---- indexOf: string or array ---- */
+static Value builtin_indexOf(Value *a, int n) {
+    if (n < 2) return value_int(-1);
+    if (VAL_TYPE(a[0]) == VAL_STRING && VAL_TYPE(a[1]) == VAL_STRING) {
+        const char *found = strstr(AS_STR(a[0]), AS_STR(a[1]));
+        return value_int(found ? (long long)(found - AS_STR(a[0])) : -1LL);
+    }
+    if (VAL_TYPE(a[0]) == VAL_ARRAY) {
+        for (int i = 0; i < AS_ARRAY(a[0]).len; i++)
+            if (value_equals(AS_ARRAY(a[0]).items[i], a[1])) return value_int(i);
+        return value_int(-1);
+    }
+    return value_int(-1);
+}
+
+/* ---- padLeft / padRight ---- */
+static Value builtin_padLeft(Value *a, int n) {
+    if (n < 2) return n >= 1 ? value_retain(a[0]) : value_string("");
+    char *s = value_to_string(a[0]);
+    long long width = (VAL_TYPE(a[1]) == VAL_INT) ? AS_INT(a[1]) : 0;
+    const char *ch = (n >= 3 && VAL_TYPE(a[2]) == VAL_STRING) ? AS_STR(a[2]) : " ";
+    if (!ch[0]) ch = " ";
+    size_t slen = strlen(s), chlen = strlen(ch);
+    long long need = width - (long long)slen;
+    if (need <= 0) { Value r = value_string(s); free(s); return r; }
+    size_t total = (size_t)need * chlen + slen;
+    char *buf = malloc(total + 1); buf[0] = '\0';
+    size_t pos = 0;
+    for (long long i = 0; i < need; i++) { memcpy(buf + pos, ch, chlen); pos += chlen; }
+    memcpy(buf + pos, s, slen); buf[pos + slen] = '\0';
+    free(s);
+    return value_string_take(buf);
+}
+static Value builtin_padRight(Value *a, int n) {
+    if (n < 2) return n >= 1 ? value_retain(a[0]) : value_string("");
+    char *s = value_to_string(a[0]);
+    long long width = (VAL_TYPE(a[1]) == VAL_INT) ? AS_INT(a[1]) : 0;
+    const char *ch = (n >= 3 && VAL_TYPE(a[2]) == VAL_STRING) ? AS_STR(a[2]) : " ";
+    if (!ch[0]) ch = " ";
+    size_t slen = strlen(s), chlen = strlen(ch);
+    long long need = width - (long long)slen;
+    if (need <= 0) { Value r = value_string(s); free(s); return r; }
+    size_t total = slen + (size_t)need * chlen;
+    char *buf = malloc(total + 1);
+    memcpy(buf, s, slen);
+    size_t pos = slen;
+    for (long long i = 0; i < need; i++) { memcpy(buf + pos, ch, chlen); pos += chlen; }
+    buf[pos] = '\0';
+    free(s);
+    return value_string_take(buf);
+}
+
+/* ---- repeat(str, n) ---- */
+static Value builtin_repeat(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_string("");
+    const char *s = AS_STR(a[0]);
+    long long times = (n >= 2 && VAL_TYPE(a[1]) == VAL_INT) ? AS_INT(a[1]) : 0;
+    if (times <= 0 || !s[0]) return value_string("");
+    size_t slen = strlen(s);
+    size_t total = (size_t)times * slen;
+    char *buf = malloc(total + 1);
+    for (long long i = 0; i < times; i++) memcpy(buf + i * slen, s, slen);
+    buf[total] = '\0';
+    return value_string_take(buf);
+}
+
+/* ---- ltrim / rtrim ---- */
+static Value builtin_ltrim(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_string("");
+    const char *s = AS_STR(a[0]);
+    while (isspace((unsigned char)*s)) s++;
+    return value_string(s);
+}
+static Value builtin_rtrim(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_string("");
+    char *s = strdup(AS_STR(a[0]));
+    char *end = s + strlen(s);
+    while (end > s && isspace((unsigned char)*(end-1))) *--end = '\0';
+    return value_string_take(s);
+}
+
+/* ---- startsWith / endsWith (global aliases) ---- */
+static Value builtin_startsWith(Value *a, int n) {
+    if (n < 2 || VAL_TYPE(a[0]) != VAL_STRING || VAL_TYPE(a[1]) != VAL_STRING) return value_bool(0);
+    return value_bool(strncmp(AS_STR(a[0]), AS_STR(a[1]), strlen(AS_STR(a[1]))) == 0 ? 1 : 0);
+}
+static Value builtin_endsWith(Value *a, int n) {
+    if (n < 2 || VAL_TYPE(a[0]) != VAL_STRING || VAL_TYPE(a[1]) != VAL_STRING) return value_bool(0);
+    size_t sl = strlen(AS_STR(a[0])), ml = strlen(AS_STR(a[1]));
+    return value_bool((sl >= ml && strcmp(AS_STR(a[0]) + sl - ml, AS_STR(a[1])) == 0) ? 1 : 0);
+}
+
+/* ---- sorted / unique / first / last / compact ---- */
+static Value builtin_sorted(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_ARRAY) return value_array_new();
+    Value copy = value_array_new();
+    for (int i = 0; i < AS_ARRAY(a[0]).len; i++) value_array_push(copy, AS_ARRAY(a[0]).items[i]);
+    value_array_sort(copy);
+    return copy;
+}
+static Value builtin_unique(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_ARRAY) return value_array_new();
+    Value result = value_array_new();
+    for (int i = 0; i < AS_ARRAY(a[0]).len; i++) {
+        bool found = false;
+        for (int j = 0; j < AS_ARRAY(result).len; j++)
+            if (value_equals(AS_ARRAY(result).items[j], AS_ARRAY(a[0]).items[i])) { found = true; break; }
+        if (!found) value_array_push(result, AS_ARRAY(a[0]).items[i]);
+    }
+    return result;
+}
+static Value builtin_first(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_ARRAY || AS_ARRAY(a[0]).len == 0) return value_null();
+    return value_retain(AS_ARRAY(a[0]).items[0]);
+}
+static Value builtin_last(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_ARRAY || AS_ARRAY(a[0]).len == 0) return value_null();
+    return value_retain(AS_ARRAY(a[0]).items[AS_ARRAY(a[0]).len - 1]);
+}
+static Value builtin_compact(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_ARRAY) return value_array_new();
+    Value result = value_array_new();
+    for (int i = 0; i < AS_ARRAY(a[0]).len; i++)
+        if (VAL_TYPE(AS_ARRAY(a[0]).items[i]) != VAL_NULL)
+            value_array_push(result, AS_ARRAY(a[0]).items[i]);
+    return result;
+}
+
+/* ---- all / any ---- */
+static Value builtin_all(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_ARRAY) return value_bool(1);
+    for (int i = 0; i < AS_ARRAY(a[0]).len; i++)
+        if (!value_truthy(AS_ARRAY(a[0]).items[i])) return value_bool(0);
+    return value_bool(1);
+}
+static Value builtin_any(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_ARRAY) return value_bool(0);
+    for (int i = 0; i < AS_ARRAY(a[0]).len; i++)
+        if (value_truthy(AS_ARRAY(a[0]).items[i])) return value_bool(1);
+    return value_bool(0);
+}
+
+/* ---- File system builtins ---- */
+static Value builtin_write_file(Value *a, int n) {
+    if (n < 2 || VAL_TYPE(a[0]) != VAL_STRING || VAL_TYPE(a[1]) != VAL_STRING) return value_bool(0);
+    FILE *f = fopen(AS_STR(a[0]), "w");
+    if (!f) return value_bool(0);
+    fputs(AS_STR(a[1]), f); fclose(f);
+    return value_bool(1);
+}
+static Value builtin_read_file(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_null();
+    FILE *f = fopen(AS_STR(a[0]), "r");
+    if (!f) return value_null();
+    fseek(f, 0, SEEK_END); long sz = ftell(f); rewind(f);
+    char *buf = malloc((size_t)sz + 1);
+    size_t rd = fread(buf, 1, (size_t)sz, f); fclose(f);
+    buf[rd] = '\0';
+    return value_string_take(buf);
+}
+static Value builtin_file_exists(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_bool(0);
+    struct stat st;
+    return value_bool(stat(AS_STR(a[0]), &st) == 0 ? 1 : 0);
+}
+static Value builtin_is_file(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_bool(0);
+    struct stat st;
+    if (stat(AS_STR(a[0]), &st) != 0) return value_bool(0);
+    return value_bool(S_ISREG(st.st_mode) ? 1 : 0);
+}
+static Value builtin_is_dir(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_bool(0);
+    struct stat st;
+    if (stat(AS_STR(a[0]), &st) != 0) return value_bool(0);
+    return value_bool(S_ISDIR(st.st_mode) ? 1 : 0);
+}
+static Value builtin_file_size(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_int(-1);
+    struct stat st;
+    if (stat(AS_STR(a[0]), &st) != 0) return value_int(-1);
+    return value_int((long long)st.st_size);
+}
+static Value builtin_append_file(Value *a, int n) {
+    if (n < 2 || VAL_TYPE(a[0]) != VAL_STRING || VAL_TYPE(a[1]) != VAL_STRING) return value_bool(0);
+    FILE *f = fopen(AS_STR(a[0]), "a");
+    if (!f) return value_bool(0);
+    fputs(AS_STR(a[1]), f); fclose(f);
+    return value_bool(1);
+}
+static Value builtin_delete_file(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_bool(0);
+    return value_bool(remove(AS_STR(a[0])) == 0 ? 1 : 0);
+}
+static Value builtin_listdir(Value *a, int n) {
+    const char *path = (n >= 1 && VAL_TYPE(a[0]) == VAL_STRING) ? AS_STR(a[0]) : ".";
+    Value arr = value_array_new();
+    DIR *d = opendir(path);
+    if (!d) return arr;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+        Value sv = value_string(ent->d_name);
+        value_array_push(arr, sv); value_release(sv);
+    }
+    closedir(d);
+    return arr;
+}
+static Value builtin_getcwd(Value *a, int n) {
+    (void)a; (void)n;
+    char buf[4096];
+    if (!getcwd(buf, sizeof(buf))) return value_string("");
+    return value_string(buf);
+}
+static Value builtin_getenv(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_null();
+    const char *val = getenv(AS_STR(a[0]));
+    if (!val) return (n >= 2) ? value_retain(a[1]) : value_null();
+    return value_string(val);
+}
+
 static bool is_memory_module(Value obj) {
     if (!obj || VAL_TYPE(obj) != VAL_DICT) return false;
     Value key = value_string("__module");
@@ -1576,6 +1811,15 @@ static void register_builtins(Interpreter *interp) {
         {"hex",         builtin_hex},
         {"bin",         builtin_bin},
         {"oct",         builtin_oct},
+        /* additional string functions */
+        {"indexOf",     builtin_indexOf},
+        {"padLeft",     builtin_padLeft},
+        {"padRight",    builtin_padRight},
+        {"repeat",      builtin_repeat},
+        {"ltrim",       builtin_ltrim},
+        {"rtrim",       builtin_rtrim},
+        {"startsWith",  builtin_startsWith},
+        {"endsWith",    builtin_endsWith},
         /* array functions */
         {"push",        builtin_push},
         {"pop",         builtin_pop},
@@ -1586,6 +1830,13 @@ static void register_builtins(Interpreter *interp) {
         {"range",       builtin_range},
         {"zip",         builtin_zip},
         {"enumerate",   builtin_enumerate},
+        {"sorted",      builtin_sorted},
+        {"unique",      builtin_unique},
+        {"first",       builtin_first},
+        {"last",        builtin_last},
+        {"compact",     builtin_compact},
+        {"all",         builtin_all},
+        {"any",         builtin_any},
         /* dict functions */
         {"keys",        builtin_keys},
         {"values",      builtin_values},
@@ -1594,6 +1845,18 @@ static void register_builtins(Interpreter *interp) {
         /* time */
         {"clock",       builtin_clock},
         {"time",        builtin_time_now},
+        /* file system */
+        {"write_file",  builtin_write_file},
+        {"read_file",   builtin_read_file},
+        {"file_exists", builtin_file_exists},
+        {"is_file",     builtin_is_file},
+        {"is_dir",      builtin_is_dir},
+        {"file_size",   builtin_file_size},
+        {"append_file", builtin_append_file},
+        {"delete_file", builtin_delete_file},
+        {"listdir",     builtin_listdir},
+        {"getcwd",      builtin_getcwd},
+        {"getenv",      builtin_getenv},
         /* utility */
         {"error",       builtin_error},
         {"exit",        builtin_exit},
@@ -2676,10 +2939,8 @@ static Value eval_node(Interpreter *interp, ASTNode *node, Env *env) {
             }
             const char *bind_name = alias ? alias : symbol;
             env_set(env, bind_name, val, false);
-        } else {
-            /* import X [as alias] — wrap all module bindings in a dict namespace.
-             * Functions in the dict retain mod_env as their closure so that they
-             * can still call sibling functions defined in the same module. */
+        } else if (alias) {
+            /* import X as alias — wrap all module bindings in a dict bound to alias */
             Value mod_dict = value_dict_new();
             for (int i = 0; i < mod_env->cap; i++) {
                 if (!mod_env->slots[i].key) continue;
@@ -2687,19 +2948,16 @@ static Value eval_node(Interpreter *interp, ASTNode *node, Env *env) {
                 value_dict_set(mod_dict, k, mod_env->slots[i].val);
                 value_release(k);
             }
-
-            /* Derive binding name from the last path component, stripped of
-             * any extension: "lib/math.pr" → "math", "utils" → "utils" */
-            char mod_name[512];
-            const char *base = strrchr(resolved, '/');
-            base = base ? base + 1 : resolved;
-            snprintf(mod_name, sizeof(mod_name), "%.511s", base);
-            char *dot = strrchr(mod_name, '.');
-            if (dot) *dot = '\0';
-
-            const char *bind_name = alias ? alias : mod_name;
-            env_set(env, bind_name, mod_dict, false);
+            env_set(env, alias, mod_dict, false);
             value_release(mod_dict);
+        } else {
+            /* import X  (no alias) — star-import: inject all names directly
+             * into the calling scope, like "from X import *" in Python.
+             * Functions stay alive via mod_env closure refs. */
+            for (int i = 0; i < mod_env->cap; i++) {
+                if (!mod_env->slots[i].key) continue;
+                env_set(env, mod_env->slots[i].key, mod_env->slots[i].val, false);
+            }
         }
 
         /* Drop our initial reference to mod_env.  Module functions keep it alive

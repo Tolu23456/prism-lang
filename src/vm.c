@@ -5,6 +5,10 @@
 #include <stdint.h>
 #include <math.h>
 #include <ctype.h>
+#include <time.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <unistd.h>
 #include "vm.h"
 #include "opcode.h"
 #include "chunk.h"
@@ -35,6 +39,17 @@ static void env_free_scope_only(Env *env) {
     /* For root envs (no parent), refcount is not managed here. */
     if (!env->parent) return;
     if (--env->refcount > 0) return; /* still referenced by a closure */
+    /* Break function-closure back-references to prevent double-free cycles.
+     * Functions whose closure IS this env would call env_free(env) again
+     * during their own cleanup if we don't null the back-pointer first. */
+    for (int i = 0; i < env->cap; i++) {
+        if (!env->slots[i].key) continue;
+        Value v = env->slots[i].val;
+        if (IS_PTR(v) && AS_PTR(v)->type == VAL_FUNCTION) {
+            if (AS_PTR(v)->func.closure == env)
+                AS_PTR(v)->func.closure = NULL;
+        }
+    }
     /* Free slot values and the memory for this env only. */
     for (int i = 0; i < env->cap; i++)
         if (env->slots[i].key) value_release(env->slots[i].val);
@@ -452,12 +467,31 @@ static Value vm_builtin_append(Value *args, int argc) {
 
 /* --- Array non-mutating --- */
 static Value vm_builtin_reverse(Value *args, int argc) {
-    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY) return value_array_new();
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY) return value_null();
     int n = AS_ARRAY(args[0]).len;
-    Value out = value_array_new();
-    for (int i = n - 1; i >= 0; i--)
-        value_array_push(out, value_retain(AS_ARRAY(args[0]).items[i]));
-    return out;
+    Value *items = AS_ARRAY(args[0]).items;
+    for (int i = 0; i < n / 2; i++) {
+        Value tmp = items[i]; items[i] = items[n-1-i]; items[n-1-i] = tmp;
+    }
+    return value_null();
+}
+static Value vm_bi_delete(Value *args, int argc) {
+    if (argc < 2 || VAL_TYPE(args[0]) != VAL_DICT) return value_null();
+    if (VAL_TYPE(args[1]) != VAL_STRING) return value_null();
+    const char *key = AS_STR(args[1]);
+    ValueStruct *vs = AS_PTR(args[0]);
+    for (int i = 0; i < vs->dict.cap; i++) {
+        if (vs->dict.entries[i].key && VAL_TYPE(vs->dict.entries[i].key) == VAL_STRING &&
+            strcmp(AS_STR(vs->dict.entries[i].key), key) == 0) {
+            value_release(vs->dict.entries[i].key);
+            value_release(vs->dict.entries[i].val);
+            vs->dict.entries[i].key = 0;
+            vs->dict.entries[i].val = 0;
+            vs->dict.len--;
+            return value_null();
+        }
+    }
+    return value_null();
 }
 static Value vm_builtin_copy(Value *args, int argc) {
     if (argc < 1) return value_array_new();
@@ -1280,6 +1314,208 @@ static Value vm_bi_xgui_no_x11(Value *args, int argc) {
 
 #endif /* HAVE_X11 */
 
+/* ---- Additional builtins missing from the VM ---- */
+
+/* indexOf: camelCase alias for index_of */
+static Value vm_builtin_indexOf(Value *args, int argc) { return vm_builtin_index_of(args, argc); }
+
+/* sort: global function that sorts array in-place */
+static Value vm_builtin_sort(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY) return value_null();
+    value_array_sort(args[0]); return value_null();
+}
+
+/* first / last / compact */
+static Value vm_builtin_first(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY || AS_ARRAY(args[0]).len == 0) return value_null();
+    return value_retain(AS_ARRAY(args[0]).items[0]);
+}
+static Value vm_builtin_last(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY || AS_ARRAY(args[0]).len == 0) return value_null();
+    return value_retain(AS_ARRAY(args[0]).items[AS_ARRAY(args[0]).len - 1]);
+}
+static Value vm_builtin_compact(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_ARRAY) return value_array_new();
+    Value r = value_array_new();
+    for (int i = 0; i < AS_ARRAY(args[0]).len; i++)
+        if (VAL_TYPE(AS_ARRAY(args[0]).items[i]) != VAL_NULL)
+            value_array_push(r, AS_ARRAY(args[0]).items[i]);
+    return r;
+}
+
+/* ltrim / rtrim */
+static Value vm_builtin_ltrim(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_string("");
+    const char *s = AS_STR(args[0]);
+    while (isspace((unsigned char)*s)) s++;
+    return value_string(s);
+}
+static Value vm_builtin_rtrim(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_string("");
+    char *s = strdup(AS_STR(args[0]));
+    char *e = s + strlen(s);
+    while (e > s && isspace((unsigned char)*(e-1))) *--e = '\0';
+    return value_string_take(s);
+}
+
+/* starts / ends (lowercase aliases) */
+static Value vm_builtin_starts(Value *args, int argc) {
+    if (argc < 2 || VAL_TYPE(args[0]) != VAL_STRING || VAL_TYPE(args[1]) != VAL_STRING) return value_bool(0);
+    return value_bool(strncmp(AS_STR(args[0]), AS_STR(args[1]), strlen(AS_STR(args[1]))) == 0 ? 1 : 0);
+}
+static Value vm_builtin_ends(Value *args, int argc) {
+    if (argc < 2 || VAL_TYPE(args[0]) != VAL_STRING || VAL_TYPE(args[1]) != VAL_STRING) return value_bool(0);
+    size_t sl = strlen(AS_STR(args[0])), ml = strlen(AS_STR(args[1]));
+    return value_bool((sl >= ml && strcmp(AS_STR(args[0]) + sl - ml, AS_STR(args[1])) == 0) ? 1 : 0);
+}
+
+/* chars: return array of chars */
+static Value vm_builtin_chars(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_array_new();
+    const char *s = AS_STR(args[0]);
+    Value arr = value_array_new();
+    char buf[2] = {0, 0};
+    for (int i = 0; s[i]; i++) {
+        buf[0] = s[i];
+        Value cv = value_string(buf);
+        value_array_push(arr, cv); value_release(cv);
+    }
+    return arr;
+}
+
+/* parseInt / parseFloat */
+static Value vm_builtin_parseInt(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_int(0);
+    return value_int((long long)strtoll(AS_STR(args[0]), NULL, 10));
+}
+static Value vm_builtin_parseFloat(Value *args, int argc) {
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_float(0.0);
+    return value_float(strtod(AS_STR(args[0]), NULL));
+}
+
+/* Math functions */
+static Value vm_bi_sin(Value *a, int n)  { if(n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(sin(v)); }
+static Value vm_bi_cos(Value *a, int n)  { if(n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(cos(v)); }
+static Value vm_bi_tan(Value *a, int n)  { if(n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(tan(v)); }
+static Value vm_bi_asin(Value *a, int n) { if(n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(asin(v)); }
+static Value vm_bi_acos(Value *a, int n) { if(n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(acos(v)); }
+static Value vm_bi_atan(Value *a, int n) { if(n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(atan(v)); }
+static Value vm_bi_atan2(Value *a, int n){ if(n<2) return value_float(0.0); double y=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); double x=(VAL_TYPE(a[1])==VAL_INT)?AS_INT(a[1]):AS_FLOAT(a[1]); return value_float(atan2(y,x)); }
+static Value vm_bi_log(Value *a, int n)  { if(n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(log(v)); }
+static Value vm_bi_log2(Value *a, int n) { if(n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(log2(v)); }
+static Value vm_bi_log10(Value *a, int n){ if(n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(log10(v)); }
+static Value vm_bi_exp(Value *a, int n)  { if(n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(exp(v)); }
+static Value vm_bi_hypot(Value *a, int n){ if(n<2) return value_float(0.0); double x=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); double y=(VAL_TYPE(a[1])==VAL_INT)?AS_INT(a[1]):AS_FLOAT(a[1]); return value_float(hypot(x,y)); }
+static Value vm_bi_isnan(Value *a, int n){ if(n<1) return value_bool(0); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); return value_bool(isnan(v)?1:0); }
+static Value vm_bi_isinf(Value *a, int n){ if(n<1) return value_bool(0); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); return value_bool(isinf(v)?1:0); }
+static Value vm_bi_clamp(Value *a, int n){ if(n<3) return n>=1?value_retain(a[0]):value_null(); double v=(VAL_TYPE(a[0])==VAL_INT)?AS_INT(a[0]):AS_FLOAT(a[0]); double lo=(VAL_TYPE(a[1])==VAL_INT)?AS_INT(a[1]):AS_FLOAT(a[1]); double hi=(VAL_TYPE(a[2])==VAL_INT)?AS_INT(a[2]):AS_FLOAT(a[2]); if(v<lo)v=lo; if(v>hi)v=hi; return (VAL_TYPE(a[0])==VAL_INT&&VAL_TYPE(a[1])==VAL_INT&&VAL_TYPE(a[2])==VAL_INT)?value_int((long long)v):value_float(v); }
+
+/* Math constants */
+static Value vm_bi_pi(Value *a, int n)  { (void)a;(void)n; return value_float(3.14159265358979323846); }
+static Value vm_bi_e(Value *a, int n)   { (void)a;(void)n; return value_float(2.71828182845904523536); }
+static Value vm_bi_tau(Value *a, int n) { (void)a;(void)n; return value_float(6.28318530717958647692); }
+static Value vm_bi_inf(Value *a, int n) { (void)a;(void)n; return value_float(1.0/0.0); }
+static Value vm_bi_nan(Value *a, int n) { (void)a;(void)n; return value_float(0.0/0.0); }
+
+/* repr / id / error / exit / clock / time */
+static Value vm_bi_repr(Value *a, int n)  { if(n<1) return value_string("null"); char *s=value_to_string(a[0]); return value_string_take(s); }
+static Value vm_bi_id(Value *a, int n)    { if(n<1||!IS_PTR(a[0])) return value_int(0); return value_int((long long)(uintptr_t)AS_PTR(a[0])); }
+static Value vm_bi_error(Value *a, int n) { if(n<1) { fprintf(stderr,"error\n"); } else { char *s=value_to_string(a[0]); fprintf(stderr,"%s\n",s); free(s); } return value_null(); }
+static Value vm_bi_exit_fn(Value *a, int n){ int code=(n>=1&&VAL_TYPE(a[0])==VAL_INT)?(int)AS_INT(a[0]):0; exit(code); return value_null(); }
+static Value vm_bi_clock_fn(Value *a, int n) { (void)a;(void)n; return value_float((double)clock()/CLOCKS_PER_SEC); }
+static Value vm_bi_time_now(Value *a, int n){ (void)a;(void)n; return value_float((double)time(NULL)); }
+
+/* slice: slice(arr, start, end) */
+static Value vm_bi_slice(Value *a, int n) {
+    if (n < 1) return value_array_new();
+    if (VAL_TYPE(a[0]) == VAL_STRING) {
+        const char *s = AS_STR(a[0]);
+        int slen = (int)strlen(s);
+        int start = (n >= 2 && VAL_TYPE(a[1]) == VAL_INT) ? (int)AS_INT(a[1]) : 0;
+        int end   = (n >= 3 && VAL_TYPE(a[2]) == VAL_INT) ? (int)AS_INT(a[2]) : slen;
+        if (start < 0) start += slen; if (start < 0) start = 0;
+        if (end   < 0) end   += slen; if (end   < 0) end   = 0;
+        if (start > slen) start = slen; if (end > slen) end = slen;
+        if (end < start) end = start;
+        char *buf = malloc(end - start + 1);
+        memcpy(buf, s + start, end - start);
+        buf[end - start] = '\0';
+        return value_string_take(buf);
+    }
+    if (VAL_TYPE(a[0]) != VAL_ARRAY) return value_array_new();
+    int len = AS_ARRAY(a[0]).len;
+    int start = (n >= 2 && VAL_TYPE(a[1]) == VAL_INT) ? (int)AS_INT(a[1]) : 0;
+    int end   = (n >= 3 && VAL_TYPE(a[2]) == VAL_INT) ? (int)AS_INT(a[2]) : len;
+    if (start < 0) start += len; if (start < 0) start = 0;
+    if (end   < 0) end   += len; if (end   < 0) end   = 0;
+    if (start > len) start = len; if (end > len) end = len;
+    Value r = value_array_new();
+    for (int i = start; i < end; i++) value_array_push(r, AS_ARRAY(a[0]).items[i]);
+    return r;
+}
+
+/* flatten: flatten(arr) */
+static Value vm_bi_flatten(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_ARRAY) return value_array_new();
+    Value r = value_array_new();
+    for (int i = 0; i < AS_ARRAY(a[0]).len; i++) {
+        Value item = AS_ARRAY(a[0]).items[i];
+        if (VAL_TYPE(item) == VAL_ARRAY)
+            for (int j = 0; j < AS_ARRAY(item).len; j++) value_array_push(r, AS_ARRAY(item).items[j]);
+        else value_array_push(r, item);
+    }
+    return r;
+}
+
+/* File system */
+static Value vm_bi_is_file(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_bool(0);
+    struct stat st; if (stat(AS_STR(a[0]), &st) != 0) return value_bool(0);
+    return value_bool(S_ISREG(st.st_mode) ? 1 : 0);
+}
+static Value vm_bi_is_dir(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_bool(0);
+    struct stat st; if (stat(AS_STR(a[0]), &st) != 0) return value_bool(0);
+    return value_bool(S_ISDIR(st.st_mode) ? 1 : 0);
+}
+static Value vm_bi_file_size(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_int(-1);
+    struct stat st; if (stat(AS_STR(a[0]), &st) != 0) return value_int(-1);
+    return value_int((long long)st.st_size);
+}
+static Value vm_bi_append_file(Value *a, int n) {
+    if (n < 2 || VAL_TYPE(a[0]) != VAL_STRING || VAL_TYPE(a[1]) != VAL_STRING) return value_bool(0);
+    FILE *f = fopen(AS_STR(a[0]), "a"); if (!f) return value_bool(0);
+    fputs(AS_STR(a[1]), f); fclose(f); return value_bool(1);
+}
+static Value vm_bi_delete_file(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_bool(0);
+    return value_bool(remove(AS_STR(a[0])) == 0 ? 1 : 0);
+}
+static Value vm_bi_listdir(Value *a, int n) {
+    const char *path = (n >= 1 && VAL_TYPE(a[0]) == VAL_STRING) ? AS_STR(a[0]) : ".";
+    Value arr = value_array_new();
+    DIR *d = opendir(path); if (!d) return arr;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+        Value sv = value_string(ent->d_name);
+        value_array_push(arr, sv); value_release(sv);
+    }
+    closedir(d); return arr;
+}
+static Value vm_bi_getcwd(Value *a, int n) {
+    (void)a;(void)n; char buf[4096];
+    if (!getcwd(buf, sizeof(buf))) return value_string("");
+    return value_string(buf);
+}
+static Value vm_bi_getenv(Value *a, int n) {
+    if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_null();
+    const char *val = getenv(AS_STR(a[0]));
+    if (!val) return (n >= 2) ? value_retain(a[1]) : value_null();
+    return value_string(val);
+}
+
 /* ================================================================== register */
 
 void vm_register_builtins(VM *vm) {
@@ -1316,6 +1552,7 @@ void vm_register_builtins(VM *vm) {
         {"append",     vm_builtin_append},
         {"pop",        vm_builtin_pop},
         {"reverse",    vm_builtin_reverse},
+        {"delete",     vm_bi_delete},
         {"copy",       vm_builtin_copy},
         {"sorted",     vm_builtin_sorted},
         {"sum",        vm_builtin_sum},
@@ -1349,7 +1586,56 @@ void vm_register_builtins(VM *vm) {
         {"read_file",  vm_builtin_read_file},
         {"file_exists",vm_builtin_file_exists},
         {"index_of",   vm_builtin_index_of},
+        {"indexOf",    vm_builtin_indexOf},
         {"count",      vm_builtin_count_fn},
+        /* additional array builtins */
+        {"sort",       vm_builtin_sort},
+        {"first",      vm_builtin_first},
+        {"last",       vm_builtin_last},
+        {"compact",    vm_builtin_compact},
+        {"slice",      vm_bi_slice},
+        {"flatten",    vm_bi_flatten},
+        /* additional string builtins */
+        {"ltrim",      vm_builtin_ltrim},
+        {"rtrim",      vm_builtin_rtrim},
+        {"starts",     vm_builtin_starts},
+        {"ends",       vm_builtin_ends},
+        {"chars",      vm_builtin_chars},
+        {"parseInt",   vm_builtin_parseInt},
+        {"parseFloat", vm_builtin_parseFloat},
+        /* math functions */
+        {"sin",        vm_bi_sin},
+        {"cos",        vm_bi_cos},
+        {"tan",        vm_bi_tan},
+        {"asin",       vm_bi_asin},
+        {"acos",       vm_bi_acos},
+        {"atan",       vm_bi_atan},
+        {"atan2",      vm_bi_atan2},
+        {"log",        vm_bi_log},
+        {"log2",       vm_bi_log2},
+        {"log10",      vm_bi_log10},
+        {"exp",        vm_bi_exp},
+        {"hypot",      vm_bi_hypot},
+        {"isnan",      vm_bi_isnan},
+        {"isinf",      vm_bi_isinf},
+        {"clamp",      vm_bi_clamp},
+        /* (math constants PI/E/TAU/INF/NAN registered as float values below) */
+        /* utility */
+        {"repr",       vm_bi_repr},
+        {"id",         vm_bi_id},
+        {"error",      vm_bi_error},
+        {"exit",       vm_bi_exit_fn},
+        {"clock",      vm_bi_clock_fn},
+        {"time",       vm_bi_time_now},
+        /* file system */
+        {"is_file",    vm_bi_is_file},
+        {"is_dir",     vm_bi_is_dir},
+        {"file_size",  vm_bi_file_size},
+        {"append_file",vm_bi_append_file},
+        {"delete_file",vm_bi_delete_file},
+        {"listdir",    vm_bi_listdir},
+        {"getcwd",     vm_bi_getcwd},
+        {"getenv",     vm_bi_getenv},
         {"gui_window", vmbi_gui_window},
         {"gui_label",  vmbi_gui_label},
         {"gui_button", vmbi_gui_button},
@@ -1456,6 +1742,24 @@ void vm_register_builtins(VM *vm) {
         env_set(vm->globals, bi[i].name, v, false);
         value_release(v);
     }
+    /* Register math constants as const float values (not function builtins) */
+    {
+        struct { const char *name; double val; } consts[] = {
+            {"PI",  3.14159265358979323846},
+            {"E",   2.71828182845904523536},
+            {"TAU", 6.28318530717958647692},
+            {NULL,  0.0}
+        };
+        for (int i = 0; consts[i].name; i++) {
+            Value v = value_float(consts[i].val);
+            env_set(vm->globals, consts[i].name, v, false);
+            value_release(v);
+        }
+        Value inf_v = value_float(1.0/0.0);
+        env_set(vm->globals, "INF", inf_v, false); value_release(inf_v);
+        Value nan_v = value_float(0.0/0.0);
+        env_set(vm->globals, "NAN", nan_v, false); value_release(nan_v);
+    }
     Value memory = value_dict_new();
     Value key = value_string("__module");
     Value name = value_string("memory");
@@ -1491,6 +1795,19 @@ VM *vm_new(void) {
     return vm;
 }
 
+/* Defer a module chunk for cleanup at vm_free time. This prevents use-after-free
+ * crashes when functions created via OP_MAKE_FUNCTION borrow chunk pointers from
+ * the module's chunk constants pool. */
+static void vm_defer_module_chunk(VM *vm, Chunk *c) {
+    if (!c) return;
+    if (vm->mod_chunks_count >= vm->mod_chunks_cap) {
+        int new_cap = vm->mod_chunks_cap < 8 ? 8 : vm->mod_chunks_cap * 2;
+        vm->mod_chunks = realloc(vm->mod_chunks, new_cap * sizeof(Chunk *));
+        vm->mod_chunks_cap = new_cap;
+    }
+    vm->mod_chunks[vm->mod_chunks_count++] = c;
+}
+
 void vm_free(VM *vm) {
     if (vm->jit) {
         if (vm->jit_verbose) jit_print_stats(vm->jit);
@@ -1506,6 +1823,15 @@ void vm_free(VM *vm) {
         free(vm->prelude_chunk);
         vm->prelude_chunk = NULL;
     }
+    /* Free deferred module chunks (kept alive so borrowed chunk pointers remain
+     * valid during the entire execution lifetime). */
+    for (int i = 0; i < vm->mod_chunks_count; i++) {
+        chunk_free(vm->mod_chunks[i]);
+        free(vm->mod_chunks[i]);
+    }
+    free(vm->mod_chunks);
+    vm->mod_chunks = NULL;
+    vm->mod_chunks_count = vm->mod_chunks_cap = 0;
     /* Item 5: free the static HTML-GUI body buffer allocated by vmgui_append */
     if (g_vmgui.body) {
         free(g_vmgui.body);
@@ -2975,7 +3301,14 @@ int vm_run(VM *vm, Chunk *chunk) {
             frame->local_count = 0;
             vm_close_frame_env(frame);
             value_release(frame->func);
-            if (frame->owns_chunk) { chunk_free(frame->chunk); free(frame->chunk); frame->chunk = NULL; }
+            /* Defer module chunk cleanup instead of freeing immediately.
+             * Functions created via OP_MAKE_FUNCTION borrow chunk pointers
+             * from the module's constants pool; freeing here would leave
+             * dangling pointers in any live function stored in globals. */
+            if (frame->owns_chunk && frame->chunk) {
+                vm_defer_module_chunk(vm, frame->chunk);
+                frame->chunk = NULL;
+            }
             vm->frame_count--;
             if (vm->frame_count == 0) goto done;
             frame = &vm->frames[vm->frame_count - 1];

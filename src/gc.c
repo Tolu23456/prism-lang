@@ -7,6 +7,7 @@
 #include "interpreter.h"
 #include "vm.h"
 #include "chunk.h"
+#include "value.h"
 
 static PrismGC g_gc;
 void gc_set_alloc_site(const char *file, int line) { (void)file; (void)line; }
@@ -64,7 +65,10 @@ void gc_mark_value(PrismGC *gc, Value value) {
     switch (vs->type) {
         case VAL_ARRAY: case VAL_SET: case VAL_TUPLE: for (int i = 0; i < vs->array.len; i++) gc_mark_value(gc, vs->array.items[i]); break;
         case VAL_DICT: for (int i = 0; i < vs->dict.cap; i++) if (vs->dict.entries[i].key) { gc_mark_value(gc, vs->dict.entries[i].key); gc_mark_value(gc, vs->dict.entries[i].val); } break;
-        case VAL_FUNCTION: if (vs->func.closure) gc_mark_env(gc, vs->func.closure); break;
+        case VAL_FUNCTION:
+            if (vs->func.closure) gc_mark_env(gc, vs->func.closure);
+            if (vs->func.chunk) gc_mark_chunk(gc, vs->func.chunk);
+            break;
         default: break;
     }
 }
@@ -80,14 +84,31 @@ void gc_mark_vm(PrismGC *gc, VM *vm) {
     if (vm->globals) gc_mark_env(gc, vm->globals);
 }
 void gc_collect_audit(PrismGC *gc, Env *env, VM *vm, Chunk *chunk) {
-    (void)env; (void)chunk; if (!gc) return;
+    (void)env; if (!gc) return;
     for (ValueStruct *vs = gc->objects; vs; vs = vs->gc_next) vs->gc_marked = 0;
     gc_mark_vm(gc, vm);
+    /* Also mark constants in the top-level chunk and prelude chunk so that
+     * objects still referenced by refcount through chunk->constants[] arrays
+     * are not incorrectly swept. */
+    gc_mark_chunk(gc, chunk);
+    if (vm && vm->prelude_chunk) gc_mark_chunk(gc, vm->prelude_chunk);
+    /* Mark deferred module chunks (imported modules kept alive until vm_free). */
+    if (vm) { for (int i = 0; i < vm->mod_chunks_count; i++) gc_mark_chunk(gc, vm->mod_chunks[i]); }
     ValueStruct **ptr = &gc->objects;
     while (*ptr) {
         ValueStruct *vs = *ptr;
-        if (!vs->gc_marked && !vs->gc_immortal) { *ptr = vs->gc_next; if (vs->gc_next) vs->gc_next->gc_prev = vs->gc_prev; vs_free_internal(vs); }
-        else { vs->gc_marked = 0; ptr = &vs->gc_next; }
+        /* Only collect objects that are both unreachable by GC traversal AND
+         * have no remaining refcount references (ref_count <= 0). This prevents
+         * double-frees when chunk constants are referenced by refcounting but
+         * not visible to the GC mark phase. */
+        if (!vs->gc_marked && !vs->gc_immortal && vs->ref_count <= 0) {
+            *ptr = vs->gc_next;
+            if (vs->gc_next) vs->gc_next->gc_prev = vs->gc_prev;
+            vs_free_internal(vs);
+        } else {
+            vs->gc_marked = 0;
+            ptr = &vs->gc_next;
+        }
     }
 }
 void gc_init(PrismGC *gc) { (void)gc; }
@@ -105,6 +126,24 @@ const char *gc_policy_name(GCPolicy p) { (void)p; return "balanced"; }
 const char *gc_workload_name(GCWorkload w) { (void)w; return "script"; }
 void gc_print_stats(PrismGC *gc) { (void)gc; }
 void gc_print_mem_report(PrismGC *gc) { (void)gc; }
-Value gc_stats_dict(PrismGC *gc) { (void)gc; return value_dict_new(); }
-Value gc_set_soft_limit(PrismGC *gc, const char *s) { (void)gc;(void)s; return TO_INT(0); }
+Value gc_stats_dict(PrismGC *gc) {
+    (void)gc;
+    Value d = value_dict_new();
+    Value kpol = value_string("policy");   value_dict_set(d, kpol, value_string("balanced")); value_release(kpol);
+    Value kwl  = value_string("workload"); value_dict_set(d, kwl,  value_string("script"));   value_release(kwl);
+    Value kobj = value_string("objects");  value_dict_set(d, kobj, value_int(0));              value_release(kobj);
+    Value kbyt = value_string("bytes");    value_dict_set(d, kbyt, value_int(0));              value_release(kbyt);
+    return d;
+}
+Value gc_set_soft_limit(PrismGC *gc, const char *s) {
+    (void)gc;
+    if (!s) return value_int(0);
+    char *end; double num = strtod(s, &end);
+    while (*end == ' ') end++;
+    long long mult = 1;
+    if (*end == 'k' || *end == 'K') mult = 1024LL;
+    else if (*end == 'm' || *end == 'M') mult = 1024LL * 1024;
+    else if (*end == 'g' || *end == 'G') mult = 1024LL * 1024 * 1024;
+    return value_int((long long)(num * (double)mult));
+}
 void gc_configure_from_env(PrismGC *gc) { (void)gc; }
