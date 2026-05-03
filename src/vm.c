@@ -2711,11 +2711,8 @@ int vm_run(VM *vm, Chunk *chunk) {
                           if (PRISM_UNLIKELY(vm->exception_handled)) {             \
                               vm->exception_handled = 0;                           \
                               frame = &vm->frames[vm->frame_count - 1]; }          \
-                          if (PRISM_UNLIKELY((++vm->instructions_executed & 65535) == 0)) \
-                              gc_collect_minor(vm->gc, frame->env, vm, frame->chunk);     \
-                          uint8_t _op = frame->chunk->code[frame->ip++];           \
-                          line = frame->chunk->lines[frame->ip - 1];               \
-                          goto *s_dt[_op]; } while(0)
+                          line = frame->chunk->lines[frame->ip];                   \
+                          goto *s_dt[frame->chunk->code[frame->ip++]]; } while(0)
 #else
 #  define DISPATCH() break  /* fallback for non-GCC compilers */
 #endif
@@ -2791,14 +2788,33 @@ int vm_run(VM *vm, Chunk *chunk) {
         case OP_LOAD_NAME: {
             uint16_t idx = READ_U16();
             const char *name = AS_STR(CONST(idx));
-            Value v = env_get(frame->env, name);
+            /* Inline name cache: after the first lookup the env pointer and slot
+             * index are stored in the InlineCache entry for this instruction.
+             * Cache hit requires the slot key to still match (guards against rehash). */
+            int instruction_ip = frame->ip - 3; /* opcode + 2-byte operand */
+            InlineCache *nc = chunk_inline_cache(frame->chunk, instruction_ip);
+            Value v;
+            if (PRISM_LIKELY(nc && nc->name_env == frame->env &&
+                             (unsigned)nc->name_slot < (unsigned)nc->name_env->cap &&
+                             nc->name_env->slots[nc->name_slot].key == name)) {
+                /* Cache hit: direct slot access — no hash computation. */
+                v = value_retain(nc->name_env->slots[nc->name_slot].val);
+            } else {
+                /* Cache miss: full lookup, then populate cache. */
+                Env *found_env = NULL; int found_slot = -1;
+                v = env_get_cached(frame->env, name, &found_env, &found_slot);
+                if (nc && found_env) {
+                    nc->name_env  = found_env;
+                    nc->name_slot = found_slot;
+                }
+            }
             if (PRISM_UNLIKELY(!v)) {
                 char msg[256];
                 snprintf(msg, sizeof(msg), "name '%s' is not defined", name);
                 vm_error(vm, msg, line);
                 PUSH(value_null());
             } else {
-                PUSH(v); /* env_get already retained; no additional retain needed */
+                PUSH(v);
             }
             DISPATCH();
         }
@@ -2808,7 +2824,28 @@ int vm_run(VM *vm, Chunk *chunk) {
             uint16_t idx = READ_U16();
             const char *name = AS_STR(CONST(idx));
             Value top = POP();
-            if (PRISM_UNLIKELY(!env_assign(frame->env, name, top))) {
+            /* Inline name cache: same per-instruction cache as LOAD_NAME.
+             * On a cache hit we can write directly to the slot, bypassing the
+             * full hash-chain walk that env_assign does.                        */
+            int instruction_ip = frame->ip - 3;
+            InlineCache *nc = chunk_inline_cache(frame->chunk, instruction_ip);
+            bool ok;
+            if (PRISM_LIKELY(nc && nc->name_env == frame->env &&
+                             (unsigned)nc->name_slot < (unsigned)nc->name_env->cap &&
+                             nc->name_env->slots[nc->name_slot].key == name)) {
+                ok = env_assign_slot(nc->name_env, nc->name_slot, top);
+            } else {
+                /* Cache miss: full assign, then populate cache by re-finding slot. */
+                ok = env_assign(frame->env, name, top);
+                if (ok && nc) {
+                    /* Re-find the slot to populate the cache for next time. */
+                    Env *found_env = NULL; int found_slot = -1;
+                    Value dummy = env_get_cached(frame->env, name, &found_env, &found_slot);
+                    if (dummy) value_release(dummy);
+                    if (found_env) { nc->name_env = found_env; nc->name_slot = found_slot; }
+                }
+            }
+            if (PRISM_UNLIKELY(!ok)) {
                 char msg[256];
                 if (env_is_const(frame->env, name))
                     snprintf(msg, sizeof(msg),
@@ -3244,33 +3281,49 @@ int vm_run(VM *vm, Chunk *chunk) {
                     if (argc > VM_CALL_STACK_BUF) free(args);
                     value_release(callee); PUSH(value_null()); DISPATCH();
                 }
-                Env *fn_env = env_new(AS_FUNC(callee).closure ? AS_FUNC(callee).closure : vm->globals);
-                for (int i = 0; i < AS_FUNC(callee).param_count; i++) {
-                    Value arg = (i < argc) ? args[i] : value_null();
-                    env_set(fn_env, AS_FUNC(callee).params[i].name, arg, false);
-                }
-                for (int i = 0; i < argc; i++) value_release(args[i]);
-                if (argc > VM_CALL_STACK_BUF) free(args);
+                Chunk *fn_chunk = AS_FUNC(callee).chunk;
+                Env   *closure  = AS_FUNC(callee).closure
+                                  ? AS_FUNC(callee).closure : vm->globals;
+                int pc = AS_FUNC(callee).param_count;
+                int lc = pc < VM_LOCALS_MAX ? pc : VM_LOCALS_MAX;
                 CallFrame *new_frame = &vm->frames[vm->frame_count++];
                 new_frame->func = value_retain(callee);
-                new_frame->chunk = AS_FUNC(callee).chunk;
+                new_frame->chunk = fn_chunk;
                 new_frame->ip = 0; new_frame->stack_base = vm->stack_top;
-                new_frame->env = fn_env; new_frame->root_env = fn_env;
-                new_frame->owns_env = 1; new_frame->owns_chunk = 0;
-                /* Pre-fill local slots for params so OP_LOAD_LOCAL/OP_STORE_LOCAL
-                 * work without a hash-map lookup (the compiler emits locals for params). */
-                {
-                    int pc = AS_FUNC(callee).param_count;
-                    int lc = pc < VM_LOCALS_MAX ? pc : VM_LOCALS_MAX;
-                    for (int _pi = 0; _pi < lc; _pi++) {
-                        const char *pname = AS_FUNC(callee).params[_pi].name;
-                        new_frame->locals[_pi] = env_get(fn_env, pname);
+                new_frame->owns_chunk = 0;
+
+                if (PRISM_LIKELY(fn_chunk->no_env)) {
+                    /* Fast path: function never defines named vars or nested
+                     * closures — skip env_new entirely.  Use the closure env
+                     * directly for any LOAD_NAME (e.g. global builtins).     */
+                    new_frame->env      = closure;
+                    new_frame->root_env = closure;
+                    new_frame->owns_env = 0;
+                    /* Fill locals from args — no env_set calls needed. */
+                    for (int i = 0; i < lc; i++)
+                        new_frame->locals[i] = (i < argc)
+                                               ? args[i] : value_null();
+                    /* Release extra args that don't fit in locals. */
+                    for (int i = lc; i < argc; i++) value_release(args[i]);
+                } else {
+                    /* Slow path: function needs its own env for let decls or
+                     * nested closures.  Single pass: env_set + fill locals.  */
+                    Env *fn_env = env_new(closure);
+                    new_frame->env      = fn_env;
+                    new_frame->root_env = fn_env;
+                    new_frame->owns_env = 1;
+                    for (int i = 0; i < pc; i++) {
+                        Value arg = (i < argc) ? args[i] : value_null();
+                        env_set(fn_env, AS_FUNC(callee).params[i].name, arg, false);
+                        if (i < lc) new_frame->locals[i] = value_retain(arg);
                     }
-                    if (lc < VM_LOCALS_MAX)
-                        memset(&new_frame->locals[lc], 0,
-                               (VM_LOCALS_MAX - lc) * sizeof(Value));
-                    new_frame->local_count = lc;
+                    for (int i = 0; i < argc; i++) value_release(args[i]);
                 }
+                if (lc < VM_LOCALS_MAX)
+                    memset(&new_frame->locals[lc], 0,
+                           (VM_LOCALS_MAX - lc) * sizeof(Value));
+                new_frame->local_count = lc;
+                if (argc > VM_CALL_STACK_BUF) free(args);
                 value_release(callee);
                 frame = new_frame; DISPATCH();
             } else {

@@ -94,6 +94,7 @@ void ast_node_free(ASTNode *n) {
             ast_node_free(n->throw_stmt.value);
             break;
 
+        case NODE_MATCH_EXPR:
         case NODE_MATCH:
             ast_node_free(n->match_stmt.value);
             for (int i = 0; i < n->match_stmt.count; i++) {

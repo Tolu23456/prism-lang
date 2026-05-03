@@ -38,6 +38,11 @@ Env         *env_retain(Env *env);  /* increment refcount, returns env */
 void         env_free(Env *env);    /* decrement refcount, free when 0 (skips root) */
 void         env_free_root(Env *env); /* explicitly free root (global) env */
 Value env_get(Env *env, const char *name);
+/* Like env_get but also returns the Env layer and slot index where the name
+ * was found.  Used to populate the per-instruction inline name cache.        */
+Value env_get_cached(Env *env, const char *name, Env **out_env, int *out_slot);
+/* Direct slot write used by the STORE_NAME fast path when the cache is valid. */
+bool  env_assign_slot(Env *env, int slot, Value val);
 bool         env_set(Env *env, const char *name, Value val, bool is_const);
 bool         env_assign(Env *env, const char *name, Value val);
 bool         env_is_const(Env *env, const char *name);

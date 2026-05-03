@@ -25,6 +25,7 @@ typedef enum {
     NODE_TRY_CATCH,
     NODE_THROW,
     NODE_MATCH,
+    NODE_MATCH_EXPR,       /* inline match expression — yields a value on the stack */
 
     /* Expressions */
     NODE_BINOP,

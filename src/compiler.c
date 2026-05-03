@@ -43,6 +43,10 @@ struct Compiler {
     /* block_depth: 0 = direct function body, >0 = inside an inner if/while/etc.
      * block.  Used to decide whether to allocate a local slot for `let`/`const`. */
     int        block_depth;
+    /* Tracked for chunk->no_env optimisation: set to 1 the first time a
+     * OP_DEFINE_NAME / OP_DEFINE_CONST / OP_MAKE_FUNCTION is emitted.
+     * If still 0 at end of compile_function_chunk the fn never needs its own Env. */
+    int        has_env_op;
 };
 
 static void compiler_error(Compiler *c, const char *msg, int line) {
@@ -60,6 +64,10 @@ static void emit1(Compiler *c, uint8_t op, int line) {
 static void emit3(Compiler *c, uint8_t op, uint16_t operand, int line) {
     chunk_emit(c->chunk, op, line);
     chunk_emit16(c->chunk, operand, line);
+    /* Track whether this function body ever defines a named variable or creates
+     * a nested closure.  If not, chunk->no_env can be set (skip env_new on call). */
+    if (op == OP_DEFINE_NAME || op == OP_DEFINE_CONST || op == OP_MAKE_FUNCTION)
+        c->has_env_op = 1;
 }
 
 /* Emit a placeholder jump; returns the offset of the 2-byte operand for patching. */
@@ -255,7 +263,22 @@ static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body, const char
         return NULL;
     }
 
+    /* If the body never defined a named variable or a nested closure, the VM
+     * can skip env_new() on every call and use the closure env directly.      */
+    chunk->no_env = c.has_env_op ? 0 : 1;
+
     return chunk;
+}
+
+/* Returns true when a block's immediate children contain a variable declaration.
+ * Used to skip OP_PUSH_SCOPE / OP_POP_SCOPE for blocks that only hold
+ * statements (e.g. `if n <= 1 { return n }`) — avoids malloc/free per call. */
+static bool block_has_any_decl(ASTNode *block) {
+    if (!block) return false;
+    for (int i = 0; i < block->block.count; i++)
+        if (block->block.stmts[i] && block->block.stmts[i]->type == NODE_VAR_DECL)
+            return true;
+    return false;
 }
 
 /* ================================================================== Statements */
@@ -272,14 +295,19 @@ static void compile_node(Compiler *c, ASTNode *node) {
             compile_node(c, node->block.stmts[i]);
         break;
 
-    case NODE_BLOCK:
-        emit1(c, OP_PUSH_SCOPE, ln);
+    case NODE_BLOCK: {
+        /* Only push a new env scope when the block actually declares variables.
+         * Blocks that merely hold statements (e.g. `if n<=1 { return n }`)
+         * skip OP_PUSH_SCOPE/OP_POP_SCOPE, eliminating a malloc/free per call. */
+        bool push_scope = block_has_any_decl(node);
+        if (push_scope) emit1(c, OP_PUSH_SCOPE, ln);
         if (c->scope_depth > 0) c->block_depth++;
         for (int i = 0; i < node->block.count; i++)
             compile_node(c, node->block.stmts[i]);
         if (c->scope_depth > 0) c->block_depth--;
-        emit1(c, OP_POP_SCOPE, ln);
+        if (push_scope) emit1(c, OP_POP_SCOPE, ln);
         break;
+    }
 
     /* ---- variable declaration ---- */
     case NODE_VAR_DECL: {
@@ -1079,6 +1107,39 @@ static void compile_expr(Compiler *c, ASTNode *node) {
         compile_expr(c, node->nullcoal.left);
         compile_expr(c, node->nullcoal.right);
         emit1(c, OP_NULL_COAL, ln);
+        break;
+    }
+
+    /* ---- match expression: leaves a value on the stack ---- */
+    case NODE_MATCH_EXPR: {
+        /* match val { when P1: E1  when P2: E2  else: E_else }
+         * Compiles as DUP/EQ/JUMP_IF_FALSE chain; each taken arm pops the
+         * match value, pushes its expression result, then jumps to end.     */
+        compile_expr(c, node->match_stmt.value);
+
+        int end_patches[128];
+        int end_patch_count = 0;
+
+        for (int i = 0; i < node->match_stmt.count; i++) {
+            if (!node->match_stmt.patterns[i]) continue;
+            emit1(c, OP_DUP, ln);
+            compile_expr(c, node->match_stmt.patterns[i]);
+            emit1(c, OP_EQ, ln);
+            int next_patch = emit_jump(c, OP_JUMP_IF_FALSE, ln);
+            emit1(c, OP_POP, ln);           /* pop match_val — branch taken */
+            compile_expr(c, node->match_stmt.bodies[i]); /* push result   */
+            if (end_patch_count < 128)
+                end_patches[end_patch_count++] = emit_jump(c, OP_JUMP, ln);
+            patch_jump(c, next_patch);
+        }
+        emit1(c, OP_POP, ln);              /* pop match_val — no match      */
+        if (node->match_stmt.else_body)
+            compile_expr(c, node->match_stmt.else_body);
+        else
+            emit1(c, OP_PUSH_NULL, ln);    /* no else → null                */
+
+        for (int i = 0; i < end_patch_count; i++)
+            patch_jump(c, end_patches[i]);
         break;
     }
 

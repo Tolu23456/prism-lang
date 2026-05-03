@@ -136,14 +136,27 @@ static void env_rehash(Env *env, int new_cap) {
     free(old);
 }
 
-__attribute__((noinline))
+/* ---------------------------------------------------------------- Env slab pool
+ * Recycle up to ENV_POOL_CAP Env objects to eliminate malloc/free on every
+ * function call.  env_free() zeroes the slots and returns the Env to the pool
+ * instead of calling free(); env_new() pops from the pool when available.    */
+#define ENV_POOL_CAP 512
+static Env *env_pool[ENV_POOL_CAP];
+static int  env_pool_top = 0;
+
 Env *env_new(Env *parent) {
-    Env *e    = calloc(1, sizeof(Env));
+    Env *e;
+    if (env_pool_top > 0) {
+        e = env_pool[--env_pool_top];
+        /* slots are already zeroed and size was reset when returned to pool */
+    } else {
+        e = malloc(sizeof(Env));
+        e->slots = calloc(ENV_INITIAL_CAP, sizeof(EnvSlot));
+        e->cap   = ENV_INITIAL_CAP;
+    }
     e->refcount = 1;
-    e->cap    = ENV_INITIAL_CAP;
-    e->slots  = calloc((size_t)e->cap, sizeof(EnvSlot));
-    e->size   = 0;
-    e->parent = parent;
+    e->size     = 0;
+    e->parent   = parent;
     if (parent) env_retain(parent);
     return e;
 }
@@ -173,9 +186,18 @@ void env_free(Env *env) {
         if (env->slots[i].key)
             value_release(env->slots[i].val);
     }
-    free(env->slots);
     Env *parent = env->parent;
-    free(env);
+    /* Return to pool if the capacity is still the standard initial size
+     * (no hash-table rehash occurred) and the pool has room.  Otherwise free. */
+    if (env_pool_top < ENV_POOL_CAP && env->cap == ENV_INITIAL_CAP) {
+        memset(env->slots, 0, ENV_INITIAL_CAP * sizeof(EnvSlot));
+        env->parent = NULL;
+        env->size   = 0;
+        env_pool[env_pool_top++] = env;
+    } else {
+        free(env->slots);
+        free(env);
+    }
     env_free(parent);
 }
 
@@ -254,6 +276,38 @@ bool env_set(Env *env, const char *name, Value val, bool is_const) {
         }
     }
     return false;
+}
+
+/* env_get variant that populates an inline cache (out_env / out_slot) so that
+ * repeated accesses to the same name can bypass the hash lookup entirely.     */
+Value env_get_cached(Env *env, const char *name, Env **out_env, int *out_slot) {
+    if (!name) return 0;
+    unsigned h = env_hash(name);
+    for (Env *e = env; e; e = e->parent) {
+        unsigned mask = (unsigned)e->cap - 1u;
+        unsigned idx  = h & mask;
+        for (int i = 0; i < e->cap; i++) {
+            unsigned curr = (idx + (unsigned)i) & mask;
+            if (!e->slots[curr].key) break;
+            if (e->slots[curr].key == name ||
+                strcmp(e->slots[curr].key, name) == 0) {
+                if (out_env)  *out_env  = e;
+                if (out_slot) *out_slot = (int)curr;
+                return value_retain(e->slots[curr].val);
+            }
+        }
+    }
+    return 0;
+}
+
+/* Direct slot assignment — used by STORE_NAME when the inline cache is valid.
+ * Caller must guarantee slot < env->cap and env->slots[slot].key == name.     */
+bool env_assign_slot(Env *env, int slot, Value val) {
+    EnvSlot *s = &env->slots[slot];
+    if (!s->key || s->is_const) return false;
+    value_release(s->val);
+    s->val = value_retain(val);
+    return true;
 }
 
 bool env_assign(Env *env, const char *name, Value val) {

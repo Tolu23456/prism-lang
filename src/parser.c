@@ -251,6 +251,74 @@ static ASTNode *parse_paren_or_tuple(Parser *p, int line) {
     }
 }
 
+/* ---- match expression (inline, yields a value) -------------------------
+ * Syntax: match val { when pattern: expr  ...  else: expr }
+ * Uses colon arms (not blocks) to distinguish from the match statement.   */
+static ASTNode *parse_match_expr(Parser *p) {
+    int line = p->current->line;
+    expect(p, TOKEN_MATCH, "expected 'match'");
+    skip_newlines(p);
+    ASTNode *value = parse_expr(p);
+    skip_newlines(p);
+    expect(p, TOKEN_LBRACE, "expected '{' after match value");
+    skip_newlines(p);
+
+    int cap = 8, count = 0;
+    ASTNode **patterns = malloc(cap * sizeof(ASTNode *));
+    ASTNode **bodies   = malloc(cap * sizeof(ASTNode *));
+    ASTNode  *else_body = NULL;
+
+    while (!check(p, TOKEN_RBRACE) && !check(p, TOKEN_EOF)) {
+        skip_newlines(p);
+        if (check(p, TOKEN_RBRACE)) break;
+
+        if (check(p, TOKEN_ELSE)) {
+            advance(p);
+            skip_newlines(p);
+            expect(p, TOKEN_COLON, "expected ':' after 'else' in match expression");
+            skip_newlines(p);
+            else_body = parse_expr(p);
+            skip_newlines(p);
+            consume_stmt_end(p);
+            continue;
+        }
+
+        if (!check(p, TOKEN_WHEN)) {
+            error_at(p, "expected 'when' or 'else' in match expression");
+            ast_node_free(value);
+            free(patterns); free(bodies);
+            return ast_node_new(NODE_NULL_LIT, line);
+        }
+        advance(p); /* consume 'when' */
+        skip_newlines(p);
+        ASTNode *pat = parse_expr(p);
+        skip_newlines(p);
+        expect(p, TOKEN_COLON, "expected ':' after pattern in match expression");
+        skip_newlines(p);
+        ASTNode *body_expr = parse_expr(p);
+        skip_newlines(p);
+        consume_stmt_end(p);
+
+        if (count >= cap) {
+            cap *= 2;
+            patterns = realloc(patterns, cap * sizeof(ASTNode *));
+            bodies   = realloc(bodies,   cap * sizeof(ASTNode *));
+        }
+        patterns[count] = pat;
+        bodies[count]   = body_expr;
+        count++;
+    }
+    expect(p, TOKEN_RBRACE, "expected '}' to close match expression");
+
+    ASTNode *n = ast_node_new(NODE_MATCH_EXPR, line);
+    n->match_stmt.value     = value;
+    n->match_stmt.patterns  = patterns;
+    n->match_stmt.bodies    = bodies;
+    n->match_stmt.count     = count;
+    n->match_stmt.else_body = else_body;
+    return n;
+}
+
 static ASTNode *parse_primary(Parser *p) {
     if (p->had_error) return ast_node_new(NODE_NULL_LIT, 0);
     int line = p->current->line;
@@ -404,6 +472,11 @@ static ASTNode *parse_primary(Parser *p) {
             n->func_call.arg_count = argc;
             return n;
         }
+    }
+
+    /* match expression: match val { when P: E  else: E } */
+    if (check(p, TOKEN_MATCH)) {
+        return parse_match_expr(p);
     }
 
     /* fn(params) { body }  or  fn(params) => expr

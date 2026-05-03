@@ -13,12 +13,24 @@ typedef enum {
     VM_METHOD_SET_UPDATE, VM_METHOD_TUPLE_COUNT, VM_METHOD_TUPLE_INDEX,
 } VmMethodId;
 
+/* Forward-declare Env so InlineCache can hold a name-lookup cache pointer.
+ * Full definition lives in interpreter.h. */
+struct Env;
+
 typedef struct {
     uint8_t opcode; uint16_t name_idx; ValueType receiver_type; int dict_index; unsigned int dict_version; VmMethodId method_id;
+    /* Name-lookup inline cache: populated by OP_LOAD_NAME / OP_STORE_NAME after
+     * the first hash-table miss so subsequent accesses hit the slot directly.   */
+    struct Env *name_env;   /* env in which the name was found       */
+    int         name_slot;  /* slot index inside name_env->slots[]   */
 } InlineCache;
 
 typedef struct Chunk {
     uint8_t *code; int count; int cap; Value *constants; int const_count; int const_cap; int *lines; const char *source_file; InlineCache *inline_caches;
+    /* Set by the compiler when the function body never emits OP_DEFINE_NAME,
+     * OP_DEFINE_CONST, or OP_MAKE_FUNCTION.  The VM can then skip env_new()
+     * on every call and use the closure directly as frame->env.              */
+    uint8_t no_env;
 } Chunk;
 
 void chunk_init(Chunk *c);
