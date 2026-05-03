@@ -29,7 +29,7 @@ func flatten(lst, acc) {
             flatten(item, acc)
         } else {
             acc.add(item)
-        }
+        }1`    
     }
     return acc
 }

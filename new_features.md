@@ -292,17 +292,6 @@ expect type(val) == "int", "expected integer"
 
 If the condition is false, prints an error message with the source location and halts.
 
-### 8d. `when` expression (pattern match)
-```prism
-let desc = when x {
-    0       => "zero"
-    1       => "one"
-    2, 3    => "two or three"
-    > 100   => "large"
-    else    => "other"
-}
-```
-
 ### 8e. `null` coalescing (`??`)
 ```prism
 let name = user["name"] ?? "Anonymous"
@@ -371,4 +360,9 @@ let port = config["port"] ?? 8080
 | Small-int cache | 2–8% (eliminate alloc for common ints) |
 | Constant folding | 0% runtime, faster compile |
 
-**Aggregate on typical Prism programs:** 2–5× faster execution compared to the initial interpreter-only baseline.
+
+Remove the need for quotes when importing a library
+
+like so:
+import math
+and should support alias

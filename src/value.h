@@ -128,8 +128,25 @@ static inline ValueType VAL_TYPE(Value v) {
 #define AS_BUILTIN(v)  (AS_PTR(v)->builtin)
 #define AS_COMPLEX(v)  (AS_PTR(v)->complex_val)
 
-Value value_retain(Value v);
-void  value_release(Value v);
+/* Slow-path helpers (heap pointer only) — defined in value.c */
+Value value_retain_ptr(Value v);
+void  value_release_ptr(Value v);
+
+/* Fast inline retain/release: immediates (int, bool, null) are zero-cost no-ops.
+ * Only heap pointers (IS_PTR) fall through to the slow path.               */
+#define PRISM_ALWAYS_INLINE static inline
+
+PRISM_ALWAYS_INLINE Value value_retain(Value v) {
+    /* tagged int: bit 0 = 1.  bools/null: bits 1:0 = 1x.  Only ptr: bits 1:0 = 00 */
+    if (__builtin_expect((int)(v & 3u), 1)) return v;   /* immediate — no heap ref */
+    if (!v) return v;                                     /* absent-value sentinel   */
+    return value_retain_ptr(v);
+}
+PRISM_ALWAYS_INLINE void value_release(Value v) {
+    if (__builtin_expect((int)(v & 3u), 1)) return;
+    if (!v) return;
+    value_release_ptr(v);
+}
 
 Value value_null(void);
 Value value_int(long long n);

@@ -40,6 +40,9 @@ struct Compiler {
     Local      locals[MAX_LOCALS];
     int        local_count;
     int        scope_depth;
+    /* block_depth: 0 = direct function body, >0 = inside an inner if/while/etc.
+     * block.  Used to decide whether to allocate a local slot for `let`/`const`. */
+    int        block_depth;
 };
 
 static void compiler_error(Compiler *c, const char *msg, int line) {
@@ -224,6 +227,7 @@ static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body, const char
     c.chunk      = chunk;
     c.dead_code  = 0;  /* always reachable at function entry */
     c.scope_depth = 1; /* function body is a nested scope so params are locals */
+    c.block_depth = 0; /* 0 = directly inside the function body, not a sub-block */
 
     chunk_init(chunk);
 
@@ -270,8 +274,10 @@ static void compile_node(Compiler *c, ASTNode *node) {
 
     case NODE_BLOCK:
         emit1(c, OP_PUSH_SCOPE, ln);
+        if (c->scope_depth > 0) c->block_depth++;
         for (int i = 0; i < node->block.count; i++)
             compile_node(c, node->block.stmts[i]);
+        if (c->scope_depth > 0) c->block_depth--;
         emit1(c, OP_POP_SCOPE, ln);
         break;
 
@@ -281,6 +287,15 @@ static void compile_node(Compiler *c, ASTNode *node) {
             compile_expr(c, node->var_decl.init);
         else
             emit1(c, OP_PUSH_NULL, ln);
+        /* Inside a function body (scope_depth>0) at the top level of that
+         * function (block_depth==0): use a local slot — avoids env hash lookup. */
+        if (c->scope_depth > 0 && c->block_depth == 0) {
+            int slot = add_local(c, node->var_decl.name, node->var_decl.is_const);
+            if (slot >= 0) {
+                emit3(c, OP_DEFINE_LOCAL, (uint16_t)slot, ln);
+                break;
+            }
+        }
         uint16_t idx = name_const(c, node->var_decl.name);
         emit3(c, node->var_decl.is_const ? OP_DEFINE_CONST : OP_DEFINE_NAME, idx, ln);
         break;
@@ -291,8 +306,14 @@ static void compile_node(Compiler *c, ASTNode *node) {
         ASTNode *tgt = node->assign.target;
         if ((tgt->type) == NODE_IDENT) {
             compile_expr(c, node->assign.value);
-            uint16_t idx = name_const(c, tgt->ident.name);
-            emit3(c, OP_STORE_NAME, idx, ln);
+            int local_slot = (c->scope_depth > 0)
+                             ? resolve_local(c, tgt->ident.name) : -1;
+            if (local_slot >= 0) {
+                emit3(c, OP_STORE_LOCAL, (uint16_t)local_slot, ln);
+            } else {
+                uint16_t idx = name_const(c, tgt->ident.name);
+                emit3(c, OP_STORE_NAME, idx, ln);
+            }
         } else if ((tgt->type) == NODE_INDEX) {
             compile_expr(c, tgt->index_expr.obj);
             compile_expr(c, tgt->index_expr.index);
@@ -314,16 +335,41 @@ static void compile_node(Compiler *c, ASTNode *node) {
         ASTNode *tgt = node->assign.target;
         const char *op = node->assign.op;
         if ((tgt->type) == NODE_IDENT) {
-            uint16_t idx = name_const(c, tgt->ident.name);
-            emit3(c, OP_LOAD_NAME, idx, ln);
-            compile_expr(c, node->assign.value);
-            if      (op[0] == '+') emit1(c, OP_ADD, ln);
-            else if (op[0] == '-') emit1(c, OP_SUB, ln);
-            else if (op[0] == '*') emit1(c, OP_MUL, ln);
-            else if (op[0] == '/') emit1(c, OP_DIV, ln);
-            else if (op[0] == '%') emit1(c, OP_MOD, ln);
-            else compiler_error(c, "unknown compound operator", ln);
-            emit3(c, OP_STORE_NAME, idx, ln);
+            int local_slot = (c->scope_depth > 0)
+                             ? resolve_local(c, tgt->ident.name) : -1;
+            if (local_slot >= 0) {
+                /* OP_INC_LOCAL / OP_DEC_LOCAL: single opcode for ±1 on an int local. */
+                if (op[0] == '+' && !op[1] &&
+                    node->assign.value->type == NODE_INT_LIT &&
+                    node->assign.value->int_lit.value == 1) {
+                    emit3(c, OP_INC_LOCAL, (uint16_t)local_slot, ln); break;
+                }
+                if (op[0] == '-' && !op[1] &&
+                    node->assign.value->type == NODE_INT_LIT &&
+                    node->assign.value->int_lit.value == 1) {
+                    emit3(c, OP_DEC_LOCAL, (uint16_t)local_slot, ln); break;
+                }
+                emit3(c, OP_LOAD_LOCAL, (uint16_t)local_slot, ln);
+                compile_expr(c, node->assign.value);
+                if      (op[0] == '+') emit1(c, OP_ADD, ln);
+                else if (op[0] == '-') emit1(c, OP_SUB, ln);
+                else if (op[0] == '*') emit1(c, OP_MUL, ln);
+                else if (op[0] == '/') emit1(c, OP_DIV, ln);
+                else if (op[0] == '%') emit1(c, OP_MOD, ln);
+                else compiler_error(c, "unknown compound operator", ln);
+                emit3(c, OP_STORE_LOCAL, (uint16_t)local_slot, ln);
+            } else {
+                uint16_t idx = name_const(c, tgt->ident.name);
+                emit3(c, OP_LOAD_NAME, idx, ln);
+                compile_expr(c, node->assign.value);
+                if      (op[0] == '+') emit1(c, OP_ADD, ln);
+                else if (op[0] == '-') emit1(c, OP_SUB, ln);
+                else if (op[0] == '*') emit1(c, OP_MUL, ln);
+                else if (op[0] == '/') emit1(c, OP_DIV, ln);
+                else if (op[0] == '%') emit1(c, OP_MOD, ln);
+                else compiler_error(c, "unknown compound operator", ln);
+                emit3(c, OP_STORE_NAME, idx, ln);
+            }
         } else if ((tgt->type) == NODE_INDEX) {
             /* arr[i] += x  →  stack: [arr, i, arr, i] GET_INDEX [arr, i, old] x op SET_INDEX */
             compile_expr(c, tgt->index_expr.obj);   /* arr (for SET) */
@@ -611,9 +657,15 @@ static void compile_expr(Compiler *c, ASTNode *node) {
     }
 
     /* ---- identifiers ---- */
-    case NODE_IDENT:
+    case NODE_IDENT: {
+        /* Inside a function, prefer a local slot over an env hash lookup. */
+        if (c->scope_depth > 0) {
+            int slot = resolve_local(c, node->ident.name);
+            if (slot >= 0) { emit3(c, OP_LOAD_LOCAL, (uint16_t)slot, ln); break; }
+        }
         emit3(c, OP_LOAD_NAME, name_const(c, node->ident.name), ln);
         break;
+    }
 
     /* ---- binary ops ---- */
     case NODE_BINOP: {

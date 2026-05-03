@@ -22,41 +22,6 @@ let board = repeat 8 { repeat 8 { 0 } }  # 8x8 grid of zeros
 
 No index variable cluttering scope. If you need the index, use `for i in 0..n`.
 
----
-
-### 0.2 Quantifier Keywords — `every`, `any`, `none`
-
-Math-style quantifiers as first-class expressions over collections.
-
-```prism
-let nums = [2, 4, 6, 8]
-
-every x in nums: x % 2 == 0   # → true  (all even)
-any   x in nums: x > 5        # → true  (at least one)
-none  x in nums: x < 0        # → true  (no negatives)
-
-every student in class: student.grade >= 50   # readable predicate
-```
-
-Works on arrays, dicts, and `seq`. The `:` separates variable from condition.
-Lazy — stops as soon as result is determined.
-
----
-
-### 0.3 `between` Operator
-
-Readable range check without double comparisons.
-
-```prism
-x between 1 and 10       # equivalent to x >= 1 and x <= 10
-x between 0.0 and 1.0
-age between 18 and 65
-
-# Exclusive bounds with parens:
-x between (0 and 10)     # 0 < x < 10 (exclusive)
-```
-
----
 
 ### 0.4 `tally` Expression
 
@@ -70,42 +35,6 @@ tally words in sentence          # count word frequencies in a string
 
 Also works as a method: `arr.tally()`.
 Returns entries sorted by count descending by default.
-
----
-
-### 0.5 `where` Bindings in Expressions
-
-Define local names inline, right where you need them — no temp variables.
-
-```prism
-output area where area = width * height
-
-let result = (a + b) / c
-    where a = sensor_x * 2,
-          b = sensor_y * 2,
-          c = scale_factor
-
-# In return statements:
-return disc where disc = b**2 - 4*a*c
-```
-
-`where` bindings are scoped to the single expression they attach to.
-
----
-
-### 0.6 Aggregator Expressions — `sum`, `avg`, `count`, `product`
-
-Aggregate over a collection in one readable line.
-
-```prism
-sum     x in 1..100             # → 5050
-avg     x in scores             # → mean of scores array
-count   x in nums if x > 0      # → how many positives
-product x in 1..10              # → 10! = 3628800
-sum     x in students: x.grade  # field access in aggregation
-```
-
-These are expression-level keywords, not just method calls.
 
 ---
 
@@ -249,26 +178,6 @@ Both are stripped in `--release` builds (like assert).
 
 ---
 
-### 0.14 `probe` — Structured Debug Snapshots
-
-Capture a labeled snapshot of multiple values at once, printed as a table.
-
-```prism
-probe "loop state" { i, total, arr.len() }
-
-# Output:
-# ── probe: loop state (line 14) ──────────────
-#   i         = 3
-#   total     = 42
-#   arr.len() = 10
-# ─────────────────────────────────────────────
-```
-
-Like `inspect` but for multiple values at once, with a label.
-Completely silent in `--release` builds.
-
----
-
 ### 0.15 `notebook` Mode
 
 Run a `.pr` file with `prism --notebook file.pr` — every expression at the
@@ -309,23 +218,6 @@ Units are: `km`, `m`, `cm`, `mm`, `kg`, `g`, `ms`, `s`, `min`, `h`,
 `deg`, `rad`, `px`, `%`.
 Arithmetic between compatible units auto-converts.
 Incompatible unit operations produce a runtime error.
-
----
-
-### 0.17 `given` / `otherwise` — Readable Conditional Assignment
-
-A more expressive alternative to ternary for assignment contexts.
-
-```prism
-let label = "pass" given score >= 50 otherwise "fail"
-
-let msg = "good morning"  given hour < 12
-        | "good afternoon" given hour < 17
-        | "good evening"
-```
-
-The `|` chains multiple conditions like a pattern ladder.
-The last `|` line without `given` is the default.
 
 ---
 
@@ -730,14 +622,14 @@ Allow annotating variables and function parameters for documentation and
 future tooling (LSP, type checker). The runtime ignores them.
 
 ```prism
-let x: int = 5
-let name: str = "Alice"
+let int x = 5
+let str name = "Alice"
 
-func add(a: int, b: int) -> int {
+func add(int a, int b) -> int {
     return a + b
 }
 
-func greet(name: str, times: int = 1) -> str {
+func greet(str name, int times = 1) -> str {
     return name.repeat(times)
 }
 ```

@@ -76,22 +76,26 @@ static void vm_close_frame_env(CallFrame *frame) {
     frame->owns_env = 0;
 }
 
-/* Push / pop helpers (no bounds check in release, add in debug). */
+/* Push / pop helpers — bounds checked only in debug builds. */
 static inline void vm_push(VM *vm, Value v) {
+#ifndef NDEBUG
     if (vm->stack_top >= VM_STACK_MAX) {
         vm->had_error = 1;
         snprintf(vm->error_msg, sizeof(vm->error_msg), "stack overflow");
         return;
     }
+#endif
     vm->stack[vm->stack_top++] = v;
 }
 
 static inline Value vm_pop(VM *vm) {
+#ifndef NDEBUG
     if (vm->stack_top <= 0) {
         vm->had_error = 1;
         snprintf(vm->error_msg, sizeof(vm->error_msg), "stack underflow");
         return value_null();
     }
+#endif
     return vm->stack[--vm->stack_top];
 }
 
@@ -99,59 +103,12 @@ static inline Value vm_peek(VM *vm, int offset) {
     return vm->stack[vm->stack_top - 1 - offset];
 }
 
-static inline long long vm_fast_iadd(long long a, long long b) {
-#if defined(__x86_64__) || defined(__amd64__)
-    __asm__("addq %1, %0" : "+r"(a) : "r"(b));
-    return a;
-#else
-    return a + b;
-#endif
-}
-
-static inline long long vm_fast_isub(long long a, long long b) {
-#if defined(__x86_64__) || defined(__amd64__)
-    __asm__("subq %1, %0" : "+r"(a) : "r"(b));
-    return a;
-#else
-    return a - b;
-#endif
-}
-
-static inline long long vm_fast_imul(long long a, long long b) {
-#if defined(__x86_64__) || defined(__amd64__)
-    __asm__("imulq %1, %0" : "+r"(a) : "r"(b));
-    return a;
-#else
-    return a * b;
-#endif
-}
-
-static inline long long vm_fast_iand(long long a, long long b) {
-#if defined(__x86_64__) || defined(__amd64__)
-    __asm__("andq %1, %0" : "+r"(a) : "r"(b));
-    return a;
-#else
-    return a & b;
-#endif
-}
-
-static inline long long vm_fast_ior(long long a, long long b) {
-#if defined(__x86_64__) || defined(__amd64__)
-    __asm__("orq %1, %0" : "+r"(a) : "r"(b));
-    return a;
-#else
-    return a | b;
-#endif
-}
-
-static inline long long vm_fast_ixor(long long a, long long b) {
-#if defined(__x86_64__) || defined(__amd64__)
-    __asm__("xorq %1, %0" : "+r"(a) : "r"(b));
-    return a;
-#else
-    return a ^ b;
-#endif
-}
+static inline long long vm_fast_iadd(long long a, long long b) { return a + b; }
+static inline long long vm_fast_isub(long long a, long long b) { return a - b; }
+static inline long long vm_fast_imul(long long a, long long b) { return a * b; }
+static inline long long vm_fast_iand(long long a, long long b) { return a & b; }
+static inline long long vm_fast_ior (long long a, long long b) { return a | b; }
+static inline long long vm_fast_ixor(long long a, long long b) { return a ^ b; }
 
 /* Read a uint16_t from bytecode (little-endian) and advance ip by 2. */
 static inline uint16_t read16(CallFrame *f) {
@@ -2703,7 +2660,6 @@ int vm_run(VM *vm, Chunk *chunk) {
 #  define DISPATCH() do { if (PRISM_UNLIKELY(vm->had_error)) goto done;  \
                           uint8_t _op = frame->chunk->code[frame->ip++]; \
                           line = frame->chunk->lines[frame->ip - 1];     \
-                          gc_set_alloc_site(frame->chunk->source_file, line); \
                           goto *s_dt[_op]; } while(0)
 #else
 #  define DISPATCH() break  /* fallback for non-GCC compilers */
@@ -2720,6 +2676,13 @@ int vm_run(VM *vm, Chunk *chunk) {
 #define CONST(i)       (frame->chunk->constants[i])
 
     int line = 0;   /* hoisted so DISPATCH() macro can assign it */
+    /* Hoist call-arg stack buffers to function scope.
+     * Declaring them inside case blocks lets GCC -O2 overlap their storage
+     * with other case-block locals via lifetime merging — a computed-goto
+     * aliasing hazard that causes intermittent stack corruption.  At function
+     * scope their lifetimes are conservatively the whole function body. */
+    Value _arg_buf[VM_CALL_STACK_BUF];
+    Value _marg_buf[VM_CALL_STACK_BUF];
 #ifdef __GNUC__
     /* Prime the computed-goto pump: read the very first opcode and jump
      * directly to its handler label.  From here on, DISPATCH() at the end
@@ -3022,7 +2985,6 @@ int vm_run(VM *vm, Chunk *chunk) {
         case OP_POP_SCOPE: {
             Env *old = frame->env;
             frame->env = old->parent;
-            old->parent = NULL;
             env_free(old);
             DISPATCH();
         }
@@ -3211,7 +3173,6 @@ int vm_run(VM *vm, Chunk *chunk) {
         lbl_OP_CALL:
         case OP_CALL: {
             uint16_t argc = READ_U16();
-            Value _arg_buf[VM_CALL_STACK_BUF];
             Value *args = (argc <= VM_CALL_STACK_BUF) ? _arg_buf : malloc(argc * sizeof(Value));
             for (int i = argc-1; i >= 0; i--) args[i] = POP();
             Value callee = POP();
@@ -3240,8 +3201,21 @@ int vm_run(VM *vm, Chunk *chunk) {
                 new_frame->chunk = AS_FUNC(callee).chunk;
                 new_frame->ip = 0; new_frame->stack_base = vm->stack_top;
                 new_frame->env = fn_env; new_frame->root_env = fn_env;
-                new_frame->owns_env = 1; new_frame->owns_chunk = 0; new_frame->local_count = 0;
-                memset(new_frame->locals, 0, sizeof(new_frame->locals));
+                new_frame->owns_env = 1; new_frame->owns_chunk = 0;
+                /* Pre-fill local slots for params so OP_LOAD_LOCAL/OP_STORE_LOCAL
+                 * work without a hash-map lookup (the compiler emits locals for params). */
+                {
+                    int pc = AS_FUNC(callee).param_count;
+                    int lc = pc < VM_LOCALS_MAX ? pc : VM_LOCALS_MAX;
+                    for (int _pi = 0; _pi < lc; _pi++) {
+                        const char *pname = AS_FUNC(callee).params[_pi].name;
+                        new_frame->locals[_pi] = env_get(fn_env, pname);
+                    }
+                    if (lc < VM_LOCALS_MAX)
+                        memset(&new_frame->locals[lc], 0,
+                               (VM_LOCALS_MAX - lc) * sizeof(Value));
+                    new_frame->local_count = lc;
+                }
                 value_release(callee);
                 frame = new_frame; DISPATCH();
             } else {
@@ -3259,7 +3233,6 @@ int vm_run(VM *vm, Chunk *chunk) {
             uint16_t name_idx = READ_U16();
             uint16_t argc     = READ_U16();
             const char *method_name = AS_STR(CONST(name_idx));
-            Value _marg_buf[VM_CALL_STACK_BUF];
             Value *args = (argc <= VM_CALL_STACK_BUF) ? _marg_buf : malloc(argc * sizeof(Value));
             for (int i = argc-1; i >= 0; i--) args[i] = POP();
             Value obj = POP();
@@ -3497,24 +3470,19 @@ int vm_run(VM *vm, Chunk *chunk) {
         }
         lbl_OP_INC_LOCAL:
         case OP_INC_LOCAL: {
+            /* Tagged-int: v=(n<<1)|1  →  v+2=((n+1)<<1)|1.  No untagging, no release. */
             uint16_t slot = READ_U16();
-            if (PRISM_LIKELY(slot < VM_LOCALS_MAX && frame->locals[slot] &&
-                VAL_TYPE(frame->locals[slot]) == VAL_INT)) {
-                Value old = frame->locals[slot];
-                frame->locals[slot] = value_int(AS_INT(old) + 1);
-                value_release(old);
-            }
+            Value v = frame->locals[slot];
+            if (PRISM_LIKELY(slot < VM_LOCALS_MAX && IS_INT(v)))
+                frame->locals[slot] = v + 2;
             DISPATCH();
         }
         lbl_OP_DEC_LOCAL:
         case OP_DEC_LOCAL: {
             uint16_t slot = READ_U16();
-            if (PRISM_LIKELY(slot < VM_LOCALS_MAX && frame->locals[slot] &&
-                VAL_TYPE(frame->locals[slot]) == VAL_INT)) {
-                Value old = frame->locals[slot];
-                frame->locals[slot] = value_int(AS_INT(old) - 1);
-                value_release(old);
-            }
+            Value v = frame->locals[slot];
+            if (PRISM_LIKELY(slot < VM_LOCALS_MAX && IS_INT(v)))
+                frame->locals[slot] = v - 2;
             DISPATCH();
         }
 
@@ -3529,23 +3497,24 @@ int vm_run(VM *vm, Chunk *chunk) {
         /* ── specialized integer arithmetic (no type check) ──── */
         lbl_OP_ADD_INT:
         case OP_ADD_INT: {
+            /* Tagged-int bit trick: a=(n<<1)|1, b=(m<<1)|1 → a+b-1=((n+m)<<1)|1
+             * No untagging, no value_int(), no release needed (immediates). */
             Value b = POP(), a = POP();
-            PUSH(value_int(vm_fast_iadd(AS_INT(a), AS_INT(b))));
-            value_release(a); value_release(b);
+            PUSH(a + b - 1);
             DISPATCH();
         }
         lbl_OP_SUB_INT:
         case OP_SUB_INT: {
+            /* a-b+1 = ((n-m)<<1)|1 */
             Value b = POP(), a = POP();
-            PUSH(value_int(vm_fast_isub(AS_INT(a), AS_INT(b))));
-            value_release(a); value_release(b);
+            PUSH(a - b + 1);
             DISPATCH();
         }
         lbl_OP_MUL_INT:
         case OP_MUL_INT: {
+            /* Multiplication cannot use the additive trick; must untag. */
             Value b = POP(), a = POP();
             PUSH(value_int(vm_fast_imul(AS_INT(a), AS_INT(b))));
-            value_release(a); value_release(b);
             DISPATCH();
         }
         lbl_OP_DIV_INT:
@@ -3594,39 +3563,41 @@ int vm_run(VM *vm, Chunk *chunk) {
         /* ── specialized integer comparisons ─────────────────── */
         lbl_OP_LT_INT:
         case OP_LT_INT: {
+            /* Direct tagged-value comparison: (n<<1)|1 < (m<<1)|1 iff n < m. */
             Value b = POP(), a = POP();
-            PUSH(value_bool(AS_INT(a) < AS_INT(b) ? 1 : 0));
-            value_release(a); value_release(b); DISPATCH();
+            PUSH((intptr_t)a < (intptr_t)b ? VAL_SPEC_TRUE : VAL_SPEC_FALSE);
+            DISPATCH();
         }
         lbl_OP_LE_INT:
         case OP_LE_INT: {
             Value b = POP(), a = POP();
-            PUSH(value_bool(AS_INT(a) <= AS_INT(b) ? 1 : 0));
-            value_release(a); value_release(b); DISPATCH();
+            PUSH((intptr_t)a <= (intptr_t)b ? VAL_SPEC_TRUE : VAL_SPEC_FALSE);
+            DISPATCH();
         }
         lbl_OP_GT_INT:
         case OP_GT_INT: {
             Value b = POP(), a = POP();
-            PUSH(value_bool(AS_INT(a) > AS_INT(b) ? 1 : 0));
-            value_release(a); value_release(b); DISPATCH();
+            PUSH((intptr_t)a > (intptr_t)b ? VAL_SPEC_TRUE : VAL_SPEC_FALSE);
+            DISPATCH();
         }
         lbl_OP_GE_INT:
         case OP_GE_INT: {
             Value b = POP(), a = POP();
-            PUSH(value_bool(AS_INT(a) >= AS_INT(b) ? 1 : 0));
-            value_release(a); value_release(b); DISPATCH();
+            PUSH((intptr_t)a >= (intptr_t)b ? VAL_SPEC_TRUE : VAL_SPEC_FALSE);
+            DISPATCH();
         }
         lbl_OP_EQ_INT:
         case OP_EQ_INT: {
+            /* Equal tagged ints have identical bit patterns. */
             Value b = POP(), a = POP();
-            PUSH(value_bool(AS_INT(a) == AS_INT(b) ? 1 : 0));
-            value_release(a); value_release(b); DISPATCH();
+            PUSH(a == b ? VAL_SPEC_TRUE : VAL_SPEC_FALSE);
+            DISPATCH();
         }
         lbl_OP_NE_INT:
         case OP_NE_INT: {
             Value b = POP(), a = POP();
-            PUSH(value_bool(AS_INT(a) != AS_INT(b) ? 1 : 0));
-            value_release(a); value_release(b); DISPATCH();
+            PUSH(a != b ? VAL_SPEC_TRUE : VAL_SPEC_FALSE);
+            DISPATCH();
         }
 
         /* ── wide jumps (32-bit offset) ───────────────────────── */

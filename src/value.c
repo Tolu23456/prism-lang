@@ -14,8 +14,10 @@ static Value alloc_v(ValueType type) {
     vs->type = type; vs->ref_count = 1; gc_track_value((Value)vs); return (Value)vs;
 }
 
-Value value_retain(Value v) {
-    if (IS_PTR(v)) { ValueStruct *vs = AS_PTR(v); if (!vs->gc_immortal) vs->ref_count++; }
+/* Slow path: called only for heap-pointer Values (IS_PTR true).             */
+Value value_retain_ptr(Value v) {
+    ValueStruct *vs = AS_PTR(v);
+    if (!vs->gc_immortal) vs->ref_count++;
     return v;
 }
 
@@ -46,11 +48,11 @@ static void vs_free_internal(ValueStruct *vs) {
     free(vs);
 }
 
-void value_release(Value v) {
-    if (IS_PTR(v)) {
-        ValueStruct *vs = AS_PTR(v); if (vs->gc_immortal) return;
-        if (--vs->ref_count <= 0) { gc_untrack_value(v); vs_free_internal(vs); }
-    }
+/* Slow path: called only for heap-pointer Values (IS_PTR true).             */
+void value_release_ptr(Value v) {
+    ValueStruct *vs = AS_PTR(v);
+    if (vs->gc_immortal) return;
+    if (--vs->ref_count <= 0) { gc_untrack_value(v); vs_free_internal(vs); }
 }
 
 Value value_float(double d) { Value v = alloc_v(VAL_FLOAT); AS_FLOAT(v) = d; return v; }

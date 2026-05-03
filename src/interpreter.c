@@ -124,17 +124,19 @@ static void env_rehash(Env *env, int new_cap) {
     env->slots = calloc((size_t)new_cap, sizeof(EnvSlot));
     env->cap = new_cap;
     env->size = 0;
+    unsigned mask = (unsigned)new_cap - 1u;  /* new_cap is always power of 2 */
     for (int i = 0; i < old_c; i++) {
         if (!old[i].key) continue;
-        unsigned h = env_hash(old[i].key);
-        unsigned idx = h % new_cap;
-        while (env->slots[idx].key) idx = (idx + 1) % new_cap;
+        unsigned h   = env_hash(old[i].key);
+        unsigned idx = h & mask;
+        while (env->slots[idx].key) idx = (idx + 1u) & mask;
         env->slots[idx] = old[i];
         env->size++;
     }
     free(old);
 }
 
+__attribute__((noinline))
 Env *env_new(Env *parent) {
     Env *e    = calloc(1, sizeof(Env));
     e->refcount = 1;
@@ -146,6 +148,7 @@ Env *env_new(Env *parent) {
     return e;
 }
 
+__attribute__((noinline))
 Env *env_retain(Env *env) {
     if (env && env->parent) env->refcount++;
     return env;
@@ -197,13 +200,18 @@ void env_free_root(Env *env) {
     free(env);
 }
 
+/* env->cap is always a power of two (starts at ENV_INITIAL_CAP=16, doubles on
+ * rehash), so we replace every  h % cap  with  h & (cap-1)  — a single AND
+ * instruction instead of an expensive division.                               */
+
 Value env_get(Env *env, const char *name) {
     if (!name) return 0;
     unsigned h = env_hash(name);
     for (Env *e = env; e; e = e->parent) {
-        unsigned idx = h % e->cap;
+        unsigned mask = (unsigned)e->cap - 1u;
+        unsigned idx  = h & mask;
         for (int i = 0; i < e->cap; i++) {
-            unsigned curr = (idx + i) % e->cap;
+            unsigned curr = (idx + (unsigned)i) & mask;
             if (!e->slots[curr].key) break;
             if (strcmp(e->slots[curr].key, name) == 0) return value_retain(e->slots[curr].val);
         }
@@ -213,10 +221,11 @@ Value env_get(Env *env, const char *name) {
 
 bool env_set(Env *env, const char *name, Value val, bool is_const) {
     if (!name) return false;
-    unsigned h = env_hash(name);
-    unsigned idx = h % env->cap;
+    unsigned h    = env_hash(name);
+    unsigned mask = (unsigned)env->cap - 1u;
+    unsigned idx  = h & mask;
     for (int i = 0; i < env->cap; i++) {
-        unsigned curr = (idx + i) % env->cap;
+        unsigned curr = (idx + (unsigned)i) & mask;
         if (env->slots[curr].key && strcmp(env->slots[curr].key, name) == 0) {
             if (env->slots[curr].is_const) return false;
             value_release(env->slots[curr].val);
@@ -228,10 +237,11 @@ bool env_set(Env *env, const char *name, Value val, bool is_const) {
     }
     if (env->size * 4 >= env->cap * 3) {
         env_rehash(env, env->cap * 2);
-        idx = h % env->cap;
+        mask = (unsigned)env->cap - 1u;
+        idx  = h & mask;
     }
     for (int i = 0; i < env->cap; i++) {
-        unsigned curr = (idx + i) % env->cap;
+        unsigned curr = (idx + (unsigned)i) & mask;
         if (!env->slots[curr].key) {
             env->slots[curr].key = env_intern(name);
             env->slots[curr].val = value_retain(val);
@@ -247,9 +257,10 @@ bool env_assign(Env *env, const char *name, Value val) {
     if (!name) return false;
     unsigned h = env_hash(name);
     for (Env *e = env; e; e = e->parent) {
-        unsigned idx = h % e->cap;
+        unsigned mask = (unsigned)e->cap - 1u;
+        unsigned idx  = h & mask;
         for (int i = 0; i < e->cap; i++) {
-            unsigned curr = (idx + i) % e->cap;
+            unsigned curr = (idx + (unsigned)i) & mask;
             if (e->slots[curr].key && strcmp(e->slots[curr].key, name) == 0) {
                 if (e->slots[curr].is_const) return false;
                 value_release(e->slots[curr].val);
@@ -266,9 +277,10 @@ bool env_is_const(Env *env, const char *name) {
     if (!name) return false;
     unsigned h = env_hash(name);
     for (Env *e = env; e; e = e->parent) {
-        unsigned idx = h % e->cap;
+        unsigned mask = (unsigned)e->cap - 1u;
+        unsigned idx  = h & mask;
         for (int i = 0; i < e->cap; i++) {
-            unsigned curr = (idx + i) % e->cap;
+            unsigned curr = (idx + (unsigned)i) & mask;
             if (!e->slots[curr].key) break;
             if (strcmp(e->slots[curr].key, name) == 0) return e->slots[curr].is_const;
         }
