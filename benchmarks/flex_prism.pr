@@ -1,0 +1,114 @@
+# Flexibility benchmark: Prism
+# Tests: closures, higher-order functions, match, f-strings,
+#        first-class functions, functional pipeline, sets, dicts
+
+print("=== Prism Flexibility Benchmark ===")
+print("")
+
+# ── 1. Closures & captured state ─────────────────────────────
+func make_counter(start) {
+    let n = start
+    func inc(step) { n = n + step; return n }
+    return inc
+}
+let ctr = make_counter(0)
+ctr(1); ctr(2); ctr(3)
+print("1. Closures:            ctr after +1+2+3 =", ctr(0))
+
+# ── 2. First-class functions / higher-order ───────────────────
+func compose(f, g) { return func(x) { return f(g(x)) } }
+let double = func(x) { return x * 2 }
+let inc    = func(x) { return x + 1 }
+let dbl_then_inc = compose(inc, double)
+print("2. compose(inc,double)(5) =", dbl_then_inc(5))
+
+# ── 3. Recursion + accumulator ────────────────────────────────
+func flatten(lst, acc) {
+    for item in lst {
+        if type(item) == "array" {
+            flatten(item, acc)
+        } else {
+            acc.add(item)
+        }
+    }
+    return acc
+}
+let nested = [1, [2, [3, 4]], [5, 6]]
+let flat = flatten(nested, [])
+print("3. Flatten nested array:", flat)
+
+# ── 4. OOP via closures (Prism idiomatic style) ───────────────
+func make_animal(name, sound) {
+    func speak() { return f"{name} says {sound}" }
+    func get_name() { return name }
+    return {"speak": speak, "name": get_name}
+}
+func make_dog(name) {
+    let base = make_animal(name, "woof")
+    func fetch(item) { return f"{name} fetches the {item}!" }
+    return {"speak": base["speak"], "name": base["name"], "fetch": fetch}
+}
+let d = make_dog("Rex")
+print("4a. Closure OOP speak():", d["speak"]())
+print("4b. Method:             ", d["fetch"]("ball"))
+
+# ── 5. Pattern matching ───────────────────────────────────────
+func classify(n) {
+    match n {
+        when 0 { return "zero" }
+        when 1 { return "one or two" }
+        when 2 { return "one or two" }
+        else {
+            if n >= 3 and n <= 10 { return "three to ten" }
+            return "large"
+        }
+    }
+}
+print("5. Pattern match 0:", classify(0), "| 7:", classify(7), "| 99:", classify(99))
+
+# ── 6. Dict + dynamic dispatch ───────────────────────────────
+let ops = {
+    "add": func(a, b) { return a + b },
+    "mul": func(a, b) { return a * b },
+    "pow": func(a, b) { return a ** b }
+}
+print("6. Dict dispatch add(3,4)=", ops["add"](3, 4), " pow(2,8)=", ops["pow"](2, 8))
+
+# ── 7. F-strings & string interpolation ──────────────────────
+let fwords = ["apple", "banana", "cherry"]
+let report = ""
+let idx = 0
+for w in fwords {
+    report = report + f"[{idx}]={w} "
+    idx += 1
+}
+print("7. F-string loop:", report.strip())
+
+# ── 8. Map / filter / reduce (manual) ────────────────────────
+func map_f(lst, f)    { let r = []; for x in lst { r.add(f(x)) } return r }
+func filter_f(lst, f) { let r = []; for x in lst { if f(x) { r.add(x) } } return r }
+func reduce_f(lst, f, init) { let a = init; for x in lst { a = f(a, x) } return a }
+
+let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+let evens   = filter_f(nums, func(x) { return x % 2 == 0 })
+let doubled = map_f(evens, func(x) { return x * 2 })
+let total   = reduce_f(doubled, func(a, b) { return a + b }, 0)
+print("8. map/filter/reduce sum of doubled evens:", total)
+
+# ── 9. Tuple + index access ───────────────────────────────────
+func stats(lst) {
+    let mn = lst[0]; let mx = lst[0]; let s = 0
+    for v in lst { if v < mn { mn = v }; if v > mx { mx = v }; s += v }
+    return (mn, mx, s / len(lst))
+}
+let res = stats([3, 1, 4, 1, 5, 9, 2, 6])
+let lo = res[0]; let hi = res[1]; let avg = res[2]
+print(f"9. Tuple stats: min={lo} max={hi} avg={avg}")
+
+# ── 10. Sets & membership ─────────────────────────────────────
+let sa = {1, 2, 3, 4, 5}
+let sb = {4, 5, 6, 7, 8}
+print("10. Set ops: union len=", len(sa | sb), " intersect=", sa & sb, " diff=", sa - sb)
+
+print("")
+print("=== Flexibility benchmark complete ===")
