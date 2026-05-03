@@ -115,9 +115,21 @@ void gc_init(PrismGC *gc) { (void)gc; }
 void gc_shutdown(PrismGC *gc) { (void)gc; }
 void gc_mark_chunk(PrismGC *gc, Chunk *c) { if(!c)return; for(int i=0;i<c->const_count;i++) gc_mark_value(gc, c->constants[i]); }
 void gc_reset_marks(PrismGC *gc) { (void)gc; }
-size_t gc_collect_minor(PrismGC *gc, Env *e, VM *v, Chunk *c) { (void)gc;(void)e;(void)v;(void)c; return 0; }
-size_t gc_collect_major(PrismGC *gc, Env *e, VM *v, Chunk *c) { (void)gc;(void)e;(void)v;(void)c; return 0; }
-size_t gc_collect_sweep(PrismGC *gc, Env *e, VM *v, Chunk *c) { (void)gc;(void)e;(void)v;(void)c; return 0; }
+
+/* Minor/major/sweep now perform a full mark-and-sweep cycle. */
+size_t gc_collect_minor(PrismGC *gc, Env *e, VM *v, Chunk *c) {
+    gc_collect_audit(gc, e, v, c);
+    return 0;
+}
+size_t gc_collect_major(PrismGC *gc, Env *e, VM *v, Chunk *c) {
+    gc_collect_audit(gc, e, v, c);
+    return 0;
+}
+size_t gc_collect_sweep(PrismGC *gc, Env *e, VM *v, Chunk *c) {
+    gc_collect_audit(gc, e, v, c);
+    return 0;
+}
+
 void gc_push_root(PrismGC *gc, Value v) { (void)gc;(void)v; }
 void gc_pop_root(PrismGC *gc) { (void)gc; }
 void gc_set_policy(PrismGC *gc, GCPolicy p) { (void)gc;(void)p; }

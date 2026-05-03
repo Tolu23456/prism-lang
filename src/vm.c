@@ -25,8 +25,55 @@
 
 /* ================================================================== helpers */
 
+/* Forward declaration needed by vm_error for stack/frame unwinding. */
+static void vm_close_frame_env(CallFrame *frame);
+
 static void vm_error(VM *vm, const char *msg, int line) {
     if (vm->had_error) return;
+
+    /* If execution is inside a try block, divert the error to the catch handler
+     * instead of terminating.  This avoids the overhead of setjmp/longjmp while
+     * still providing correct exception semantics. */
+    if (vm->try_depth > 0) {
+        VMTryFrame *tf = &vm->try_frames[vm->try_depth - 1];
+
+        /* Save the full error message before we reset state. */
+        snprintf(vm->exception_msg, sizeof(vm->exception_msg),
+                 "line %d: %s", line, msg);
+
+        /* Unwind any call frames that were pushed after the try was entered. */
+        while (vm->frame_count > tf->frame_count) {
+            CallFrame *f = &vm->frames[vm->frame_count - 1];
+            for (int _li = 0; _li < f->local_count; _li++) {
+                if (f->locals[_li]) {
+                    value_release(f->locals[_li]);
+                    f->locals[_li] = 0;
+                }
+            }
+            f->local_count = 0;
+            vm_close_frame_env(f);
+            if (f->func) { value_release(f->func); f->func = 0; }
+            vm->frame_count--;
+        }
+
+        /* Discard any stack values pushed since the try block began. */
+        while (vm->stack_top > tf->stack_top)
+            value_release(vm->stack[--vm->stack_top]);
+
+        /* Redirect the current frame's instruction pointer to the catch handler. */
+        vm->frames[vm->frame_count - 1].ip = tf->handler_ip;
+
+        /* Push the exception message string as the caught error value. */
+        vm->stack[vm->stack_top++] = value_string(vm->exception_msg);
+
+        /* Pop this try frame — it has been consumed. */
+        vm->try_depth--;
+
+        /* Signal DISPATCH() to re-sync its local `frame` pointer. */
+        vm->exception_handled = 1;
+        return;
+    }
+
     vm->had_error = 1;
     snprintf(vm->error_msg, sizeof(vm->error_msg), "line %d: %s", line, msg);
 }
@@ -2656,10 +2703,18 @@ int vm_run(VM *vm, Chunk *chunk) {
         s_dt[OP_NULL_COAL]         = &&lbl_OP_NULL_COAL;
         s_dt[OP_PIPE]              = &&lbl_OP_PIPE;
         s_dt[OP_EXPECT]            = &&lbl_OP_EXPECT;
+        s_dt[OP_TRY_BEGIN]         = &&lbl_OP_TRY_BEGIN;
+        s_dt[OP_TRY_END]           = &&lbl_OP_TRY_END;
+        s_dt[OP_THROW]             = &&lbl_OP_THROW;
     }
-#  define DISPATCH() do { if (PRISM_UNLIKELY(vm->had_error)) goto done;  \
-                          uint8_t _op = frame->chunk->code[frame->ip++]; \
-                          line = frame->chunk->lines[frame->ip - 1];     \
+#  define DISPATCH() do { if (PRISM_UNLIKELY(vm->had_error)) goto done;            \
+                          if (PRISM_UNLIKELY(vm->exception_handled)) {             \
+                              vm->exception_handled = 0;                           \
+                              frame = &vm->frames[vm->frame_count - 1]; }          \
+                          if (PRISM_UNLIKELY((++vm->instructions_executed & 65535) == 0)) \
+                              gc_collect_minor(vm->gc, frame->env, vm, frame->chunk);     \
+                          uint8_t _op = frame->chunk->code[frame->ip++];           \
+                          line = frame->chunk->lines[frame->ip - 1];               \
                           goto *s_dt[_op]; } while(0)
 #else
 #  define DISPATCH() break  /* fallback for non-GCC compilers */
@@ -3795,6 +3850,36 @@ int vm_run(VM *vm, Chunk *chunk) {
             else if (strcmp(tname,"tuple")==0)  match_ok2 = (vt == VAL_TUPLE);
             else match_ok2 = false;
             PUSH(value_bool(match_ok2 ? 1 : 0));
+            DISPATCH();
+        }
+
+        /* ── try/catch/throw ─────────────────────────────────── */
+        lbl_OP_TRY_BEGIN:
+        case OP_TRY_BEGIN: {
+            /* operand: signed 16-bit offset from current ip to catch handler */
+            int16_t catch_off = (int16_t)READ_U16();
+            if (PRISM_LIKELY(vm->try_depth < VM_TRY_MAX)) {
+                VMTryFrame *tf = &vm->try_frames[vm->try_depth++];
+                tf->handler_ip  = frame->ip + (int)catch_off;
+                tf->frame_count = vm->frame_count;
+                tf->stack_top   = vm->stack_top;
+            }
+            DISPATCH();
+        }
+
+        lbl_OP_TRY_END:
+        case OP_TRY_END: {
+            if (vm->try_depth > 0) vm->try_depth--;
+            DISPATCH();
+        }
+
+        lbl_OP_THROW:
+        case OP_THROW: {
+            Value exc = POP();
+            char *exc_str = value_to_string(exc);
+            value_release(exc);
+            vm_error(vm, exc_str ? exc_str : "unknown error", line);
+            if (exc_str) free(exc_str);
             DISPATCH();
         }
 

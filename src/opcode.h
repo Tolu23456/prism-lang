@@ -149,6 +149,11 @@ typedef enum {
     /* ── expect / assert ────────────────────────────────────── */
     OP_EXPECT,              /* operand = message const idx; assert top truthy */
 
+    /* ── exception handling ──────────────────────────────────── */
+    OP_TRY_BEGIN,           /* operand = signed16 offset to catch handler */
+    OP_TRY_END,             /* pop the innermost try frame           */
+    OP_THROW,               /* pop value, throw as exception         */
+
     /* ── halt ───────────────────────────────────────────────── */
     OP_HALT,
 
@@ -174,6 +179,7 @@ static inline int opcode_has_operand(Opcode op) {
         case OP_IMPORT:        case OP_LINK_STYLE:
         case OP_IS_TYPE:       case OP_MATCH_TYPE:
         case OP_EXPECT:        case OP_TAIL_CALL:
+        case OP_TRY_BEGIN:
             return 1;
         default:
             return 0;
@@ -275,6 +281,9 @@ static inline const char *opcode_name(Opcode op) {
         case OP_NULL_COAL:           return "NULL_COAL";
         case OP_PIPE:                return "PIPE";
         case OP_EXPECT:              return "EXPECT";
+        case OP_TRY_BEGIN:           return "TRY_BEGIN";
+        case OP_TRY_END:             return "TRY_END";
+        case OP_THROW:               return "THROW";
         case OP_HALT:                return "HALT";
         default:                     return "UNKNOWN";
     }

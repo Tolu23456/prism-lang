@@ -10,6 +10,7 @@
 #define VM_STACK_MAX     4096
 #define VM_FRAME_MAX      512
 #define VM_LOCALS_MAX     256   /* max local variable slots per frame */
+#define VM_TRY_MAX         64   /* max nested try/catch blocks */
 
 /* A call frame tracks execution inside one function invocation. */
 typedef struct CallFrame {
@@ -31,6 +32,13 @@ typedef struct CallFrame {
     /* Name mapping for locals (used by debugger / error messages) */
     const char   *local_names[VM_LOCALS_MAX];
 } CallFrame;
+
+/* One record per active try/catch block, pushed by OP_TRY_BEGIN. */
+typedef struct {
+    int handler_ip;   /* chunk ip of the catch handler */
+    int frame_count;  /* vm->frame_count when OP_TRY_BEGIN executed */
+    int stack_top;    /* vm->stack_top when OP_TRY_BEGIN executed */
+} VMTryFrame;
 
 typedef struct VM {
     Value stack[VM_STACK_MAX];
@@ -61,6 +69,12 @@ typedef struct VM {
     Chunk         **mod_chunks;
     int             mod_chunks_count;
     int             mod_chunks_cap;
+
+    /* Try/catch exception handling */
+    VMTryFrame      try_frames[VM_TRY_MAX];
+    int             try_depth;
+    int             exception_handled; /* set by vm_error when exception caught by try */
+    char            exception_msg[512];
 } VM;
 
 VM  *vm_new(void);

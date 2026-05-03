@@ -16,7 +16,9 @@ void chunk_write(Chunk *c, uint8_t byte, int line) {
     c->code[c->count] = byte; c->lines[c->count] = line; c->count++;
 }
 int chunk_add_const(Chunk *c, Value v) { if (c->const_count >= c->const_cap) { c->const_cap = (c->const_cap < 8) ? 8 : c->const_cap * 2; c->constants = realloc(c->constants, c->const_cap * sizeof(Value)); } c->constants[c->const_count] = value_retain(v); return c->const_count++; }
-int chunk_add_const_str(Chunk *c, const char *s) { return chunk_add_const(c, value_string(s)); }
+/* Use interned strings for name/identifier constants so that env lookups can
+ * use pointer equality (== instead of strcmp) as a fast path. */
+int chunk_add_const_str(Chunk *c, const char *s) { return chunk_add_const(c, value_string_intern(s)); }
 void chunk_emit(Chunk *c, uint8_t byte, int line) { chunk_write(c, byte, line); }
 void chunk_emit16(Chunk *c, uint16_t val, int line) { chunk_write(c, (uint8_t)(val & 0xff), line); chunk_write(c, (uint8_t)((val >> 8) & 0xff), line); }
 void chunk_patch16(Chunk *c, int offset, uint16_t val) { c->code[offset] = (uint8_t)(val & 0xff); c->code[offset+1] = (uint8_t)((val >> 8) & 0xff); }

@@ -38,10 +38,34 @@ The **"Start application"** workflow runs `make && ./prism examples/hello.pr`, w
 
 ## Key Language Features
 - Closures, classes with inheritance
-- Pattern matching, f-strings
-- Generational mark-and-sweep garbage collector with adaptive GC policies
+- **Ternary operator**: `cond ? then_val : else_val` (compiler fixed)
+- **`repeat N { }`** — iterate N times; supports `break`/`continue`
+- **`repeat while cond { }`** / **`repeat until cond { }`** — condition-controlled loops
+- **`match val { when P { } else { } }`** — pattern-matching compiled as if-elif-else chain
+- **`try { } catch e { }`** — structured exception handling with proper stack unwinding
+- **`throw expr`** — raise any value as an exception
+- F-strings, pattern matching, closures, classes with inheritance
+- Generational mark-and-sweep GC (minor/major/sweep now active, periodic every 64k instructions)
 - X11-native GUI toolkit with PSS (Prism StyleSheet) styling engine
 - JIT compilation for hot integer loops
+
+## Performance Optimisations (recent)
+- **Interned name constants**: `chunk_add_const_str` uses `value_string_intern` so VM name lookups
+  benefit from pointer-equality fast path (`key == name`) before `strcmp` in `env_get`/`env_assign`/`env_is_const`.
+- **Computed-goto dispatch** (GCC): 15–25% speedup over switch-based dispatch.
+- **Periodic GC**: `gc_collect_minor` called every 65,536 instructions to avoid unbounded heap growth.
+- **CFLAGS**: `-O2 -fno-gcse -march=native -fomit-frame-pointer -fno-strict-aliasing -DNDEBUG`
+
+## Exception Handling Architecture
+`vm_error` checks `vm->try_depth`. If inside a try block it:
+1. Saves the error message to `vm->exception_msg`
+2. Unwinds call frames back to the try-frame boundary
+3. Discards extra stack values pushed since the try began
+4. Redirects `frame->ip` to the catch handler
+5. Pushes the exception string onto the stack
+6. Sets `vm->exception_handled = 1` (no `had_error`)
+
+`DISPATCH()` re-syncs the local `frame` pointer when `exception_handled` is set.
 
 ## Module Import Syntax
 Prism supports a concise `%` import syntax with **automatic tree-shaking** —

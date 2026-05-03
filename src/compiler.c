@@ -432,9 +432,12 @@ static void compile_node(Compiler *c, ASTNode *node) {
     /* ---- break ---- */
     case NODE_BREAK: {
         if (!c->loop) { compiler_error(c, "break outside loop", ln); break; }
-        /* for for-in loops: pop iter-array and index off the stack */
-        if (c->loop->for_in)
-            emit3(c, OP_POP_N, 2, ln);
+        /* for_in holds the count of extra stack items to pop on break:
+         *   2 = for-in loop (iter-array + index)
+         *   1 = repeat N loop (counter)
+         *   0 = while loop (nothing extra) */
+        if (c->loop->for_in > 0)
+            emit3(c, OP_POP_N, (uint16_t)c->loop->for_in, ln);
         int patch = emit_jump(c, OP_JUMP, ln);
         if (c->loop->break_count < MAX_BREAK_PATCHES)
             c->loop->break_patches[c->loop->break_count++] = patch;
@@ -507,7 +510,7 @@ static void compile_node(Compiler *c, ASTNode *node) {
     case NODE_FOR_IN: {
         LoopCtx loop = {0};
         loop.outer = c->loop;
-        loop.for_in = 1;
+        loop.for_in = 2;  /* break must pop: iter-array + index */
         c->loop = &loop;
 
         /* compile iterable → GET_ITER puts an array on stack */
@@ -591,6 +594,152 @@ static void compile_node(Compiler *c, ASTNode *node) {
         emit3(c, OP_MAKE_FUNCTION, (uint16_t)idx, ln);
         uint16_t name_idx = name_const(c, node->func_decl.name);
         emit3(c, OP_DEFINE_NAME, name_idx, ln);
+        break;
+    }
+
+    /* ---- repeat N / repeat while / repeat until ---- */
+    case NODE_REPEAT: {
+        LoopCtx loop = {0};
+        loop.outer = c->loop;
+        c->loop = &loop;
+
+        if (node->repeat_stmt.count) {
+            /* repeat N { body }
+             * Stack: [counter]  (starts at N, decrements to 0)
+             * break must pop the counter → for_in = 1 */
+            loop.for_in = 1;
+            compile_expr(c, node->repeat_stmt.count);
+
+            int loop_top = c->chunk->count;
+            loop.loop_start = loop_top;
+
+            emit1(c, OP_DUP, ln);
+            emit3(c, OP_PUSH_INT_IMM, 0, ln);
+            emit1(c, OP_GT, ln);
+            int exit_patch = emit_jump(c, OP_JUMP_IF_FALSE, ln);
+
+            emit3(c, OP_PUSH_INT_IMM, 1, ln);
+            emit1(c, OP_SUB, ln);  /* decrement before body */
+
+            compile_node(c, node->repeat_stmt.body);
+
+            for (int i = 0; i < loop.continue_count; i++) {
+                int off = loop.continue_patches[i];
+                chunk_patch16(c->chunk, off,
+                              (uint16_t)(int16_t)(loop_top - (off + 2)));
+            }
+            emit_loop(c, loop_top, ln);
+            patch_jump(c, exit_patch);
+            emit1(c, OP_POP, ln);  /* pop counter (now 0) */
+
+            for (int i = 0; i < loop.break_count; i++)
+                patch_jump(c, loop.break_patches[i]);
+        } else {
+            /* repeat while/until cond { body } — like a while loop */
+            loop.for_in = 0;
+            int top = c->chunk->count;
+            loop.loop_start = top;
+
+            compile_expr(c, node->repeat_stmt.cond);
+            int exit_patch = node->repeat_stmt.until
+                             ? emit_jump(c, OP_JUMP_IF_TRUE,  ln)
+                             : emit_jump(c, OP_JUMP_IF_FALSE, ln);
+
+            compile_node(c, node->repeat_stmt.body);
+
+            for (int i = 0; i < loop.continue_count; i++) {
+                int off = loop.continue_patches[i];
+                chunk_patch16(c->chunk, off,
+                              (uint16_t)(int16_t)(top - (off + 2)));
+            }
+            emit_loop(c, top, ln);
+            patch_jump(c, exit_patch);
+
+            for (int i = 0; i < loop.break_count; i++)
+                patch_jump(c, loop.break_patches[i]);
+        }
+
+        c->loop = loop.outer;
+        break;
+    }
+
+    /* ---- match / when ---- */
+    case NODE_MATCH: {
+        /* Compile as a chain of equality checks:
+         *   match value { when P1 { B1 } when P2 { B2 } else { BE } }
+         * Stack layout: [match_val] kept until a branch is taken or no match.
+         */
+        compile_expr(c, node->match_stmt.value);
+
+        int end_patches[128];
+        int end_patch_count = 0;
+
+        for (int i = 0; i < node->match_stmt.count; i++) {
+            if (!node->match_stmt.patterns[i]) continue; /* skip NULL sentinels */
+            emit1(c, OP_DUP, ln);
+            compile_expr(c, node->match_stmt.patterns[i]);
+            emit1(c, OP_EQ, ln);
+            int next_patch = emit_jump(c, OP_JUMP_IF_FALSE, ln);
+            emit1(c, OP_POP, ln);  /* pop match_val — branch taken */
+            compile_node(c, node->match_stmt.bodies[i]);
+            if (end_patch_count < 128)
+                end_patches[end_patch_count++] = emit_jump(c, OP_JUMP, ln);
+            patch_jump(c, next_patch);
+        }
+
+        /* else / default branch */
+        emit1(c, OP_POP, ln);  /* pop match_val */
+        if (node->match_stmt.else_body)
+            compile_node(c, node->match_stmt.else_body);
+
+        for (int i = 0; i < end_patch_count; i++)
+            patch_jump(c, end_patches[i]);
+        break;
+    }
+
+    /* ---- throw ---- */
+    case NODE_THROW:
+        compile_expr(c, node->throw_stmt.value);
+        emit1(c, OP_THROW, ln);
+        break;
+
+    /* ---- try / catch / finally ---- */
+    case NODE_TRY_CATCH: {
+        /* Bytecode layout:
+         *   OP_TRY_BEGIN <offset → catch_handler>
+         *   <try body>
+         *   OP_TRY_END
+         *   OP_JUMP <offset → end>
+         * catch_handler:
+         *   [OP_DEFINE_NAME catchvar | OP_POP]
+         *   <catch body>
+         * end:
+         *   [finally body]
+         */
+        int try_begin_patch = emit_jump(c, OP_TRY_BEGIN, ln);
+
+        compile_node(c, node->try_catch.try_body);
+
+        emit1(c, OP_TRY_END, ln);
+        int end_patch = emit_jump(c, OP_JUMP, ln);
+
+        /* catch handler lands here; exception string is on top of stack */
+        patch_jump(c, try_begin_patch);
+
+        if (node->try_catch.catch_var) {
+            uint16_t cv_idx = name_const(c, node->try_catch.catch_var);
+            emit3(c, OP_DEFINE_NAME, cv_idx, ln);
+        } else {
+            emit1(c, OP_POP, ln);
+        }
+
+        if (node->try_catch.catch_body)
+            compile_node(c, node->try_catch.catch_body);
+
+        patch_jump(c, end_patch);
+
+        if (node->try_catch.finally_body)
+            compile_node(c, node->try_catch.finally_body);
         break;
     }
 
@@ -798,21 +947,14 @@ static void compile_expr(Compiler *c, ASTNode *node) {
         break;
     }
 
-    /* ---- ternary ---- */
+    /* ---- ternary: cond ? then_val : else_val ---- */
     case NODE_TERNARY: {
-        /* cond ? then : else — reuse if_stmt fields via binop.left/right */
-        compile_expr(c, node->binop.left);   /* condition */
+        compile_expr(c, node->ternary.cond);
         int else_patch = emit_jump(c, OP_JUMP_IF_FALSE, ln);
-        compile_expr(c, node->binop.right);  /* then */
+        compile_expr(c, node->ternary.then_val);
         int end_patch  = emit_jump(c, OP_JUMP, ln);
         patch_jump(c, else_patch);
-        /* else branch stored in... hmm, NODE_TERNARY needs 3 children.
-         * Check how the parser stores it. */
-        /* The parser stores ternary as a binop-like with 3 children using
-         * node->binop.left=cond, and two more fields. Actually the parser
-         * uses a special path. Let me check ast.h... NODE_TERNARY isn't
-         * explicitly listed as having unique fields; it reuses binop.
-         * Looking at the interpreter code for NODE_TERNARY will clarify. */
+        compile_expr(c, node->ternary.else_val);
         patch_jump(c, end_patch);
         break;
     }

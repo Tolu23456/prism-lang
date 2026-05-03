@@ -213,7 +213,9 @@ Value env_get(Env *env, const char *name) {
         for (int i = 0; i < e->cap; i++) {
             unsigned curr = (idx + (unsigned)i) & mask;
             if (!e->slots[curr].key) break;
-            if (strcmp(e->slots[curr].key, name) == 0) return value_retain(e->slots[curr].val);
+            /* Pointer equality fast path: interned names always share the same address. */
+            if (e->slots[curr].key == name || strcmp(e->slots[curr].key, name) == 0)
+                return value_retain(e->slots[curr].val);
         }
     }
     return 0;
@@ -226,7 +228,8 @@ bool env_set(Env *env, const char *name, Value val, bool is_const) {
     unsigned idx  = h & mask;
     for (int i = 0; i < env->cap; i++) {
         unsigned curr = (idx + (unsigned)i) & mask;
-        if (env->slots[curr].key && strcmp(env->slots[curr].key, name) == 0) {
+        if (env->slots[curr].key &&
+            (env->slots[curr].key == name || strcmp(env->slots[curr].key, name) == 0)) {
             if (env->slots[curr].is_const) return false;
             value_release(env->slots[curr].val);
             env->slots[curr].val = value_retain(val);
@@ -261,7 +264,8 @@ bool env_assign(Env *env, const char *name, Value val) {
         unsigned idx  = h & mask;
         for (int i = 0; i < e->cap; i++) {
             unsigned curr = (idx + (unsigned)i) & mask;
-            if (e->slots[curr].key && strcmp(e->slots[curr].key, name) == 0) {
+            if (e->slots[curr].key &&
+                (e->slots[curr].key == name || strcmp(e->slots[curr].key, name) == 0)) {
                 if (e->slots[curr].is_const) return false;
                 value_release(e->slots[curr].val);
                 e->slots[curr].val = value_retain(val);
@@ -282,7 +286,8 @@ bool env_is_const(Env *env, const char *name) {
         for (int i = 0; i < e->cap; i++) {
             unsigned curr = (idx + (unsigned)i) & mask;
             if (!e->slots[curr].key) break;
-            if (strcmp(e->slots[curr].key, name) == 0) return e->slots[curr].is_const;
+            if (e->slots[curr].key == name || strcmp(e->slots[curr].key, name) == 0)
+                return e->slots[curr].is_const;
         }
     }
     return false;
