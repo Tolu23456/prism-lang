@@ -9,7 +9,7 @@
 
 /* ================================================================== tuning */
 
-#define JIT_HOT_THRESHOLD   200      /* backward-jump count before JIT fires  */
+#define JIT_HOT_THRESHOLD    50      /* backward-jump count before JIT fires  */
 #define JIT_MAX_IR          512      /* max IR instructions per trace          */
 #define JIT_MAX_REGS        32       /* register-file slots (0-15 vars, 16-31 temps) */
 #define JIT_VAR_SLOTS       16       /* first N slots are named-variable slots */
@@ -82,6 +82,8 @@ typedef struct JitTrace {
     /* variable ↔ slot mapping (slots 0..var_count-1) */
     const char *vars[JIT_VAR_SLOTS];
     int         var_count;
+    /* -1 = env lookup by name, >= 0 = frame->locals[slot] */
+    int16_t     var_local_slots[JIT_VAR_SLOTS];
 
     /* generated native code */
     uint8_t *code;         /* mmap'd R+W+X buffer                            */
@@ -136,8 +138,9 @@ JitTrace *jit_on_backward_jump(JIT *jit, VM *vm, Env *env,
                                 int jump_ip, int header_ip, Chunk *chunk);
 
 /* Execute a compiled trace.
+ * locals = frame->locals (for slot-based variables), may be NULL for env-only traces.
  * Returns JIT_EXIT_LOOP_DONE or JIT_EXIT_GUARD_FAIL. */
-int       jit_execute(JitTrace *trace, VM *vm, Env *env);
+int       jit_execute(JitTrace *trace, VM *vm, Env *env, Value *locals);
 
 /* Print JIT statistics to stderr. */
 void      jit_print_stats(JIT *jit);

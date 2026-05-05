@@ -13,7 +13,7 @@
 
 #define MAX_BREAK_PATCHES    256
 #define MAX_CONTINUE_PATCHES 256
-#define MAX_LOCALS           256
+#define MAX_LOCALS            64
 
 typedef struct {
     const char *name;
@@ -266,6 +266,7 @@ static Chunk *compile_function_chunk(Compiler *parent, ASTNode *body, const char
     /* If the body never defined a named variable or a nested closure, the VM
      * can skip env_new() on every call and use the closure env directly.      */
     chunk->no_env = c.has_env_op ? 0 : 1;
+    chunk->local_count_max = (uint16_t)c.local_count;
 
     return chunk;
 }

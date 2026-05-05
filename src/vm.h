@@ -9,7 +9,7 @@
 
 #define VM_STACK_MAX     4096
 #define VM_FRAME_MAX     2048
-#define VM_LOCALS_MAX     256   /* max local variable slots per frame */
+#define VM_LOCALS_MAX      64   /* max local variable slots per frame */
 #define VM_TRY_MAX         64   /* max nested try/catch blocks */
 
 /* A call frame tracks execution inside one function invocation. */
@@ -28,9 +28,6 @@ typedef struct CallFrame {
      * Compiler emits OP_LOAD_LOCAL / OP_STORE_LOCAL with slot indices. */
     Value locals[VM_LOCALS_MAX];
     int           local_count;
-
-    /* Name mapping for locals (used by debugger / error messages) */
-    const char   *local_names[VM_LOCALS_MAX];
 } CallFrame;
 
 /* One record per active try/catch block, pushed by OP_TRY_BEGIN. */

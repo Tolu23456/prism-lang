@@ -108,11 +108,27 @@ static void cache_put(JIT *jit, JitTrace *trace) {
  * Returns -1 if the variable table is full. */
 static int var_slot_alloc(JitTrace *trace, const char *name) {
     for (int i = 0; i < trace->var_count; i++) {
-        if (trace->vars[i] == name || strcmp(trace->vars[i], name) == 0)
+        if (trace->vars[i] && (trace->vars[i] == name || strcmp(trace->vars[i], name) == 0))
             return i;
     }
     if (trace->var_count >= JIT_VAR_SLOTS) return -1;
-    trace->vars[trace->var_count] = name;
+    int s = trace->var_count;
+    trace->vars[s] = name;
+    trace->var_local_slots[s] = -1;   /* env-based lookup */
+    return trace->var_count++;
+}
+
+/* Return (or allocate) the JIT slot index for a local-variable slot.
+ * Returns -1 if the variable table is full. */
+static int var_slot_alloc_by_local(JitTrace *trace, int local_slot) {
+    for (int i = 0; i < trace->var_count; i++) {
+        if (trace->var_local_slots[i] == (int16_t)local_slot)
+            return i;
+    }
+    if (trace->var_count >= JIT_VAR_SLOTS) return -1;
+    int s = trace->var_count;
+    trace->vars[s] = NULL;                          /* no name */
+    trace->var_local_slots[s] = (int16_t)local_slot;
     return trace->var_count++;
 }
 
@@ -181,8 +197,11 @@ static bool record_trace(JitTrace *trace, Chunk *chunk) {
         bool has_op = false;
         switch ((Opcode)oc) {
             case OP_PUSH_CONST:
+            case OP_PUSH_INT_IMM:
             case OP_LOAD_NAME: case OP_STORE_NAME:
             case OP_DEFINE_NAME: case OP_DEFINE_CONST:
+            case OP_LOAD_LOCAL: case OP_STORE_LOCAL: case OP_DEFINE_LOCAL:
+            case OP_INC_LOCAL: case OP_DEC_LOCAL:
             case OP_JUMP: case OP_JUMP_IF_FALSE: case OP_JUMP_IF_TRUE:
             case OP_JUMP_IF_FALSE_PEEK: case OP_JUMP_IF_TRUE_PEEK:
             case OP_MAKE_ARRAY: case OP_MAKE_DICT: case OP_MAKE_SET:
@@ -275,6 +294,54 @@ static bool record_trace(JitTrace *trace, Chunk *chunk) {
             JIRInstr *ins = EMT(JIR_STORE_LOCAL);
             if (!ins) return false;
             ins->src1 = top.slot; ins->name = name; ins->dst = s;
+            break;
+        }
+
+        /* ---- local variable slots ---- */
+        case OP_PUSH_INT_IMM: {
+            int16_t imm = (int16_t)op16;
+            int s = NEW_TEMP(); if (s < 0) return false;
+            JIRInstr *ins = EMT(JIR_LOAD_INT); if (!ins) return false;
+            ins->dst = s; ins->imm = (long long)imm;
+            TS_PUSH(STACK_INT, s);
+            break;
+        }
+        case OP_LOAD_LOCAL: {
+            int jit_s = var_slot_alloc_by_local(trace, (int)op16);
+            if (jit_s < 0) return false;
+            JIRInstr *ins = EMT(JIR_LOAD_LOCAL); if (!ins) return false;
+            ins->dst = jit_s;
+            TS_PUSH(STACK_INT, jit_s);  /* assume int; guard checked at entry */
+            break;
+        }
+        case OP_STORE_LOCAL:
+        case OP_DEFINE_LOCAL: {
+            TSItem top = TS_POP();
+            if (top.type == STACK_OTHER) return false;
+            int jit_s = var_slot_alloc_by_local(trace, (int)op16);
+            if (jit_s < 0) return false;
+            JIRInstr *ins = EMT(JIR_STORE_LOCAL); if (!ins) return false;
+            ins->src1 = top.slot; ins->dst = jit_s; ins->name = NULL;
+            break;
+        }
+        case OP_INC_LOCAL: {
+            int jit_s = var_slot_alloc_by_local(trace, (int)op16);
+            if (jit_s < 0) return false;
+            int temp = NEW_TEMP(); if (temp < 0) return false;
+            JIRInstr *li = EMT(JIR_LOAD_INT); if (!li) return false;
+            li->dst = temp; li->imm = 1;
+            JIRInstr *ai = EMT(JIR_INT_ADD); if (!ai) return false;
+            ai->dst = jit_s; ai->src1 = jit_s; ai->src2 = temp;
+            break;
+        }
+        case OP_DEC_LOCAL: {
+            int jit_s = var_slot_alloc_by_local(trace, (int)op16);
+            if (jit_s < 0) return false;
+            int temp = NEW_TEMP(); if (temp < 0) return false;
+            JIRInstr *li = EMT(JIR_LOAD_INT); if (!li) return false;
+            li->dst = temp; li->imm = 1;
+            JIRInstr *si = EMT(JIR_INT_SUB); if (!si) return false;
+            si->dst = jit_s; si->src1 = jit_s; si->src2 = temp;
             break;
         }
 
@@ -609,8 +676,13 @@ static bool x64_compile(JitTrace *trace, uint8_t *buf, size_t cap, size_t *out_s
             break;
 
         case JIR_STORE_LOCAL: {
-            int var_s = var_slot_get(trace, ins->name);
-            if (var_s < 0) return false;
+            int var_s;
+            if (ins->name != NULL) {
+                var_s = var_slot_get(trace, ins->name);
+                if (var_s < 0) return false;
+            } else {
+                var_s = ins->dst;  /* slot-based: dst holds the JIT var slot */
+            }
             if (ins->src1 >= 0 && ins->src1 != var_s) {
                 x64_load_rax(&b, ins->src1);
                 x64_store_rax(&b, var_s);
@@ -878,8 +950,13 @@ static bool a64_compile(JitTrace *trace, uint8_t *bytebuf, size_t cap, size_t *o
         case JIR_LOAD_LOCAL: break; /* no code needed */
 
         case JIR_STORE_LOCAL: {
-            int var_s = var_slot_get(trace, ins->name);
-            if (var_s < 0) return false;
+            int var_s;
+            if (ins->name != NULL) {
+                var_s = var_slot_get(trace, ins->name);
+                if (var_s < 0) return false;
+            } else {
+                var_s = ins->dst;  /* slot-based: dst holds the JIT var slot */
+            }
             if (ins->src1 >= 0 && ins->src1 != var_s) {
                 a64_load_x1(&b, ins->src1);
                 a64_store_x1(&b, var_s);
@@ -1147,6 +1224,8 @@ static JitTrace *compile_trace(Chunk *chunk, int header_ip, int jump_ip) {
     trace->ip        = jump_ip;
     trace->header_ip = header_ip;
     trace->exit_ip   = 0;
+    /* Initialize var_local_slots to -1 (calloc gives 0; 0 is a valid slot index). */
+    memset(trace->var_local_slots, 0xFF, sizeof(trace->var_local_slots));
 
     /* Phase 1: record IR. */
     if (!record_trace(trace, chunk)) {
@@ -1244,19 +1323,30 @@ JitTrace *jit_on_backward_jump(JIT *jit, VM *vm, Env *env,
     return trace;
 }
 
-int jit_execute(JitTrace *trace, VM *vm, Env *env) {
+int jit_execute(JitTrace *trace, VM *vm, Env *env, Value *locals) {
     (void)vm;
     if (!trace || !trace->fn) return JIT_EXIT_GUARD_FAIL;
 
-    /* Build register file from environment. */
+    /* Build register file from variable bindings. */
     long long regs[JIT_MAX_REGS];
     memset(regs, 0, sizeof(regs));
 
     for (int i = 0; i < trace->var_count; i++) {
-        Value v = env_get(env, trace->vars[i]);
-        if (!v || VAL_TYPE(v) != VAL_INT) {
-            trace->guard_fails++;
-            return JIT_EXIT_GUARD_FAIL;
+        Value v;
+        if (trace->var_local_slots[i] >= 0) {
+            /* Frame-local variable: read from locals array. */
+            v = locals ? locals[(int)trace->var_local_slots[i]] : 0;
+            if (!IS_INT(v)) {
+                trace->guard_fails++;
+                return JIT_EXIT_GUARD_FAIL;
+            }
+        } else {
+            /* Environment-named variable: hash lookup. */
+            v = env_get(env, trace->vars[i]);
+            if (!v || VAL_TYPE(v) != VAL_INT) {
+                trace->guard_fails++;
+                return JIT_EXIT_GUARD_FAIL;
+            }
         }
         regs[i] = AS_INT(v);
     }
@@ -1270,11 +1360,18 @@ int jit_execute(JitTrace *trace, VM *vm, Env *env) {
         return JIT_EXIT_GUARD_FAIL;
     }
 
-    /* Write back all traced variable values to the environment. */
+    /* Write back all traced variable values to their bindings. */
     for (int i = 0; i < trace->var_count; i++) {
-        Value nv = value_int(regs[i]);
-        env_assign(env, trace->vars[i], nv);
-        value_release(nv);
+        if (trace->var_local_slots[i] >= 0) {
+            if (locals) {
+                /* Integer locals are immediate values — release is a no-op. */
+                locals[(int)trace->var_local_slots[i]] = value_int(regs[i]);
+            }
+        } else {
+            Value nv = value_int(regs[i]);
+            env_assign(env, trace->vars[i], nv);
+            value_release(nv);
+        }
     }
 
     return result;

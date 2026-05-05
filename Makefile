@@ -13,7 +13,7 @@ CC      = gcc
 #   vm.c uses -O1 separately: GCC's -O2 sibling-call / stack-slot-reuse passes
 #   misoptimise the computed-goto dispatch loop, causing a separate class of
 #   intermittent crashes.  -O1 avoids those without hurting dispatch speed.
-VM_CFLAGS_EXTRA = -O1
+VM_CFLAGS_EXTRA = -O2 -fno-optimize-sibling-calls -fstack-reuse=none
 CFLAGS  = -Wall -Wextra -std=c11 -O2 -fno-gcse -DNDEBUG -march=native \
           -fomit-frame-pointer -fno-strict-aliasing \
           -Isrc -D_POSIX_C_SOURCE=200809L
@@ -77,7 +77,7 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ -lm $(LDFLAGS)
 
-# vm.c gets its own rule: drop to -O1 to avoid computed-goto misoptimisation
+# vm.c gets its own rule: use -O2 with targeted flags to avoid computed-goto misoptimisation
 src/vm.o: src/vm.c $(HEADERS)
 	$(CC) $(filter-out -O2,$(CFLAGS)) $(VM_CFLAGS_EXTRA) -c -o $@ $<
 
@@ -86,8 +86,8 @@ src/%.o: src/%.c $(HEADERS)
 
 debug: clean
 	$(CC) -Wall -Wextra -std=c11 -g -Isrc -D_POSIX_C_SOURCE=200809L \
-        $(X11_CFLAGS) $(if $(filter yes,$(shell pkg-config --exists x11 xft xrender fontconfig 2>/dev/null && echo yes)),-DHAVE_X11,) \
-        -o prism-debug $(SRCS) -lm $(LDFLAGS)
+	$(X11_CFLAGS) $(if $(filter yes,$(shell pkg-config --exists x11 xft xrender fontconfig 2>/dev/null && echo yes)),-DHAVE_X11,) \
+	-o prism-debug $(SRCS) -lm $(LDFLAGS)
 	@echo "Debug build: prism-debug"
 
 clean:

@@ -3211,7 +3211,7 @@ int vm_run(VM *vm, Chunk *chunk) {
                     vm->jit, vm, frame->env, jump_ip, header_ip, frame->chunk);
                 if (trace) {
                     if (vm->jit_verbose) jit_dump_ir(trace);
-                    int result = jit_execute(trace, vm, frame->env);
+                    int result = jit_execute(trace, vm, frame->env, frame->locals);
                     vm->jit->traces_executed++;
                     if (result == JIT_EXIT_LOOP_DONE) {
                         if (trace->exit_ip > 0) {
@@ -3507,10 +3507,15 @@ int vm_run(VM *vm, Chunk *chunk) {
                     }
                     for (int i = 0; i < argc; i++) value_release(args[i]);
                 }
-                if (lc < VM_LOCALS_MAX)
-                    memset(&new_frame->locals[lc], 0,
-                           (VM_LOCALS_MAX - lc) * sizeof(Value));
-                new_frame->local_count = lc;
+                {
+                    int clr_end = (int)fn_chunk->local_count_max;
+                    if (clr_end < lc) clr_end = lc;
+                    if (clr_end > VM_LOCALS_MAX) clr_end = VM_LOCALS_MAX;
+                    if (clr_end > lc)
+                        memset(&new_frame->locals[lc], 0,
+                               (size_t)(clr_end - lc) * sizeof(Value));
+                    new_frame->local_count = clr_end;
+                }
                 if (argc > VM_CALL_STACK_BUF) free(args);
                 value_release(callee);
                 frame = new_frame; DISPATCH();

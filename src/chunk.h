@@ -35,7 +35,11 @@ typedef struct Chunk {
     /* Set by the compiler when the function body never emits OP_DEFINE_NAME,
      * OP_DEFINE_CONST, or OP_MAKE_FUNCTION.  The VM can then skip env_new()
      * on every call and use the closure directly as frame->env.              */
-    uint8_t no_env;
+    uint8_t  no_env;
+    /* Maximum local slot index + 1 used by this function.  Set by compiler.
+     * Used by OP_CALL to zero only the slots that are actually live, rather
+     * than clearing all VM_LOCALS_MAX slots on every call.                   */
+    uint16_t local_count_max;
 } Chunk;
 
 void chunk_init(Chunk *c);
