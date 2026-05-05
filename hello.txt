@@ -1,0 +1,2 @@
+Hello from Prism!
+This file was created by a Prism script.
