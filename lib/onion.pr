@@ -1,0 +1,298 @@
+/* Prism Standard Library — onion module
+   Prism-native serialisation / deserialisation  (.oni files).
+   Inspired by Python's pickle — serialise any Prism value to a
+   compact, self-describing text stream and restore it later.
+
+   API:
+     dumps(val)        → string  — serialise val to an oni string
+     loads(s)          → value   — deserialise an oni string → value
+     dump(val, path)   → bool    — serialise val and write to a .oni file
+     load(path)        → value   — read a .oni file and deserialise it
+     copy(val)         → value   — deep-copy a value via round-trip
+     is_oni(path)      → bool    — true if path starts with the ONI magic header
+     encode(val)       → string  — raw payload only (no magic header)
+     decode(s)         → value   — decode a raw payload string
+     version()         → string  — format version string
+
+   ONI wire format  (all values encoded as tokens; no whitespace needed):
+     N              null
+     T              true
+     F              false
+     I<digits>;     integer,  e.g.  I42;   I-7;
+     R<repr>;       float,    e.g.  R3.14; R-0.5; R1e10;
+     "<escaped>"    string    (JSON-compatible  \" \\ \n \r \t)
+     [n:v…v]        array     of n items
+     {n:kv…kv}      dict      of n key-value pairs  (keys are strings)
+     (n:v…v)        tuple     of n items
+
+   NOTE: In Prism, the string literal "{" produces an empty string because
+   Prism auto-interpolates {expr} inside double-quoted strings.  The actual
+   brace and paren characters are obtained via fromCharCode() below.
+*/
+
+const _ONI_VERSION = "1.0"
+
+/* Magic file header — "ONI1" + newline */
+const _ONI_MAGIC = "ONI1" + "\n"
+
+/* Workaround: { and ( cannot be written as string literals in Prism —
+   the lexer treats { as an f-string interpolation opener, making "{" an
+   empty string.  Use chr() to get the actual characters by code point. */
+const _LBRACE = chr(123)   /* { */
+const _RBRACE = chr(125)   /* } */
+const _LPAREN = chr(40)    /* ( */
+const _RPAREN = chr(41)    /* ) */
+
+func version() { return _ONI_VERSION }
+
+/* ── Serialiser ──────────────────────────────────────────────── */
+
+func dumps(val) {
+    return _ONI_MAGIC + _enc(val)
+}
+
+func _enc(val) {
+    let t = type(val)
+
+    if val == null   { return "N" }
+
+    if t == "bool" {
+        if val { return "T" }
+        return "F"
+    }
+
+    if t == "int"    { return "I" + str(val) + ";" }
+    if t == "float"  { return "R" + str(val) + ";" }
+    if t == "string" { return _enc_str(val) }
+
+    if t == "array" {
+        let n   = len(val)
+        let out = "[" + str(n) + ":"
+        for item in val { out = out + _enc(item) }
+        return out + "]"
+    }
+
+    if t == "dict" {
+        let ks  = keys(val)
+        let n   = len(ks)
+        let out = _LBRACE + str(n) + ":"
+        for k in ks { out = out + _enc_str(k) + _enc(val[k]) }
+        return out + _RBRACE
+    }
+
+    if t == "tuple" {
+        let n   = len(val)
+        let out = _LPAREN + str(n) + ":"
+        let i   = 0
+        while i < n { out = out + _enc(val[i]); i += 1 }
+        return out + _RPAREN
+    }
+
+    /* Unknown type — best-effort: serialise its string representation */
+    return _enc_str(str(val))
+}
+
+func _enc_str(s) {
+    let out = "\""
+    for ch in chars(s) {
+        if      ch == "\""  { out = out + "\\\"" }
+        elif ch == "\\"     { out = out + "\\\\" }
+        elif ch == "\n"     { out = out + "\\n"  }
+        elif ch == "\r"     { out = out + "\\r"  }
+        elif ch == "\t"     { out = out + "\\t"  }
+        else                { out = out + ch     }
+    }
+    return out + "\""
+}
+
+/* ── Parser state (module-level, single-threaded) ────────────── */
+
+let _src  = ""
+let _pos  = 0
+let _slen = 0
+
+/* ── Deserialiser ────────────────────────────────────────────── */
+
+func loads(s) {
+    if starts(s, _ONI_MAGIC) {
+        _src = slice(s, len(_ONI_MAGIC))
+    } else {
+        _src = s
+    }
+    _pos  = 0
+    _slen = len(_src)
+
+    let result = _dec()
+
+    if _pos < _slen {
+        throw "onion: trailing data after value at pos " + str(_pos)
+    }
+    return result
+}
+
+func _peek() {
+    if _pos >= _slen { return "" }
+    return slice(_src, _pos, _pos + 1)
+}
+
+func _consume() {
+    let ch = _peek()
+    _pos += 1
+    return ch
+}
+
+func _expect(ch) {
+    let got = _consume()
+    if got != ch {
+        throw "onion: expected '" + ch + "' got '" + got + "' at pos " + str(_pos)
+    }
+}
+
+func _read_until(stop) {
+    let out = ""
+    while _pos < _slen {
+        let ch = _peek()
+        if ch == stop { return out }
+        out = out + _consume()
+    }
+    throw "onion: unterminated token — expected '" + stop + "' before end of input"
+}
+
+func _dec() {
+    let ch = _peek()
+
+    if ch == "N" { _pos += 1; return null  }
+    if ch == "T" { _pos += 1; return true  }
+    if ch == "F" { _pos += 1; return false }
+
+    if ch == "I" {
+        _pos += 1
+        let digits = _read_until(";")
+        _expect(";")
+        return parseInt(digits)
+    }
+
+    if ch == "R" {
+        _pos += 1
+        let repr = _read_until(";")
+        _expect(";")
+        return parseFloat(repr)
+    }
+
+    if ch == "\""    { return _dec_str()   }
+    if ch == "["     { return _dec_arr()   }
+    if ch == _LBRACE { return _dec_dict()  }
+    if ch == _LPAREN { return _dec_tuple() }
+
+    if ch == "" {
+        throw "onion: unexpected end of input"
+    }
+    throw "onion: unknown type token '" + ch + "' at pos " + str(_pos)
+}
+
+func _dec_str() {
+    _expect("\"")
+    let out = ""
+    while _pos < _slen {
+        let ch = _consume()
+        if ch == "\"" { return out }
+        if ch == "\\" {
+            let esc = _consume()
+            if      esc == "\"" { out = out + "\"" }
+            elif esc == "\\"    { out = out + "\\" }
+            elif esc == "n"     { out = out + "\n" }
+            elif esc == "r"     { out = out + "\r" }
+            elif esc == "t"     { out = out + "\t" }
+            else                { out = out + "\\" + esc }
+        } else {
+            out = out + ch
+        }
+    }
+    throw "onion: unterminated string"
+}
+
+func _dec_count() {
+    let digits = _read_until(":")
+    _expect(":")
+    return parseInt(digits)
+}
+
+func _dec_arr() {
+    _expect("[")
+    let n      = _dec_count()
+    let result = []
+    let i      = 0
+    while i < n { push(result, _dec()); i += 1 }
+    _expect("]")
+    return result
+}
+
+func _dec_dict() {
+    _expect(_LBRACE)
+    let n      = _dec_count()
+    let result = {}
+    let i      = 0
+    while i < n {
+        let k  = _dec_str()
+        let v  = _dec()
+        result[k] = v
+        i += 1
+    }
+    _expect(_RBRACE)
+    return result
+}
+
+func _dec_tuple() {
+    _expect(_LPAREN)
+    let n     = _dec_count()
+    let items = []
+    let i     = 0
+    while i < n { push(items, _dec()); i += 1 }
+    _expect(_RPAREN)
+    /* Prism tuples cannot be constructed programmatically, so they
+       round-trip as arrays.  The (n:…) tag is preserved so a future
+       runtime can restore them as real tuples. */
+    return items
+}
+
+/* ── File I/O ────────────────────────────────────────────────── */
+
+func dump(val, path) {
+    return write_file(path, dumps(val))
+}
+
+func load(path) {
+    let s = read_file(path)
+    if s == null {
+        throw "onion: cannot read file '" + path + "'"
+    }
+    return loads(s)
+}
+
+/* ── Utilities ───────────────────────────────────────────────── */
+
+/* Deep-copy any value via a serialise/deserialise round-trip */
+func copy(val) {
+    return loads(dumps(val))
+}
+
+/* Return true if path is a valid .oni file (has ONI magic header) */
+func is_oni(path) {
+    let s = read_file(path)
+    if s == null { return false }
+    return starts(s, _ONI_MAGIC)
+}
+
+/* Return the raw encoded payload of a value (no magic header).
+   Useful for embedding oni data inside larger formats. */
+func encode(val) {
+    return _enc(val)
+}
+
+/* Decode a raw payload string (no magic header required). */
+func decode(s) {
+    _src  = s
+    _pos  = 0
+    _slen = len(s)
+    return _dec()
+}

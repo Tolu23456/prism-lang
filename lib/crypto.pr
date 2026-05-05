@@ -1,5 +1,5 @@
 /* Prism Standard Library — crypto module
-   Pure Prism implementation — no Python imports.
+   Pure Prism implementation.
    Hash functions (FNV-1a, DJB2, SDBM, Bernstein, Adler-32,
    CRC-32, MurmurHash3), simple ciphers (XOR, Caesar, Vigenere,
    ROT-13), base64 encode/decode, and checksum utilities.

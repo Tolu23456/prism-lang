@@ -10,7 +10,7 @@ Prism is a dynamically-typed, general-purpose programming language implemented i
 
 ## Project Structure
 - `src/` - Core C implementation: lexer, parser, AST, interpreter, VM, JIT, GC, transpiler, GUI
-- `lib/` - Standard library written in Prism (`.pr` files): async, collections, crypto, fs, json, math, etc.
+- `lib/` - Standard library written in Prism (`.pr` files): async, collections, crypto, fs, json, math, onion, etc.
 - `docs/` - Language and internals documentation
 - `examples/` - Sample Prism programs (hello.pr, game_of_life.pr, gui_demo.pr, etc.)
 - `tests/` - Test suite and `run_tests.sh`
@@ -110,3 +110,39 @@ output(g.bye("you"))
 ```
 Implemented in `src/parser.c` (statement parsing) and `src/interpreter.c`
 (`NODE_IMPORT` handler with reachability scan over the program AST).
+
+**VM import limitation**: the bytecode VM's `OP_IMPORT` runs the module in
+the caller's environment (star-import only). `import X as alias` dict-namespacing
+only works in the tree-walking interpreter (`--tree`). Always use
+`import onion` (no alias) in code targeting the default VM.
+
+## onion — Serialisation Library (`lib/onion.pr`)
+Prism-native equivalent of Python's `pickle`, using `.oni` files.
+
+```prism
+import onion
+
+# Serialise any value to a string
+let s = dumps({"name": "Alice", "scores": [98, 87]})
+
+# Deserialise back
+let d = loads(s)
+
+# Write / read .oni files
+dump(d, "data.oni")
+let d2 = load("data.oni")
+
+# Deep-copy via round-trip
+let clone = copy(d)
+```
+
+ONI wire format: `N` null · `T/F` bool · `I42;` int · `R3.14;` float ·
+`"str"` string · `[n:items]` array · `{n:kvs}` dict · `(n:items)` tuple
+
+## Gotchas
+- **`"{"` is an empty string** — Prism's lexer treats `{` inside double-quoted
+  strings as an f-string interpolation opener, so `"{"` yields `""`.
+  Use `chr(123)` to get the literal `{` character. Same issue does NOT affect
+  `"}"`, `"["`, `"]"`, `"("`, or `")"`.
+- `import X as alias` (dict-namespacing) only works in `--tree` mode; use
+  plain `import X` (star-import) when targeting the default bytecode VM.

@@ -1,0 +1,135 @@
+/* onion_demo.pr — demonstrates the onion serialisation library (.oni)
+   Run:  ./prism examples/onion_demo.pr
+*/
+
+import onion
+
+output("=== onion v" + version() + " ===")
+output("")
+
+/* ── Helper ──────────────────────────────────────────────────── */
+func check(label, got, want) {
+    let ok = str(got) == str(want)
+    if ok {
+        output("  [OK]  " + label)
+    } else {
+        output("  [FAIL] " + label + "  got=" + str(got) + "  want=" + str(want))
+    }
+}
+
+/* ── 1. Primitive round-trips ────────────────────────────────── */
+output("-- Primitives --")
+
+check("null",       loads(dumps(null)),    null)
+check("true",       loads(dumps(true)),    true)
+check("false",      loads(dumps(false)),   false)
+check("int 0",      loads(dumps(0)),       0)
+check("int -99",    loads(dumps(-99)),     -99)
+check("int 42",     loads(dumps(42)),      42)
+check("float 3.14", loads(dumps(3.14159)), 3.14159)
+check("float -0.5", loads(dumps(-0.5)),    -0.5)
+check("string",     loads(dumps("hello")), "hello")
+check("empty str",  loads(dumps("")),      "")
+output("")
+
+/* ── 2. Special-character strings ────────────────────────────── */
+output("-- Special-character strings --")
+
+let tricky = "quotes: \"hi\" \\ newline:\nend\ttab"
+check("special chars", loads(dumps(tricky)), tricky)
+output("")
+
+/* ── 3. Nested structures ────────────────────────────────────── */
+output("-- Nested structures --")
+
+let data = {
+    "name":    "Alice",
+    "age":     30,
+    "scores":  [98, 87, 100],
+    "meta":    {"active": true, "rank": 1},
+    "nothing": null
+}
+
+let serialised = dumps(data)
+output("Serialised payload:")
+output(slice(serialised, len("ONI1" + "\n")))
+output("")
+
+let restored = loads(serialised)
+check("name",    restored["name"],           "Alice")
+check("age",     restored["age"],            30)
+check("score0",  restored["scores"][0],      98)
+check("active",  restored["meta"]["active"], true)
+check("rank",    restored["meta"]["rank"],   1)
+check("nothing", restored["nothing"],        null)
+output("")
+
+/* ── 4. Mixed-type array ─────────────────────────────────────── */
+output("-- Mixed-type array --")
+
+let mixed  = [1, "two", 3.0, true, null, [5, 6], {"x": 7}]
+let mixed2 = loads(dumps(mixed))
+check("mixed len",   len(mixed2),      7)
+check("mixed[0]",    mixed2[0],        1)
+check("mixed[1]",    mixed2[1],        "two")
+check("mixed[3]",    mixed2[3],        true)
+check("mixed[4]",    mixed2[4],        null)
+check("mixed[5][1]", mixed2[5][1],     6)
+check("mixed[6][x]", mixed2[6]["x"],   7)
+output("")
+
+/* ── 5. Deep copy ────────────────────────────────────────────── */
+output("-- Deep copy --")
+
+let original = {"items": [1, 2, 3], "label": "original"}
+let cloned   = copy(original)
+cloned["label"] = "mutated"
+push(cloned["items"], 99)
+
+check("original label unchanged", original["label"],      "original")
+check("clone label changed",      cloned["label"],        "mutated")
+check("original items len",       len(original["items"]), 3)
+check("clone items len",          len(cloned["items"]),   4)
+output("")
+
+/* ── 6. File round-trip (.oni) ───────────────────────────────── */
+output("-- File I/O (.oni) --")
+
+let path    = "/tmp/demo.oni"
+let payload = {"language": "Prism", "version": 1, "features": ["fast", "safe", "fun"]}
+
+let wrote  = dump(payload, path)
+output("Wrote to " + path + ": " + str(wrote))
+output("is_oni:  " + str(is_oni(path)))
+
+let loaded = load(path)
+check("file language",   loaded["language"],    "Prism")
+check("file version",    loaded["version"],     1)
+check("file feature[2]", loaded["features"][2], "fun")
+output("")
+
+/* ── 7. Large array (1000 ints) ──────────────────────────────── */
+output("-- Large array (1000 ints) --")
+
+let big = []
+let i   = 0
+while i < 1000 { push(big, i * i); i += 1 }
+
+let big_dec = loads(dumps(big))
+check("big len",  len(big_dec),    1000)
+check("big[0]",   big_dec[0],      0)
+check("big[31]",  big_dec[31],     961)
+check("big[999]", big_dec[999],    998001)
+output("")
+
+/* ── 8. Raw encode / decode (no magic header) ────────────────── */
+output("-- encode / decode (no magic header) --")
+
+let raw  = encode({"x": 10, "y": 20})
+output("Raw: " + raw)
+let back = decode(raw)
+check("decode x", back["x"], 10)
+check("decode y", back["y"], 20)
+output("")
+
+output("=== all done ===")
