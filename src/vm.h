@@ -8,7 +8,7 @@
 #include "jit.h"
 
 #define VM_STACK_MAX     4096
-#define VM_FRAME_MAX      512
+#define VM_FRAME_MAX     2048
 #define VM_LOCALS_MAX     256   /* max local variable slots per frame */
 #define VM_TRY_MAX         64   /* max nested try/catch blocks */
 

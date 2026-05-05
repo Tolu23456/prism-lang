@@ -230,6 +230,12 @@ bool value_equals(Value a, Value b) {
                 if (!value_equals(AS_TUPLE(a).items[i], AS_TUPLE(b).items[i])) return false;
             return true;
         }
+        case VAL_SET: {
+            if (AS_SET(a).len != AS_SET(b).len) return false;
+            for (int i = 0; i < AS_SET(a).len; i++)
+                if (!value_set_has(b, AS_SET(a).items[i])) return false;
+            return true;
+        }
         default: return false;
     }
 }
@@ -239,6 +245,7 @@ int value_compare(Value a, Value b) {
     if ((ta == VAL_INT || ta == VAL_FLOAT) && (tb == VAL_INT || tb == VAL_FLOAT)) {
         double va = (ta == VAL_INT) ? (double)AS_INT(a) : AS_FLOAT(a); double vb = (tb == VAL_INT) ? (double)AS_INT(b) : AS_FLOAT(b); return (va < vb) ? -1 : (va > vb);
     }
+    if (ta == VAL_STRING && tb == VAL_STRING) { return strcmp(AS_STR(a), AS_STR(b)); }
     return 0;
 }
 bool value_truthy(Value v) {

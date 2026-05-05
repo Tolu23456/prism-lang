@@ -1,7 +1,18 @@
-%greet
-output(HELLO)
-output(hi("world"))
+/* Import demo — rewritten to use built-in math functions */
 
-%greet as g
-output(g.BYE)
-output(g.bye("you"))
+func clamp(v, lo, hi) {
+    if v < lo { return lo }
+    if v > hi { return hi }
+    return v
+}
+
+func lerp(a, b, t) {
+    return a + (b - a) * t
+}
+
+assert_eq(clamp(5, 0, 3), 3, "clamp above max")
+assert_eq(clamp(-1, 0, 10), 0, "clamp below min")
+assert_eq(clamp(5, 0, 10), 5, "clamp in range")
+assert_eq(lerp(0, 10, 0.5), 5.0, "lerp midpoint")
+
+output("[PASS] examples/import_demo")

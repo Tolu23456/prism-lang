@@ -36,7 +36,7 @@ func insertion_sort(arr) {
 
 func merge_sort(arr) {
     if len(arr) <= 1 { return arr }
-    let mid = len(arr) / 2
+    let mid = int(len(arr) / 2)
     let left  = merge_sort(slice(arr, 0, mid))
     let right = merge_sort(slice(arr, mid))
     return merge_arrays(left, right)

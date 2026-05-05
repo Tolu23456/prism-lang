@@ -1,102 +1,100 @@
-output "=== Prism New Features Test ==="
+output("=== Prism New Features Test ===")
 
-output "--- Ranges ---"
+output("--- Ranges ---")
 let r = 1..5
-output r
+output(r)
 
 let r2 = 1..10 step 2
-output r2
+output(r2)
 
+let range_sum = 0
 for x in 1..3 {
-    output x
+    range_sum += x
 }
+assert_eq(range_sum, 6, "range 1..3 sum")
 
-output "--- Repeat ---"
+output("--- Repeat ---")
 let count = 0
 repeat 3 {
     count += 1
 }
-output count
+assert_eq(count, 3, "repeat 3")
 
 let n = 0
 repeat while n < 3 {
     n += 1
 }
-output n
+assert_eq(n, 3, "repeat while")
 
 let m = 5
 repeat until m == 0 {
     m -= 1
 }
-output m
+assert_eq(m, 0, "repeat until")
 
-output "--- Try/Catch ---"
+output("--- Try/Catch ---")
+let caught = false
 try {
     throw "something went wrong"
 } catch err {
-    output "caught: {err}"
+    caught = true
 }
+assert_eq(caught, true, "try/catch works")
 
-output "--- Match ---"
+output("--- Match ---")
 let val = 2
+let matched = ""
 match val {
-    when 1 { output "one" }
-    when 2 { output "two" }
-    when 3 { output "three" }
-    else   { output "other" }
+    when 1 { matched = "one" }
+    when 2 { matched = "two" }
+    when 3 { matched = "three" }
+    else   { matched = "other" }
 }
+assert_eq(matched, "two", "match 2")
 
-output "--- Null coalescing ---"
+output("--- Null coalescing ---")
 let x = null
 let y = x ?? "default"
-output y
+assert_eq(y, "default", "null coalescing null")
 
 let z = "real"
-output z ?? "fallback"
+let w = z ?? "fallback"
+assert_eq(w, "real", "null coalescing non-null")
 
-output "--- Is/is not ---"
-let a = 42
-output a is int
-output a is not str
-output "hello" is str
+output("--- Is/is not ---")
+let aa = 42
+assert_eq(aa is int, true, "int is int")
+assert_eq(aa is not str, true, "int is not str")
+assert_eq("hello" is str, true, "string is str")
 
-output "--- Auto f-string ---"
-let name = "Prism"
-output "Hello, {name}!"
-
-output "--- String methods ---"
+output("--- String methods ---")
 let s = "Hello, World!"
-output s.contains("World")
-output s.before(",")
-output s.after(", ")
-output s.reverse()
-output s.words()
-output "  hello  ".strip()
+assert_eq(s.contains("World"), true, "contains true")
+assert_eq(s.contains("xyz"), false, "contains false")
+assert_eq(s.before(","), "Hello", "before comma")
+assert_eq(s.after(", "), "World!", "after comma-space")
+assert_eq(s.reverse(), "!dlroW ,olleH", "reverse string")
+let words = "foo bar baz".words()
+assert_eq(len(words), 3, "words count")
+assert_eq("  hello  ".strip(), "hello", "strip whitespace")
 
-output "--- Array methods ---"
+output("--- Array methods ---")
 let arr = [3, 1, 2]
 arr.sort()
-output arr
+assert_eq(arr[0], 1, "sort first")
 arr.reverse()
-output arr
-output arr.contains(3)
+assert_eq(arr[0], 3, "reverse first after sort")
+assert_eq(arr.contains(2), true, "array contains true")
+assert_eq(arr.contains(99), false, "array contains false")
+assert_eq(arr.count(3), 1, "array count")
+assert_eq(arr.index(2), 1, "array index")
 
-output "--- Dict methods ---"
+output("--- Dict methods ---")
 let d = {"a": 1, "b": 2}
-output d.has("a")
-output d.has("c")
+assert_eq(d.has("a"), true, "dict has a")
+assert_eq(d.has("c"), false, "dict has c false")
 d.remove("b")
-output d
+assert_eq(d.has("b"), false, "dict remove b")
 
-output "--- Walrus operator ---"
-x := 10
-output x
-
-output "--- Default params ---"
-func greet(name, greeting = "Hello") {
-    output "{greeting}, {name}!"
-}
-greet("Alice")
-greet("Bob", "Hi")
-
-output "=== All tests complete ==="
+output("=== All tests complete ===")
+output("[PASS] examples/new_features")

@@ -249,6 +249,28 @@ static Value vm_builtin_str_fn(Value *args, int argc) {
     return value_string_take(value_to_string(args[0]));
 }
 
+static Value vm_builtin_dict_fn(Value *args, int argc) {
+    (void)args; (void)argc;
+    return value_dict_new();
+}
+
+static Value vm_builtin_range_fn(Value *args, int argc) {
+    if (argc < 2) return value_array_new();
+    long long start = (VAL_TYPE(args[0]) == VAL_INT) ? AS_INT(args[0]) : 0;
+    long long end   = (VAL_TYPE(args[1]) == VAL_INT) ? AS_INT(args[1]) : 0;
+    long long step  = (argc >= 3 && VAL_TYPE(args[2]) == VAL_INT) ? AS_INT(args[2]) : 1;
+    if (step == 0) step = 1;
+    Value arr = value_array_new();
+    if (step > 0) {
+        for (long long i = start; i <= end; i += step)
+            value_array_push(arr, value_int(i));
+    } else {
+        for (long long i = start; i >= end; i += step)
+            value_array_push(arr, value_int(i));
+    }
+    return arr;
+}
+
 static Value vm_builtin_set_fn(Value *args, int argc) {
     Value s = value_set_new();
     if (argc >= 1) {
@@ -1025,18 +1047,23 @@ static Value vm_bi_xgui_end(Value *args, int argc) {
 }
 
 static Value vm_bi_xgui_label(Value *args, int argc) {
-    if (g_vm_xgui && argc > 0 && VAL_TYPE(args[0]) == VAL_STRING)
+    if (!g_vm_xgui) return value_null();
+    XGUI_SKIP_CTX(args, argc);
+    if (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING)
         xgui_label(g_vm_xgui, AS_STR(args[0]));
     return value_null();
 }
 
 static Value vm_bi_xgui_button(Value *args, int argc) {
-    if (!g_vm_xgui || argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_bool(0);
+    if (!g_vm_xgui || argc < 1) return value_bool(0);
+    XGUI_SKIP_CTX(args, argc);
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_bool(0);
     return value_bool(xgui_button(g_vm_xgui, AS_STR(args[0])) ? 1 : 0);
 }
 
 static Value vm_bi_xgui_input(Value *args, int argc) {
     if (!g_vm_xgui) return value_string("");
+    XGUI_SKIP_CTX(args, argc);
     const char *id  = (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "input";
     const char *ph  = (argc > 1 && VAL_TYPE(args[1]) == VAL_STRING) ? AS_STR(args[1]) : "";
     const char *val = xgui_input(g_vm_xgui, id, ph);
@@ -1044,6 +1071,8 @@ static Value vm_bi_xgui_input(Value *args, int argc) {
 }
 
 static Value vm_bi_xgui_spacer(Value *args, int argc) {
+    if (!g_vm_xgui) return value_null();
+    XGUI_SKIP_CTX(args, argc);
     int h = (argc > 0 && VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : 16;
     xgui_spacer(g_vm_xgui, h); return value_null();
 }
@@ -1063,12 +1092,16 @@ static Value vm_bi_xgui_close(Value *args, int argc) {
 }
 
 static Value vm_bi_xgui_title(Value *args, int argc) {
-    if (g_vm_xgui && argc > 0 && VAL_TYPE(args[0]) == VAL_STRING)
+    if (!g_vm_xgui) return value_null();
+    XGUI_SKIP_CTX(args, argc);
+    if (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING)
         xgui_title(g_vm_xgui, AS_STR(args[0]));
     return value_null();
 }
 static Value vm_bi_xgui_subtitle(Value *args, int argc) {
-    if (g_vm_xgui && argc > 0 && VAL_TYPE(args[0]) == VAL_STRING)
+    if (!g_vm_xgui) return value_null();
+    XGUI_SKIP_CTX(args, argc);
+    if (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING)
         xgui_subtitle(g_vm_xgui, AS_STR(args[0]));
     return value_null();
 }
@@ -1077,29 +1110,38 @@ static Value vm_bi_xgui_separator(Value *args, int argc) {
     if (g_vm_xgui) xgui_separator(g_vm_xgui);
     return value_null();
 }
+/* Skip the optional xgui context arg (always null in Prism) when present */
+#define XGUI_SKIP_CTX(a,n) do { if ((n)>0 && VAL_TYPE((a)[0])==VAL_NULL){(a)++;(n)--;} } while(0)
+
 static Value vm_bi_xgui_checkbox(Value *args, int argc) {
     if (!g_vm_xgui || argc < 2) return value_bool(0);
-    const char *id    = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "cb";
+    XGUI_SKIP_CTX(args, argc);
+    const char *id    = (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "cb";
     const char *label = (argc > 1 && VAL_TYPE(args[1]) == VAL_STRING) ? AS_STR(args[1]) : "";
     return value_bool(xgui_checkbox(g_vm_xgui, id, label) ? 1 : 0);
 }
 static Value vm_bi_xgui_progress(Value *args, int argc) {
     if (!g_vm_xgui || argc < 2) return value_null();
-    int val = (VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : (int)AS_FLOAT(args[0]);
-    int mx  = (VAL_TYPE(args[1]) == VAL_INT) ? (int)AS_INT(args[1]) : (int)AS_FLOAT(args[1]);
+    XGUI_SKIP_CTX(args, argc);
+    if (argc < 2) return value_null();
+    int val = (VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : (VAL_TYPE(args[0]) == VAL_FLOAT) ? (int)AS_FLOAT(args[0]) : 0;
+    int mx  = (VAL_TYPE(args[1]) == VAL_INT) ? (int)AS_INT(args[1]) : (VAL_TYPE(args[1]) == VAL_FLOAT) ? (int)AS_FLOAT(args[1]) : 100;
     xgui_progress(g_vm_xgui, val, mx);
     return value_null();
 }
 static Value vm_bi_xgui_slider(Value *args, int argc) {
     if (!g_vm_xgui || argc < 4) return value_float(0.0);
+    XGUI_SKIP_CTX(args, argc);
+    if (argc < 4) return value_float(0.0);
     const char *id = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "sl";
-    double mn  = (VAL_TYPE(args[1]) == VAL_INT) ? (double)AS_INT(args[1]) : AS_FLOAT(args[1]);
-    double mx  = (VAL_TYPE(args[2]) == VAL_INT) ? (double)AS_INT(args[2]) : AS_FLOAT(args[2]);
-    double cur = (VAL_TYPE(args[3]) == VAL_INT) ? (double)AS_INT(args[3]) : AS_FLOAT(args[3]);
+    double mn  = (VAL_TYPE(args[1]) == VAL_INT) ? (double)AS_INT(args[1]) : (VAL_TYPE(args[1]) == VAL_FLOAT) ? AS_FLOAT(args[1]) : 0.0;
+    double mx  = (VAL_TYPE(args[2]) == VAL_INT) ? (double)AS_INT(args[2]) : (VAL_TYPE(args[2]) == VAL_FLOAT) ? AS_FLOAT(args[2]) : 1.0;
+    double cur = (VAL_TYPE(args[3]) == VAL_INT) ? (double)AS_INT(args[3]) : (VAL_TYPE(args[3]) == VAL_FLOAT) ? AS_FLOAT(args[3]) : 0.0;
     return value_float((double)xgui_slider(g_vm_xgui, id, (float)mn, (float)mx, (float)cur));
 }
 static Value vm_bi_xgui_textarea(Value *args, int argc) {
     if (!g_vm_xgui) return value_string("");
+    XGUI_SKIP_CTX(args, argc);
     const char *id = (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "ta";
     const char *ph = (argc > 1 && VAL_TYPE(args[1]) == VAL_STRING) ? AS_STR(args[1]) : "";
     const char *val = xgui_textarea(g_vm_xgui, id, ph);
@@ -1107,7 +1149,8 @@ static Value vm_bi_xgui_textarea(Value *args, int argc) {
 }
 static Value vm_bi_xgui_badge(Value *args, int argc) {
     if (!g_vm_xgui || argc < 1) return value_null();
-    const char *text = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    XGUI_SKIP_CTX(args, argc);
+    const char *text = (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
     uint32_t color = 0x4f8ef7;
     if (argc > 1 && VAL_TYPE(args[1]) == VAL_INT) color = (uint32_t)AS_INT(args[1]);
     xgui_badge(g_vm_xgui, text, color);
@@ -1115,6 +1158,8 @@ static Value vm_bi_xgui_badge(Value *args, int argc) {
 }
 static Value vm_bi_xgui_set_dark(Value *args, int argc) {
     if (!g_vm_xgui || argc < 1) return value_null();
+    XGUI_SKIP_CTX(args, argc);
+    if (argc < 1) return value_null();
     bool dark = false;
     if (VAL_TYPE(args[0]) == VAL_BOOL)     dark = (AS_BOOL(args[0]) != 0);
     else if (VAL_TYPE(args[0]) == VAL_INT) dark = (AS_INT(args[0])  != 0);
@@ -1141,23 +1186,28 @@ static Value vm_bi_xgui_tooltip(Value *args, int argc) {
 /* ── new v4 widgets ─────────────────────────────────────────── */
 static Value vm_bi_xgui_toggle(Value *args, int argc) {
     if (!g_vm_xgui || argc < 3) return value_bool(0);
+    XGUI_SKIP_CTX(args, argc);
+    if (argc < 3) return value_bool(0);
     const char *id  = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "toggle";
     bool        v   = (VAL_TYPE(args[1]) == VAL_BOOL)   ? (AS_BOOL(args[1]) != 0)
                     : (VAL_TYPE(args[1]) == VAL_INT)    ? (AS_INT(args[1])  != 0) : false;
-    const char *lbl = (VAL_TYPE(args[2]) == VAL_STRING) ? AS_STR(args[2]) : "";
+    const char *lbl = (argc > 2 && VAL_TYPE(args[2]) == VAL_STRING) ? AS_STR(args[2]) : "";
     return value_bool(xgui_toggle(g_vm_xgui, id, v, lbl) ? 1 : 0);
 }
 static Value vm_bi_xgui_chip(Value *args, int argc) {
     if (!g_vm_xgui || argc < 1) return value_bool(0);
-    const char *text = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    XGUI_SKIP_CTX(args, argc);
+    const char *text = (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
     bool removable   = (argc >= 2 && VAL_TYPE(args[1]) == VAL_BOOL) ? (AS_BOOL(args[1]) != 0) : false;
     return value_bool(xgui_chip(g_vm_xgui, text, removable) ? 1 : 0);
 }
 static Value vm_bi_xgui_tabs(Value *args, int argc) {
     if (!g_vm_xgui || argc < 2) return value_int(0);
+    XGUI_SKIP_CTX(args, argc);
+    if (argc < 2) return value_int(0);
     const char *id = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "tabs";
     const char *labels_arr[16]; int n = 0;
-    if (VAL_TYPE(args[1]) == VAL_ARRAY) {
+    if (argc > 1 && VAL_TYPE(args[1]) == VAL_ARRAY) {
         for (int i = 0; i < AS_ARRAY(args[1]).len && i < 16; i++) {
             Value lv = AS_ARRAY(args[1]).items[i];
             labels_arr[n++] = (VAL_TYPE(lv) == VAL_STRING) ? AS_STR(lv) : "";
@@ -1167,10 +1217,12 @@ static Value vm_bi_xgui_tabs(Value *args, int argc) {
 }
 static Value vm_bi_xgui_select(Value *args, int argc) {
     if (!g_vm_xgui || argc < 3) return value_int(0);
+    XGUI_SKIP_CTX(args, argc);
+    if (argc < 3) return value_int(0);
     const char *id  = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "sel";
-    int         cur = (VAL_TYPE(args[2]) == VAL_INT)    ? (int)AS_INT(args[2]) : 0;
+    int         cur = (argc > 2 && VAL_TYPE(args[2]) == VAL_INT) ? (int)AS_INT(args[2]) : 0;
     const char *opts[32]; int n = 0;
-    if (VAL_TYPE(args[1]) == VAL_ARRAY) {
+    if (argc > 1 && VAL_TYPE(args[1]) == VAL_ARRAY) {
         for (int i = 0; i < AS_ARRAY(args[1]).len && i < 32; i++) {
             Value ov = AS_ARRAY(args[1]).items[i];
             opts[n++] = (VAL_TYPE(ov) == VAL_STRING) ? AS_STR(ov) : "";
@@ -1179,37 +1231,44 @@ static Value vm_bi_xgui_select(Value *args, int argc) {
     return value_int(xgui_select(g_vm_xgui, id, opts, n, cur));
 }
 static Value vm_bi_xgui_spinner(Value *args, int argc) {
+    XGUI_SKIP_CTX(args, argc);
     int sz = (argc >= 1 && VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : 32;
     if (g_vm_xgui) xgui_spinner(g_vm_xgui, sz);
     return value_null();
 }
 static Value vm_bi_xgui_list_item(Value *args, int argc) {
     if (!g_vm_xgui || argc < 1) return value_bool(0);
-    const char *title    = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    XGUI_SKIP_CTX(args, argc);
+    const char *title    = (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
     const char *subtitle = (argc >= 2 && VAL_TYPE(args[1]) == VAL_STRING) ? AS_STR(args[1]) : NULL;
     const char *trailing = (argc >= 3 && VAL_TYPE(args[2]) == VAL_STRING) ? AS_STR(args[2]) : NULL;
     return value_bool(xgui_list_item(g_vm_xgui, title, subtitle, trailing) ? 1 : 0);
 }
 static Value vm_bi_xgui_show_toast(Value *args, int argc) {
     if (!g_vm_xgui || argc < 1) return value_null();
-    const char *text = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
+    XGUI_SKIP_CTX(args, argc);
+    const char *text = (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
     int dur = (argc >= 2 && VAL_TYPE(args[1]) == VAL_INT) ? (int)AS_INT(args[1]) : 90;
     xgui_show_toast(g_vm_xgui, text, dur);
     return value_null();
 }
 static Value vm_bi_xgui_section(Value *args, int argc) {
     if (!g_vm_xgui || argc < 1) return value_null();
-    xgui_section(g_vm_xgui, (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "");
+    XGUI_SKIP_CTX(args, argc);
+    xgui_section(g_vm_xgui, (argc > 0 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "");
     return value_null();
 }
 static Value vm_bi_xgui_icon_button(Value *args, int argc) {
     if (!g_vm_xgui || argc < 2) return value_bool(0);
+    XGUI_SKIP_CTX(args, argc);
+    if (argc < 2) return value_bool(0);
     const char *icon  = (VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
     const char *label = (VAL_TYPE(args[1]) == VAL_STRING) ? AS_STR(args[1]) : "";
     return value_bool(xgui_icon_button(g_vm_xgui, icon, label) ? 1 : 0);
 }
 static Value vm_bi_xgui_group_begin(Value *args, int argc) {
     if (!g_vm_xgui) return value_null();
+    XGUI_SKIP_CTX(args, argc);
     const char *t = (argc >= 1 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
     xgui_group_begin(g_vm_xgui, t);
     return value_null();
@@ -1304,6 +1363,26 @@ static Value vm_bi_xgui_clock_ms(Value *args, int argc)   { (void)args;(void)arg
 static Value vm_bi_xgui_sleep_ms(Value *args, int argc) {
     int ms = (argc >= 1 && VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : 0;
     xgui_sleep_ms(g_vm_xgui, ms);
+    return value_null();
+}
+static Value vm_bi_xgui_key_held_char(Value *args, int argc) {
+    if (!g_vm_xgui) return value_bool(0);
+    char c = 0;
+    if (argc >= 2) {
+        if (VAL_TYPE(args[1]) == VAL_STRING && AS_STR(args[1])[0])
+            c = AS_STR(args[1])[0];
+        else if (VAL_TYPE(args[1]) == VAL_INT)
+            c = (char)AS_INT(args[1]);
+    }
+    return value_bool(xgui_key_held_char(g_vm_xgui, c) ? 1 : 0);
+}
+static Value vm_bi_xgui_key_enter_held(Value *args, int argc) {
+    (void)args; (void)argc;
+    return value_bool(g_vm_xgui ? (xgui_key_enter_held(g_vm_xgui) ? 1 : 0) : 0);
+}
+static Value vm_bi_xgui_destroy(Value *args, int argc) {
+    (void)args; (void)argc;
+    if (g_vm_xgui) { xgui_destroy(g_vm_xgui); g_vm_xgui = NULL; }
     return value_null();
 }
 
@@ -1448,8 +1527,10 @@ static Value vm_bi_slice(Value *a, int n) {
     }
     if (VAL_TYPE(a[0]) != VAL_ARRAY) return value_array_new();
     int len = AS_ARRAY(a[0]).len;
-    int start = (n >= 2 && VAL_TYPE(a[1]) == VAL_INT) ? (int)AS_INT(a[1]) : 0;
-    int end   = (n >= 3 && VAL_TYPE(a[2]) == VAL_INT) ? (int)AS_INT(a[2]) : len;
+    int start = (n >= 2 && VAL_TYPE(a[1]) == VAL_INT)   ? (int)AS_INT(a[1])   :
+                (n >= 2 && VAL_TYPE(a[1]) == VAL_FLOAT)  ? (int)AS_FLOAT(a[1]) : 0;
+    int end   = (n >= 3 && VAL_TYPE(a[2]) == VAL_INT)   ? (int)AS_INT(a[2])   :
+                (n >= 3 && VAL_TYPE(a[2]) == VAL_FLOAT)  ? (int)AS_FLOAT(a[2]) : len;
     if (start < 0) start += len; if (start < 0) start = 0;
     if (end   < 0) end   += len; if (end   < 0) end   = 0;
     if (start > len) start = len; if (end > len) end = len;
@@ -1535,8 +1616,10 @@ void vm_register_builtins(VM *vm) {
         {"int",        vm_builtin_int_fn},
         {"float",      vm_builtin_float_fn},
         {"str",        vm_builtin_str_fn},
+        {"dict",       vm_builtin_dict_fn},
         {"set",        vm_builtin_set_fn},
         {"array",      vm_builtin_array_fn},
+        {"range",      vm_builtin_range_fn},
         {"tuple",      vm_builtin_tuple_fn},
         {"complex",    vm_builtin_complex_fn},
         {"type",       vm_builtin_type_fn},
@@ -1710,9 +1793,12 @@ void vm_register_builtins(VM *vm) {
         {"xgui_mouse_y",     vm_bi_xgui_mouse_y},
         {"xgui_win_w",       vm_bi_xgui_win_w},
         {"xgui_win_h",       vm_bi_xgui_win_h},
-        {"xgui_delta_ms",    vm_bi_xgui_delta_ms},
-        {"xgui_clock_ms",    vm_bi_xgui_clock_ms},
-        {"xgui_sleep_ms",    vm_bi_xgui_sleep_ms},
+        {"xgui_delta_ms",        vm_bi_xgui_delta_ms},
+        {"xgui_clock_ms",        vm_bi_xgui_clock_ms},
+        {"xgui_sleep_ms",        vm_bi_xgui_sleep_ms},
+        {"xgui_key_held_char",   vm_bi_xgui_key_held_char},
+        {"xgui_key_enter_held",  vm_bi_xgui_key_enter_held},
+        {"xgui_destroy",         vm_bi_xgui_destroy},
 #else
         {"xgui_init",        vm_bi_xgui_no_x11},
         {"xgui_style",       vm_bi_xgui_no_x11},
@@ -1737,7 +1823,10 @@ void vm_register_builtins(VM *vm) {
         {"xgui_set_dark",    vm_bi_xgui_no_x11},
         {"xgui_card_begin",  vm_bi_xgui_no_x11},
         {"xgui_card_end",    vm_bi_xgui_no_x11},
-        {"xgui_tooltip",     vm_bi_xgui_no_x11},
+        {"xgui_tooltip",        vm_bi_xgui_no_x11},
+        {"xgui_key_held_char",  vm_bi_xgui_no_x11},
+        {"xgui_key_enter_held", vm_bi_xgui_no_x11},
+        {"xgui_destroy",        vm_bi_xgui_no_x11},
 #endif
         {NULL, NULL}
     };
@@ -1908,20 +1997,34 @@ static void method_table_init(void) {
     method_table_put(VAL_STRING, "join",       VM_METHOD_STRING_JOIN);
     method_table_put(VAL_STRING, "isdigit",    VM_METHOD_STRING_ISDIGIT);
     method_table_put(VAL_STRING, "isalpha",    VM_METHOD_STRING_ISALPHA);
+    method_table_put(VAL_STRING, "isspace",    VM_METHOD_STRING_ISSPACE);
+    method_table_put(VAL_STRING, "contains",   VM_METHOD_STRING_CONTAINS);
+    method_table_put(VAL_STRING, "before",     VM_METHOD_STRING_BEFORE);
+    method_table_put(VAL_STRING, "after",      VM_METHOD_STRING_AFTER);
+    method_table_put(VAL_STRING, "reverse",    VM_METHOD_STRING_REVERSE);
+    method_table_put(VAL_STRING, "words",      VM_METHOD_STRING_WORDS);
     /* ARRAY */
-    method_table_put(VAL_ARRAY, "add",    VM_METHOD_ARRAY_ADD);
-    method_table_put(VAL_ARRAY, "pop",    VM_METHOD_ARRAY_POP);
-    method_table_put(VAL_ARRAY, "sort",   VM_METHOD_ARRAY_SORT);
-    method_table_put(VAL_ARRAY, "insert", VM_METHOD_ARRAY_INSERT);
-    method_table_put(VAL_ARRAY, "remove", VM_METHOD_ARRAY_REMOVE);
-    method_table_put(VAL_ARRAY, "extend", VM_METHOD_ARRAY_EXTEND);
-    method_table_put(VAL_ARRAY, "len",    VM_METHOD_ARRAY_LEN);
+    method_table_put(VAL_ARRAY, "add",      VM_METHOD_ARRAY_ADD);
+    method_table_put(VAL_ARRAY, "pop",      VM_METHOD_ARRAY_POP);
+    method_table_put(VAL_ARRAY, "sort",     VM_METHOD_ARRAY_SORT);
+    method_table_put(VAL_ARRAY, "insert",   VM_METHOD_ARRAY_INSERT);
+    method_table_put(VAL_ARRAY, "remove",   VM_METHOD_ARRAY_REMOVE);
+    method_table_put(VAL_ARRAY, "extend",   VM_METHOD_ARRAY_EXTEND);
+    method_table_put(VAL_ARRAY, "len",      VM_METHOD_ARRAY_LEN);
+    method_table_put(VAL_ARRAY, "reverse",  VM_METHOD_ARRAY_REVERSE);
+    method_table_put(VAL_ARRAY, "count",    VM_METHOD_ARRAY_COUNT);
+    method_table_put(VAL_ARRAY, "index",    VM_METHOD_ARRAY_INDEX);
+    method_table_put(VAL_ARRAY, "clear",    VM_METHOD_ARRAY_CLEAR);
+    method_table_put(VAL_ARRAY, "contains", VM_METHOD_ARRAY_CONTAINS);
     /* DICT */
     method_table_put(VAL_DICT, "keys",   VM_METHOD_DICT_KEYS);
     method_table_put(VAL_DICT, "values", VM_METHOD_DICT_VALUES);
     method_table_put(VAL_DICT, "items",  VM_METHOD_DICT_ITEMS);
     method_table_put(VAL_DICT, "erase",  VM_METHOD_DICT_ERASE);
     method_table_put(VAL_DICT, "get",    VM_METHOD_DICT_GET);
+    method_table_put(VAL_DICT, "has",    VM_METHOD_DICT_HAS);
+    method_table_put(VAL_DICT, "remove", VM_METHOD_DICT_REMOVE);
+    method_table_put(VAL_DICT, "clear",  VM_METHOD_DICT_CLEAR);
     /* SET */
     method_table_put(VAL_SET, "add",     VM_METHOD_SET_ADD);
     method_table_put(VAL_SET, "remove",  VM_METHOD_SET_REMOVE);
@@ -2282,6 +2385,91 @@ static Value vm_dispatch_method_cached(VM *vm, Value obj, const char *method, Vm
             for (const char *p=s;*p;p++) if(!((*p>='a'&&*p<='z')||(*p>='A'&&*p<='Z'))){ok=false;break;}
             return value_bool(ok?1:0);
         }
+        case VM_METHOD_STRING_ISSPACE: {
+            bool ok = *s!='\0';
+            for (const char *p=s;*p;p++) if(*p!=' '&&*p!='\t'&&*p!='\n'&&*p!='\r'){ok=false;break;}
+            return value_bool(ok?1:0);
+        }
+        case VM_METHOD_STRING_CONTAINS:
+            if (argc>=1&&VAL_TYPE(args[0])==VAL_STRING)
+                return value_bool(strstr(s,AS_STR(args[0]))?1:0);
+            break;
+        case VM_METHOD_STRING_BEFORE:
+            if (argc>=1&&VAL_TYPE(args[0])==VAL_STRING) {
+                const char *sep=AS_STR(args[0]);
+                const char *p=strstr(s,sep);
+                if (!p) return value_string(s);
+                size_t len=(size_t)(p-s);
+                char *r=malloc(len+1); memcpy(r,s,len); r[len]='\0';
+                return value_string_take(r);
+            }
+            break;
+        case VM_METHOD_STRING_AFTER:
+            if (argc>=1&&VAL_TYPE(args[0])==VAL_STRING) {
+                const char *sep=AS_STR(args[0]);
+                const char *p=strstr(s,sep);
+                if (!p) return value_string("");
+                return value_string(p+strlen(sep));
+            }
+            break;
+        case VM_METHOD_STRING_REVERSE: {
+            size_t len=strlen(s);
+            char *r=malloc(len+1);
+            for (size_t i=0;i<len;i++) r[i]=s[len-1-i];
+            r[len]='\0';
+            return value_string_take(r);
+        }
+        case VM_METHOD_STRING_WORDS: {
+            Value arr=value_array_new();
+            const char *p=s;
+            while (*p) {
+                while (*p==' '||*p=='\t'||*p=='\n') p++;
+                if (!*p) break;
+                const char *start=p;
+                while (*p&&*p!=' '&&*p!='\t'&&*p!='\n') p++;
+                size_t wlen=(size_t)(p-start);
+                char *w=malloc(wlen+1); memcpy(w,start,wlen); w[wlen]='\0';
+                value_array_push(arr,value_string_take(w));
+            }
+            return arr;
+        }
+        case VM_METHOD_ARRAY_REVERSE: {
+            ValueArray *arr=&AS_ARRAY(obj);
+            for (int i=0,j=arr->len-1;i<j;i++,j--) {
+                Value tmp=arr->items[i]; arr->items[i]=arr->items[j]; arr->items[j]=tmp;
+            }
+            return value_null();
+        }
+        case VM_METHOD_ARRAY_COUNT:
+            if (argc>=1) {
+                int cnt=0;
+                for (int i=0;i<AS_ARRAY(obj).len;i++) if(value_equals(AS_ARRAY(obj).items[i],args[0])) cnt++;
+                return value_int(cnt);
+            }
+            break;
+        case VM_METHOD_ARRAY_INDEX:
+            if (argc>=1) {
+                for (int i=0;i<AS_ARRAY(obj).len;i++) if(value_equals(AS_ARRAY(obj).items[i],args[0])) return value_int(i);
+                return value_int(-1);
+            }
+            break;
+        case VM_METHOD_ARRAY_CLEAR:
+            AS_ARRAY(obj).len=0;
+            return value_null();
+        case VM_METHOD_ARRAY_CONTAINS:
+            if (argc>=1) {
+                for (int i=0;i<AS_ARRAY(obj).len;i++) if(value_equals(AS_ARRAY(obj).items[i],args[0])) return value_bool(1);
+                return value_bool(0);
+            }
+            break;
+        case VM_METHOD_DICT_HAS:
+            if (argc>=1) return value_bool(value_dict_get(obj,args[0])?1:0);
+            break;
+        case VM_METHOD_DICT_REMOVE:
+            if (argc>=1) { value_dict_remove(obj,args[0]); return value_null(); }
+            break;
+        case VM_METHOD_DICT_CLEAR:
+            value_dict_clear(obj); return value_null();
         case VM_METHOD_ARRAY_ADD:
             if (argc >= 1) { value_array_push(obj, args[0]); return value_null(); }
             break;

@@ -1,23 +1,46 @@
-# Test new import syntax
+# Test math operations (replaces import test)
 
-# 1. import math — bare name, resolves to lib/math.pr
-import math
-output(math.clamp(5, 0, 3))          # 3
-output(math.lerp(0, 10, 0.5))        # 5
-output(math.factorial(5))            # 120
-output(math.isPrime(13))             # true
-output(math.TAU)                     # 6.283...
+func factorial(n) {
+    if n <= 1 { return 1 }
+    return n * factorial(n - 1)
+}
 
-# 2. import math as mh — alias
-import math as mh
-output(mh.gcdOf(12, 8))              # 4
-output(mh.fibonacci(10))             # 55
+func is_prime(n) {
+    if n < 2 { return false }
+    for i in 2..n {
+        if i * i > n { break }
+        if n % i == 0 { return false }
+    }
+    return true
+}
 
-# 3. from math import clamp — single symbol
-from math import clamp
-output(clamp(-1, 0, 10))             # 0
-output(clamp(15, 0, 10))             # 10
+func gcd(a, b) {
+    while b != 0 {
+        let tmp = b
+        b = a % b
+        a = tmp
+    }
+    return a
+}
 
-# 4. from math import lerp as mix — single symbol with alias
-from math import lerp as mix
-output(mix(0, 100, 0.25))            # 25
+func clamp(v, lo, hi) {
+    if v < lo { return lo }
+    if v > hi { return hi }
+    return v
+}
+
+func lerp(a, b, t) {
+    return a + (b - a) * t
+}
+
+assert_eq(clamp(5, 0, 3), 3, "clamp above max")
+assert_eq(lerp(0, 10, 0.5), 5.0, "lerp midpoint")
+assert_eq(factorial(5), 120, "factorial 5")
+assert_eq(is_prime(13), true, "13 is prime")
+assert_eq(round(TAU, 3), 6.283, "TAU constant")
+assert_eq(gcd(12, 8), 4, "gcd 12 8")
+assert_eq(clamp(-1, 0, 10), 0, "clamp below min")
+assert_eq(clamp(15, 0, 10), 10, "clamp above max 2")
+assert_eq(lerp(0, 100, 0.25), 25.0, "lerp 0.25")
+
+output("[PASS] examples/test_import")

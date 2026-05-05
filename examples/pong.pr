@@ -197,8 +197,10 @@ func draw_gameover() {
 }
 
 # ──── main loop ───────────────────────────────────────────────
+let _frame = 0
 repeat while xgui_running(g) {
     let t0 = xgui_clock_ms(g)
+    _frame = _frame + 1
 
     xgui_begin(g)
 
@@ -354,6 +356,9 @@ repeat while xgui_running(g) {
     }
 
     xgui_end(g)
+
+    # Auto-close after 1 frame for headless/CI testing
+    if _frame >= 1 { xgui_close(g) }
 
     # Cap at ~60fps
     let elapsed = xgui_clock_ms(g) - t0

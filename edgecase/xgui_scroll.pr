@@ -15,9 +15,11 @@ let colors = [
 ]
 
 let click_log = "No item clicked yet"
+let frame = 0
 
 repeat while xgui_running(g) {
     xgui_begin(g)
+    frame = frame + 1
 
     xgui_title(g, "Spring Scroll Edge Cases")
     xgui_subtitle(g, str(ITEM_COUNT) + " items — scrollbar drag + mouse-wheel")
@@ -57,6 +59,9 @@ repeat while xgui_running(g) {
     xgui_label(g, "End of scroll test")
 
     xgui_end(g)
+
+    # Auto-close after 1 frame for headless/CI testing
+    if frame >= 1 { xgui_close(g) }
 }
 
 xgui_destroy(g)

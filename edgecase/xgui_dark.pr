@@ -9,9 +9,11 @@ let is_dark = false
 let notify_count = 0
 let slider_v = 50.0
 let progress_v = 72
+let frame = 0
 
 repeat while xgui_running(g) {
     xgui_begin(g)
+    frame = frame + 1
 
     xgui_title(g, "Dark Mode & Theme Edge Cases")
     xgui_subtitle(g, "Toggle below — every widget reflects the theme change")
@@ -104,6 +106,9 @@ repeat while xgui_running(g) {
     xgui_label(g, "No crashes = pass")
 
     xgui_end(g)
+
+    # Auto-close after 1 frame for headless/CI testing
+    if frame >= 1 { xgui_close(g) }
 }
 
 xgui_destroy(g)

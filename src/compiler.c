@@ -66,7 +66,7 @@ static void emit3(Compiler *c, uint8_t op, uint16_t operand, int line) {
     chunk_emit16(c->chunk, operand, line);
     /* Track whether this function body ever defines a named variable or creates
      * a nested closure.  If not, chunk->no_env can be set (skip env_new on call). */
-    if (op == OP_DEFINE_NAME || op == OP_DEFINE_CONST || op == OP_MAKE_FUNCTION)
+    if (op == OP_DEFINE_NAME || op == OP_DEFINE_CONST || op == OP_MAKE_FUNCTION || op == OP_BUILD_FSTRING)
         c->has_env_op = 1;
 }
 
@@ -315,15 +315,6 @@ static void compile_node(Compiler *c, ASTNode *node) {
             compile_expr(c, node->var_decl.init);
         else
             emit1(c, OP_PUSH_NULL, ln);
-        /* Inside a function body (scope_depth>0) at the top level of that
-         * function (block_depth==0): use a local slot — avoids env hash lookup. */
-        if (c->scope_depth > 0 && c->block_depth == 0) {
-            int slot = add_local(c, node->var_decl.name, node->var_decl.is_const);
-            if (slot >= 0) {
-                emit3(c, OP_DEFINE_LOCAL, (uint16_t)slot, ln);
-                break;
-            }
-        }
         uint16_t idx = name_const(c, node->var_decl.name);
         emit3(c, node->var_decl.is_const ? OP_DEFINE_CONST : OP_DEFINE_NAME, idx, ln);
         break;
@@ -1018,6 +1009,20 @@ static void compile_expr(Compiler *c, ASTNode *node) {
             compile_expr(c, node->list_lit.items[i]);
         emit3(c, OP_MAKE_SET, (uint16_t)node->list_lit.count, ln);
         break;
+
+    case NODE_RANGE: {
+        uint16_t name_idx = name_const(c, "range");
+        emit3(c, OP_LOAD_NAME, name_idx, ln);
+        compile_expr(c, node->range_lit.start);
+        compile_expr(c, node->range_lit.end);
+        if (node->range_lit.step) {
+            compile_expr(c, node->range_lit.step);
+            emit3(c, OP_CALL, 3, ln);
+        } else {
+            emit3(c, OP_CALL, 2, ln);
+        }
+        break;
+    }
 
     case NODE_DICT_LIT:
         for (int i = 0; i < node->dict_lit.count; i++) {

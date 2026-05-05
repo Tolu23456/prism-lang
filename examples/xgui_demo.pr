@@ -13,8 +13,10 @@ let brightness  = 75.0
 let progress    = 0
 let log_text    = ""
 let click_count = 0
+let _frame = 0
 
 while xgui_running() {
+    _frame = _frame + 1
     xgui_begin()
     xgui_set_dark(dark_mode)
 
@@ -138,6 +140,9 @@ while xgui_running() {
     }
 
     xgui_end()
+
+    # Auto-close after 1 frame for headless/CI testing
+    if _frame >= 1 { xgui_close() }
 }
 
 output("Window closed.")
