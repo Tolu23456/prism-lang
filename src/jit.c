@@ -398,7 +398,77 @@ static bool record_trace(JitTrace *trace, Chunk *chunk) {
         }
         case OP_POS: break; /* no-op */
 
-        /* ---- comparison ---- */
+        /* ---- specialized integer arithmetic (no type guard needed) ---- */
+        case OP_ADD_INT: {
+            TSItem b = TS_POP(), a = TS_POP();
+            if (a.type != STACK_INT || b.type != STACK_INT) return false;
+            int s = NEW_TEMP(); if (s < 0) return false;
+            JIRInstr *ins = EMT(JIR_INT_ADD); if (!ins) return false;
+            ins->dst = s; ins->src1 = a.slot; ins->src2 = b.slot;
+            TS_PUSH(STACK_INT, s); break;
+        }
+        case OP_SUB_INT: {
+            TSItem b = TS_POP(), a = TS_POP();
+            if (a.type != STACK_INT || b.type != STACK_INT) return false;
+            int s = NEW_TEMP(); if (s < 0) return false;
+            JIRInstr *ins = EMT(JIR_INT_SUB); if (!ins) return false;
+            ins->dst = s; ins->src1 = a.slot; ins->src2 = b.slot;
+            TS_PUSH(STACK_INT, s); break;
+        }
+        case OP_MUL_INT: {
+            TSItem b = TS_POP(), a = TS_POP();
+            if (a.type != STACK_INT || b.type != STACK_INT) return false;
+            int s = NEW_TEMP(); if (s < 0) return false;
+            JIRInstr *ins = EMT(JIR_INT_MUL); if (!ins) return false;
+            ins->dst = s; ins->src1 = a.slot; ins->src2 = b.slot;
+            TS_PUSH(STACK_INT, s); break;
+        }
+        case OP_DIV_INT: {
+            TSItem b = TS_POP(), a = TS_POP();
+            if (a.type != STACK_INT || b.type != STACK_INT) return false;
+            int s = NEW_TEMP(); if (s < 0) return false;
+            JIRInstr *ins = EMT(JIR_INT_DIV); if (!ins) return false;
+            ins->dst = s; ins->src1 = a.slot; ins->src2 = b.slot;
+            TS_PUSH(STACK_INT, s); break;
+        }
+        case OP_MOD_INT: {
+            TSItem b = TS_POP(), a = TS_POP();
+            if (a.type != STACK_INT || b.type != STACK_INT) return false;
+            int s = NEW_TEMP(); if (s < 0) return false;
+            JIRInstr *ins = EMT(JIR_INT_MOD); if (!ins) return false;
+            ins->dst = s; ins->src1 = a.slot; ins->src2 = b.slot;
+            TS_PUSH(STACK_INT, s); break;
+        }
+        case OP_NEG_INT: {
+            TSItem a = TS_POP();
+            if (a.type != STACK_INT) return false;
+            int s = NEW_TEMP(); if (s < 0) return false;
+            JIRInstr *ins = EMT(JIR_INT_NEG); if (!ins) return false;
+            ins->dst = s; ins->src1 = a.slot;
+            TS_PUSH(STACK_INT, s); break;
+        }
+
+        /* ---- specialized integer comparisons ---- */
+        case OP_LT_INT: case OP_LE_INT: case OP_GT_INT:
+        case OP_GE_INT: case OP_EQ_INT: case OP_NE_INT: {
+            TSItem b = TS_POP(), a = TS_POP();
+            if (a.type != STACK_INT || b.type != STACK_INT) return false;
+            JIROp cop2;
+            switch ((Opcode)oc) {
+                case OP_LT_INT: cop2 = JIR_CMP_LT; break;
+                case OP_LE_INT: cop2 = JIR_CMP_LE; break;
+                case OP_GT_INT: cop2 = JIR_CMP_GT; break;
+                case OP_GE_INT: cop2 = JIR_CMP_GE; break;
+                case OP_EQ_INT: cop2 = JIR_CMP_EQ; break;
+                default:        cop2 = JIR_CMP_NE; break;
+            }
+            int s = NEW_TEMP(); if (s < 0) return false;
+            JIRInstr *ins = EMT(cop2); if (!ins) return false;
+            ins->dst = s; ins->src1 = a.slot; ins->src2 = b.slot;
+            TS_PUSH(STACK_BOOL, s); break;
+        }
+
+        /* ---- generic comparison ---- */
         case OP_LT: case OP_LE: case OP_GT:
         case OP_GE: case OP_EQ: case OP_NE: {
             TSItem b = TS_POP(), a = TS_POP();

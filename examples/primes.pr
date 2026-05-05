@@ -1,0 +1,99 @@
+/* Primes — Sieve of Eratosthenes + prime utilities */
+
+func sieve(limit) {
+    let composite = []
+    let i = 0
+    while i <= limit { push(composite, false); i += 1 }
+
+    let p = 2
+    while p * p <= limit {
+        if not composite[p] {
+            let mul = p * p
+            while mul <= limit {
+                composite[mul] = true
+                mul += p
+            }
+        }
+        p += 1
+    }
+
+    let primes = []
+    let n = 2
+    while n <= limit {
+        if not composite[n] { push(primes, n) }
+        n += 1
+    }
+    return primes
+}
+
+func is_prime(n) {
+    if n < 2 { return false }
+    if n == 2 { return true }
+    if n % 2 == 0 { return false }
+    let i = 3
+    while i * i <= n {
+        if n % i == 0 { return false }
+        i += 2
+    }
+    return true
+}
+
+func prime_factors(n) {
+    let factors = []
+    let d = 2
+    while d * d <= n {
+        while n % d == 0 {
+            push(factors, d)
+            n = n // d
+        }
+        d += 1
+    }
+    if n > 1 { push(factors, n) }
+    return factors
+}
+
+func next_prime(n) {
+    let candidate = n + 1
+    while not is_prime(candidate) { candidate += 1 }
+    return candidate
+}
+
+/* ── Demo ───────────────────────────────────────────── */
+let primes = sieve(100)
+print("Primes up to 100 (" + str(len(primes)) + " total):")
+print(primes)
+
+print("\nFirst 10 primes:", primes[:10])
+print("Primes between 50-100:", filter(primes, p => p >= 50))
+
+print("\nPrime factorizations:")
+for n in [12, 30, 100, 360, 1024, 9973] {
+    print(" ", n, "=", prime_factors(n))
+}
+
+print("\nPrimality checks:")
+for n in [1, 2, 3, 4, 17, 97, 100, 101, 1009] {
+    print(" ", n, "->", is_prime(n) ? "prime" : "composite")
+}
+
+print("\nTwin primes up to 100:")
+let twins = []
+for i in 0..len(primes)-1 {
+    if i + 1 < len(primes) and primes[i+1] - primes[i] == 2 {
+        push(twins, [primes[i], primes[i+1]])
+    }
+}
+for pair in twins { print(" ", pair[0], "and", pair[1]) }
+
+print("\nGoldbach conjecture check (even numbers 4..30):")
+for n in 4..31 step 2 {
+    let found = false
+    for p in primes {
+        if p > n { break }
+        if is_prime(n - p) {
+            print(" ", n, "=", p, "+", n - p)
+            found = true
+            break
+        }
+    }
+}

@@ -9,7 +9,7 @@
 
 /* ================================================================== tuning */
 
-#define JIT_HOT_THRESHOLD    50      /* backward-jump count before JIT fires  */
+#define JIT_HOT_THRESHOLD    10      /* backward-jump count before JIT fires  */
 #define JIT_MAX_IR          512      /* max IR instructions per trace          */
 #define JIT_MAX_REGS        32       /* register-file slots (0-15 vars, 16-31 temps) */
 #define JIT_VAR_SLOTS       16       /* first N slots are named-variable slots */

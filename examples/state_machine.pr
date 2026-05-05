@@ -1,0 +1,119 @@
+/* State machine — closure-based FSM implementation */
+
+func make_state_machine(initial) {
+    let state       = initial
+    let transitions = {}
+    let actions     = {}
+    let history     = [initial]
+
+    func add_transition(from_s, event, to_s) {
+        transitions[from_s + ":" + event] = to_s
+    }
+    func on_enter(state_name, action) {
+        actions[state_name] = action
+    }
+    func send(event) {
+        let key = state + ":" + event
+        if key in transitions {
+            let next = transitions[key]
+            state = next
+            push(history, next)
+            if next in actions { actions[next](event) }
+            return true
+        }
+        return false
+    }
+    func can(event) { return (state + ":" + event) in transitions }
+    func get_state() { return state }
+    func get_history() { return history }
+    func reset(s) { state = s; history = [s] }
+
+    return {
+        "add": add_transition,
+        "on":  on_enter,
+        "send": send,
+        "can":  can,
+        "state": get_state,
+        "history": get_history,
+        "reset": reset
+    }
+}
+
+/* ── Traffic light ───────────────────────────────────── */
+output("=== Traffic Light ===")
+let light = make_state_machine("red")
+light["add"]("red",    "go",   "green")
+light["add"]("green",  "slow", "yellow")
+light["add"]("yellow", "stop", "red")
+
+light["on"]("green",  fn(e) { output("  GREEN  - Go!") })
+light["on"]("yellow", fn(e) { output("  YELLOW - Slow down") })
+light["on"]("red",    fn(e) { output("  RED    - Stop") })
+
+output("Initial state: " + light["state"]())
+light["send"]("go")
+light["send"]("slow")
+light["send"]("stop")
+light["send"]("go")
+output("History: " + str(light["history"]()))
+
+/* ── Door lock ───────────────────────────────────────── */
+output("\n=== Door Lock ===")
+let door = make_state_machine("locked")
+door["add"]("locked", "unlock", "closed")
+door["add"]("closed", "lock",   "locked")
+door["add"]("closed", "open",   "open")
+door["add"]("open",   "close",  "closed")
+
+output("Door: " + door["state"]())
+door["send"]("unlock"); output("After unlock: " + door["state"]())
+door["send"]("open");   output("After open: "   + door["state"]())
+door["send"]("close");  output("After close: "  + door["state"]())
+door["send"]("lock");   output("After lock: "   + door["state"]())
+
+let blocked = door["send"]("open")
+output("Try to open locked door: " + (blocked ? "success" : "blocked"))
+
+/* ── Order processing ────────────────────────────────── */
+output("\n=== Order State Machine ===")
+let order = make_state_machine("pending")
+order["add"]("pending",   "confirm", "confirmed")
+order["add"]("confirmed", "ship",    "shipped")
+order["add"]("shipped",   "deliver", "delivered")
+order["add"]("confirmed", "cancel",  "cancelled")
+order["add"]("pending",   "cancel",  "cancelled")
+
+let order_log = []
+order["on"]("confirmed", fn(e) { push(order_log, "Order confirmed") })
+order["on"]("shipped",   fn(e) { push(order_log, "Order shipped") })
+order["on"]("delivered", fn(e) { push(order_log, "Order delivered!") })
+order["on"]("cancelled", fn(e) { push(order_log, "Order cancelled") })
+
+order["send"]("confirm")
+order["send"]("ship")
+order["send"]("deliver")
+
+output("Order log:")
+for entry in order_log { output("  - " + entry) }
+output("Final state: " + order["state"]())
+output("Can cancel: " + (order["can"]("cancel") ? "yes" : "no"))
+
+/* ── Vending machine ─────────────────────────────────── */
+output("\n=== Vending Machine ===")
+let vm_machine = make_state_machine("idle")
+vm_machine["add"]("idle",       "insert_coin", "has_money")
+vm_machine["add"]("has_money",  "select",      "dispensing")
+vm_machine["add"]("has_money",  "refund",      "idle")
+vm_machine["add"]("dispensing", "done",        "idle")
+
+let vm_log = []
+vm_machine["on"]("has_money",  fn(e) { push(vm_log, "Coin inserted") })
+vm_machine["on"]("dispensing", fn(e) { push(vm_log, "Dispensing item...") })
+vm_machine["on"]("idle",       fn(e) { push(vm_log, "Ready") })
+
+vm_machine["send"]("insert_coin")
+vm_machine["send"]("select")
+vm_machine["send"]("done")
+
+output("Vending log:")
+for entry in vm_log { output("  - " + entry) }

@@ -64,7 +64,7 @@
 7. **Inline name cache** for `OP_LOAD_NAME`/`OP_STORE_NAME`: `(name_env, name_slot)` cached after first lookup.
 8. **Interned name constants**: pointer equality before `strcmp`.
 
-### Session 2 (this session)
+### Session 2 (previous)
 9. **Frame size reduction** (`VM_LOCALS_MAX` 256→64, removed `local_names[256]`):
    - `CallFrame` shrunk from ~4.1 KB to ~0.55 KB.
    - Total `vm->frames[2048]` shrunk from **8.4 MB → 1.1 MB** — fits in L3 cache for recursive workloads.
@@ -81,6 +81,23 @@
 13. **vm.c at `-O2`** (`-fno-optimize-sibling-calls -fstack-reuse=none`):
     - Upgraded from `-O1` to `-O2` with targeted flags disabling the two passes that previously caused dispatch-loop miscompilation.
 14. **JIT hot threshold lowered** (200→50): traces compile sooner, amortised compilation cost drops.
+
+### Session 3 (this session)
+15. **Compiler `-O3`** for all non-vm files (was `-O2`):
+    - Added `-finline-functions` for all translation units.
+    - `vm.c` kept at `-O2 -fno-optimize-sibling-calls -fstack-reuse=none` to avoid dispatch-loop miscompilation.
+    - NixOS sandbox suppresses `-march=native`, so CPU-specific micro-tuning is not available in this environment.
+16. **JIT: 12 specialised INT opcodes** added to trace recorder:
+    - `OP_ADD_INT`, `OP_SUB_INT`, `OP_MUL_INT`, `OP_DIV_INT`, `OP_MOD_INT`, `OP_NEG_INT`,
+      `OP_LT_INT`, `OP_LE_INT`, `OP_GT_INT`, `OP_GE_INT`, `OP_EQ_INT`, `OP_NE_INT`.
+    - Previously any loop using these specialised opcodes caused an immediate **JIT trace abort**;
+      now they are recorded and emit native x86-64 arithmetic/compare instructions.
+17. **JIT hot threshold lowered** (50→10): traces compile after only 10 loop-back edges (was 50).
+18. **Makefile** new targets: `lto-simple` (whole-program LTO), `pgo-gen/pgo-train/pgo-use` (PGO pipeline), `bench` (sequential benchmark runner).
+19. **Test suite** expanded: `test_match.pr` (22 assertions), `test_error_handling.pr` — all pass.
+20. **Examples** added: `primes.pr` (prime sieve + factorisation), `state_machine.pr` (closure-based FSM with traffic-light, door-lock, order-processing, and vending-machine demos), `tree.pr` (closure-based BST with inorder traversal, height, min/max, word-frequency counter).
+21. **Docs** updated: `docs/performance.md` rewritten with JIT internals, build-flag guide, and PGO/LTO instructions.
+22. **Icon**: `prism.svg` — `.pr` file-type icon with gradient prism glyph.
 
 ---
 

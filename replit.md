@@ -36,8 +36,13 @@ Prism is a dynamically-typed, general-purpose programming language implemented i
 ## Workflow
 The **"Start application"** workflow runs `make && ./prism examples/hello.pr`, which compiles the project and runs the hello world example to verify the build.
 
+## Important: OOP Patterns
+- Prism's `class` keyword is parsed but **not handled by the bytecode VM compiler or default interpreter**.
+- Use **closure-based OOP** (dicts + functions) — the pattern used in `examples/classes_demo.pr` and `examples/closures_and_oop.pr`.
+- Use `elif` (not `else if`) for chained conditionals.
+
 ## Key Language Features
-- Closures, classes with inheritance
+- Closures, closure-based OOP (dicts + functions)
 - **Ternary operator**: `cond ? then_val : else_val`
 - **`repeat N { }`** — iterate N times; supports `break`/`continue`
 - **`repeat while cond { }`** / **`repeat until cond { }`** — condition-controlled loops

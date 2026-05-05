@@ -30,6 +30,20 @@ Computed-goto:  FETCH → goto *dispatch_table[op];
 
 Each opcode handler ends with `DISPATCH()` instead of `break`, dispatching directly to the next handler without going through a central `switch`.
 
+### Tagged Integer Values
+
+All Prism `Value`s are represented as a single `uintptr_t` word using pointer tagging:
+
+| Tag bits | Type |
+|----------|------|
+| `bit 0 = 1` | Integer: value = `word >> 1` |
+| `0x02` | `null` |
+| `0x06` | `false` |
+| `0x0A` | `true` |
+| `bits 1:0 = 00` | Heap pointer (string, array, dict, …) |
+
+Tagged integers require **no heap allocation** and no reference counting — arithmetic on integers is purely in registers.
+
 ### Specialized Opcodes
 
 Prism compiles common patterns to specialized fast-path opcodes:
@@ -37,11 +51,48 @@ Prism compiles common patterns to specialized fast-path opcodes:
 | Pattern | Compiled to | Benefit |
 |---------|-------------|---------|
 | Small integer (-32768..32767) | `OP_PUSH_INT_IMM` | No constant pool lookup |
-| `a + b` where both int | `OP_ADD_INT` | No type check |
-| `a < b` where both int | `OP_LT_INT` | No type check |
-| `i += 1` on local | `OP_INC_LOCAL` | Inline increment |
-| `i -= 1` on local | `OP_DEC_LOCAL` | Inline decrement |
+| `a + b` where both int | `OP_ADD_INT` | No type check, tagged-int trick |
+| `a - b` where both int | `OP_SUB_INT` | No type check |
+| `a * b` where both int | `OP_MUL_INT` | No type check |
+| `a < b` where both int | `OP_LT_INT` | Direct tagged comparison |
+| `i += 1` on local | `OP_INC_LOCAL` | Single instruction: `v += 2` |
+| `i -= 1` on local | `OP_DEC_LOCAL` | Single instruction: `v -= 2` |
 | Local var access | `OP_LOAD_LOCAL` / `OP_STORE_LOCAL` | O(1) array slot, no hash |
+
+**Tagged-int arithmetic tricks** (no untagging needed for add/sub):
+```
+a = (n<<1)|1,  b = (m<<1)|1
+ADD_INT:  a + b - 1  = ((n+m)<<1)|1   ✓ no untag
+SUB_INT:  a - b + 1  = ((n-m)<<1)|1   ✓ no untag
+INC_LOCAL: v + 2     = ((n+1)<<1)|1   ✓ no untag
+LT_INT:   (intptr_t)a < (intptr_t)b   ✓ direct comparison
+```
+
+### JIT Compiler
+
+Prism includes a trace-based JIT that compiles hot loops to native x86-64 or AArch64 machine code.
+
+**How it works:**
+1. Every backward jump (`OP_JUMP` with negative offset) increments a hot-counter.
+2. When a loop back-edge reaches `JIT_HOT_THRESHOLD` (default: 10), the JIT records the trace IR.
+3. The IR is compiled to native code (x86-64 or AArch64).
+4. Subsequent iterations run the native code directly, bypassing the interpreter.
+
+**Supported IR operations:**
+- Integer add, sub, mul, div, mod, neg
+- Float add, sub, mul, div
+- Comparisons: `<`, `<=`, `>`, `>=`, `==`, `!=`
+- Load/store: named variables (env lookup) and local slots
+- `EXIT_IF_FALSE`: exits the JIT loop on condition failure
+- `LOOP_BACK`: writes all live variables back and branches to loop head
+
+**JIT variable mapping:** At loop entry, the JIT loads all tracked integer variables from `frame->locals[]` into a `long long regs[]` array (untagged). At exit, it writes them back as `value_int(regs[i])`.
+
+**Guard mechanism:** If any variable is not an integer at loop entry, the JIT falls back to the interpreter for that iteration.
+
+**Specialized INT opcodes in JIT:** `OP_ADD_INT`, `OP_SUB_INT`, `OP_MUL_INT`, `OP_DIV_INT`, `OP_MOD_INT`, `OP_NEG_INT`, `OP_LT_INT`, `OP_LE_INT`, `OP_GT_INT`, `OP_GE_INT`, `OP_EQ_INT`, `OP_NE_INT` are all handled by the trace recorder — loops using these specialized opcodes JIT-compile correctly.
+
+**Typical JIT speedup:** 3–10× for tight integer loops.
 
 ### Stack-Buffer Optimization for Calls
 
@@ -85,6 +136,38 @@ The compiler classifies variables into:
 ### Dead Code Elimination
 
 Branches on constant conditions (`if true`, `if false`) and unreachable code after `return` at top level are eliminated.
+
+## Build Flags
+
+### Default build (`make`)
+
+```
+-O3 -fno-gcse -march=native -fomit-frame-pointer -finline-functions
+```
+
+`vm.c` specifically uses:
+```
+-O3 -fno-optimize-sibling-calls -fstack-reuse=none
+```
+(prevents GCC from misoptimising the computed-goto dispatch loop)
+
+### LTO build (`make lto-simple`)
+
+```bash
+make lto-simple
+```
+
+Link-Time Optimisation allows GCC to inline `value_retain`, `value_release`, `env_get`, and other frequently-called functions directly into the VM dispatch loop across translation-unit boundaries. Typical additional speedup: **10–25%** on recursive workloads.
+
+### PGO build (`make pgo-train && make pgo-use`)
+
+Profile-Guided Optimisation trains on real workloads then re-compiles with branch prediction hints, inlining decisions guided by actual call frequencies, and better register allocation. Typical additional speedup: **5–20%**.
+
+```bash
+make pgo-gen                  # Build instrumented binary
+make pgo-train                # Run training workload automatically
+make pgo-use                  # Build PGO-optimised binary → prism-pgo-opt
+```
 
 ## Garbage Collector
 
@@ -147,7 +230,16 @@ let result = join(",", parts)
 
 ### Use integer arithmetic where possible
 
-Prism emits `OP_ADD_INT` when both operands are known-int typed at compile time. The specialized opcodes skip type checking, providing significant speedup in numeric loops.
+Prism emits `OP_ADD_INT` when both operands are known-int typed at compile time. The specialized opcodes skip type checking and the JIT handles them natively, providing significant speedup in numeric loops.
+
+### Leverage the JIT for tight loops
+
+The JIT fires after 10 backward-jump iterations. Loops that:
+- Use only integer local variables
+- Contain arithmetic and comparisons
+- Have a simple exit condition
+
+...will JIT-compile to native code and run at near-C speed.
 
 ### Avoid creating temporaries in hot loops
 
@@ -180,12 +272,18 @@ print("allocations:", after["total_allocations"] - before["total_allocations"])
 Run the included benchmarks to measure performance:
 
 ```bash
+make bench                          # Quick benchmark suite
+./prism --vm benchmarks/fib_recursive.pr
+./prism --vm benchmarks/loop_count.pr
+./prism --vm benchmarks/ackermann.pr
+./prism --vm benchmarks/sieve.pr
 ./prism benchmarks/bench_vm_dispatch.pr
 ./prism benchmarks/bench_gc.pr
 ./prism benchmarks/bench_closures.pr
 ./prism benchmarks/bench_fibonacci.pr
-./prism benchmarks/sieve.pr
 ```
+
+See `benchmarks/RESULTS.md` for latest results.
 
 ## Environment Variables
 

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="prismGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#7C3AED"/>
+      <stop offset="40%"  stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#06B6D4"/>
+    </linearGradient>
+    <linearGradient id="spectrumGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#EF4444"/>
+      <stop offset="20%"  stop-color="#F97316"/>
+      <stop offset="40%"  stop-color="#EAB308"/>
+      <stop offset="60%"  stop-color="#22C55E"/>
+      <stop offset="80%"  stop-color="#3B82F6"/>
+      <stop offset="100%" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Prism body: equilateral triangle -->
+  <polygon points="32,4 58,52 6,52"
+           fill="url(#prismGrad)" opacity="0.92"
+           stroke="#1E1B4B" stroke-width="1.5"/>
+
+  <!-- Inner highlight face -->
+  <polygon points="32,12 52,48 12,48"
+           fill="none" stroke="white" stroke-width="0.8" opacity="0.3"/>
+
+  <!-- Refracted light rays leaving bottom-right -->
+  <line x1="55" y1="50" x2="63" y2="46" stroke="#EF4444" stroke-width="2" stroke-linecap="round"/>
+  <line x1="55" y1="51" x2="63" y2="49" stroke="#F97316" stroke-width="2" stroke-linecap="round"/>
+  <line x1="55" y1="52" x2="63" y2="52" stroke="#EAB308" stroke-width="2" stroke-linecap="round"/>
+  <line x1="55" y1="53" x2="63" y2="55" stroke="#22C55E" stroke-width="2" stroke-linecap="round"/>
+  <line x1="55" y1="54" x2="63" y2="58" stroke="#3B82F6" stroke-width="2" stroke-linecap="round"/>
+  <line x1="55" y1="55" x2="62" y2="61" stroke="#8B5CF6" stroke-width="2" stroke-linecap="round"/>
+
+  <!-- Incoming light ray (white, top-left) -->
+  <line x1="2" y1="26" x2="20" y2="36" stroke="white" stroke-width="2.5"
+        stroke-linecap="round" opacity="0.85"/>
+
+  <!-- ".pr" label -->
+  <text x="32" y="40" font-family="monospace" font-size="11" font-weight="bold"
+        text-anchor="middle" fill="white" opacity="0.95">.pr</text>
+</svg>

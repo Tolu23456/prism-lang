@@ -1,0 +1,163 @@
+/* Error handling — try/catch/finally, throw, error propagation */
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if got == expected {
+        pass += 1
+    } else {
+        print("[FAIL]", label, " got:", got, " expected:", expected)
+        fail += 1
+    }
+}
+
+func assert_true(label, cond) {
+    if cond { pass += 1 }
+    else { print("[FAIL]", label); fail += 1 }
+}
+
+/* ── Basic try/catch ──────────────────────────────────── */
+let caught = null
+try {
+    throw "test error"
+} catch (e) {
+    caught = e
+}
+assert("basic catch string", caught, "test error")
+
+/* ── Catch integer ────────────────────────────────────── */
+let caught_int = 0
+try {
+    throw 42
+} catch (e) {
+    caught_int = e
+}
+assert("catch integer", caught_int, 42)
+
+/* ── No throw — catch not executed ───────────────────── */
+let no_throw = "original"
+try {
+    no_throw = "modified"
+} catch (e) {
+    no_throw = "should not reach"
+}
+assert("no throw", no_throw, "modified")
+
+/* ── Nested try/catch ─────────────────────────────────── */
+let outer_caught = null
+let inner_caught = null
+try {
+    try {
+        throw "inner error"
+    } catch (e) {
+        inner_caught = e
+        throw "outer error"
+    }
+} catch (e) {
+    outer_caught = e
+}
+assert("nested inner catch", inner_caught, "inner error")
+assert("nested outer catch", outer_caught, "outer error")
+
+/* ── Try/catch in function ────────────────────────────── */
+func safe_divide(a, b) {
+    try {
+        if b == 0 { throw "division by zero" }
+        return a / b
+    } catch (e) {
+        return null
+    }
+}
+assert("safe divide 10/2", safe_divide(10, 2), 5.0)
+assert("safe divide by 0", safe_divide(5, 0),  null)
+
+/* ── Re-throw ─────────────────────────────────────────── */
+func risky(x) {
+    if x < 0 { throw "negative input: " + str(x) }
+    return x * 2
+}
+let rethrow_caught = null
+try {
+    try {
+        risky(-1)
+    } catch (e) {
+        if contains(e, "negative") {
+            throw e
+        }
+    }
+} catch (e) {
+    rethrow_caught = e
+}
+assert("rethrow works", rethrow_caught, "negative input: -1")
+
+/* ── Catch with recovery ──────────────────────────────── */
+func parse_int_safe(s) {
+    try {
+        return int(s)
+    } catch (e) {
+        return 0
+    }
+}
+assert("parse '42'",  parse_int_safe("42"),  42)
+assert("parse 'bad'", parse_int_safe("bad"), 0)
+
+/* ── Error in loop — only one iteration fails ─────────── */
+let results = []
+let errors  = []
+for item in [1, 0, 2, 0, 3] {
+    try {
+        if item == 0 { throw "zero found" }
+        push(results, item * 10)
+    } catch (e) {
+        push(errors, e)
+    }
+}
+assert("loop results len", len(results), 3)
+assert("loop errors len",  len(errors),  2)
+assert("loop results[0]",  results[0],   10)
+assert("loop results[2]",  results[2],   30)
+assert("loop error",       errors[0],    "zero found")
+
+/* ── Finally-like pattern using sentinel ──────────────── */
+let cleanup_done = false
+func with_cleanup(f) {
+    let ok = false
+    try {
+        f()
+        ok = true
+    } catch (e) {
+        ok = false
+    }
+    cleanup_done = true
+    return ok
+}
+assert_true("cleanup on success", with_cleanup(fn() { let x = 1 + 1 }))
+assert_true("cleanup flag set after success", cleanup_done)
+cleanup_done = false
+let ok2 = with_cleanup(fn() { throw "fail" })
+assert("cleanup on throw result", ok2, false)
+assert_true("cleanup flag set after throw", cleanup_done)
+
+/* ── Error message includes context ──────────────────── */
+func validate(val, name) {
+    if val == null    { throw name + " is null" }
+    if val < 0       { throw name + " is negative" }
+    if val > 1000    { throw name + " is too large" }
+    return val
+}
+let v1_err = null
+try { validate(null, "x") } catch (e) { v1_err = e }
+assert("null validation msg", v1_err, "x is null")
+
+let v2_err = null
+try { validate(-5, "y") } catch (e) { v2_err = e }
+assert("negative validation msg", v2_err, "y is negative")
+
+let v3 = null
+try { v3 = validate(42, "z") } catch (e) { v3 = -1 }
+assert("valid passes through", v3, 42)
+
+print("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { print("[PASS] test_error_handling") }
+else { print("[FAIL] test_error_handling") }

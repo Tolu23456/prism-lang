@@ -1,0 +1,167 @@
+/* Pattern matching — match/when statement tests */
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if got == expected {
+        pass += 1
+    } else {
+        print("[FAIL]", label, " got:", got, " expected:", expected)
+        fail += 1
+    }
+}
+
+func assert_true(label, cond) {
+    if cond { pass += 1 }
+    else { print("[FAIL]", label); fail += 1 }
+}
+
+/* ── Integer matching ─────────────────────────────────── */
+func fizzbuzz_match(n) {
+    match n % 15 {
+        when 0 { return "FizzBuzz" }
+    }
+    match n % 3 {
+        when 0 { return "Fizz" }
+    }
+    match n % 5 {
+        when 0 { return "Buzz" }
+    }
+    return str(n)
+}
+assert("fizzbuzz 15",  fizzbuzz_match(15), "FizzBuzz")
+assert("fizzbuzz 3",   fizzbuzz_match(3),  "Fizz")
+assert("fizzbuzz 5",   fizzbuzz_match(5),  "Buzz")
+assert("fizzbuzz 7",   fizzbuzz_match(7),  "7")
+
+/* ── String matching via when/else ────────────────────── */
+func day_type(day) {
+    match day {
+        when "Saturday" { return "weekend" }
+        when "Sunday"   { return "weekend" }
+        else            { return "weekday" }
+    }
+}
+assert("saturday weekend", day_type("Saturday"), "weekend")
+assert("sunday weekend",   day_type("Sunday"),   "weekend")
+assert("monday weekday",   day_type("Monday"),   "weekday")
+assert("friday weekday",   day_type("Friday"),   "weekday")
+
+/* ── Matching with return values ──────────────────────── */
+func http_status(code) {
+    match code {
+        when 200 { return "OK" }
+        when 201 { return "Created" }
+        when 400 { return "Bad Request" }
+        when 401 { return "Unauthorized" }
+        when 403 { return "Forbidden" }
+        when 404 { return "Not Found" }
+        when 500 { return "Internal Server Error" }
+        else { return "Unknown" }
+    }
+}
+assert("http 200", http_status(200), "OK")
+assert("http 201", http_status(201), "Created")
+assert("http 404", http_status(404), "Not Found")
+assert("http 500", http_status(500), "Internal Server Error")
+assert("http 999", http_status(999), "Unknown")
+
+/* ── Match in a loop ──────────────────────────────────── */
+let vowels   = 0
+let consonants = 0
+let other    = 0
+for ch in "Hello, World!" {
+    let lc = lower(ch)
+    match lc {
+        when "a" { vowels += 1 }
+        when "e" { vowels += 1 }
+        when "i" { vowels += 1 }
+        when "o" { vowels += 1 }
+        when "u" { vowels += 1 }
+        else {
+            if lc >= "a" and lc <= "z" { consonants += 1 }
+            else { other += 1 }
+        }
+    }
+}
+assert("vowels in Hello World",      vowels,     3)
+assert("consonants in Hello World",  consonants, 7)
+assert("other chars",                other,      3)
+
+/* ── Match on boolean expression ─────────────────────── */
+func classify_num(n) {
+    match true {
+        when n < 0    { return "negative" }
+        when n == 0   { return "zero" }
+        when n < 10   { return "small" }
+        when n < 100  { return "medium" }
+        else           { return "large" }
+    }
+}
+assert("classify -5",  classify_num(-5),  "negative")
+assert("classify 0",   classify_num(0),   "zero")
+assert("classify 7",   classify_num(7),   "small")
+assert("classify 42",  classify_num(42),  "medium")
+assert("classify 999", classify_num(999), "large")
+
+/* ── Match with side effects ──────────────────────────── */
+let log = []
+func process_event(event) {
+    match event {
+        when "start"  { push(log, "started"); return true }
+        when "stop"   { push(log, "stopped"); return true }
+        when "reset"  { push(log, "reset"); return true }
+        else          { push(log, "unknown:" + event); return false }
+    }
+}
+assert_true("start event", process_event("start"))
+assert_true("stop event",  process_event("stop"))
+assert_true("reset event", process_event("reset"))
+let unknown_result = process_event("pause")
+assert("unknown event result", unknown_result, false)
+assert("log len",   len(log), 4)
+assert("log[0]",    log[0],   "started")
+assert("log[3]",    log[3],   "unknown:pause")
+
+/* ── Match on type name ───────────────────────────────── */
+func type_desc(v) {
+    match type(v) {
+        when "int"    { return "integer" }
+        when "float"  { return "float" }
+        when "string" { return "text" }
+        when "bool"   { return "boolean" }
+        when "null"   { return "nothing" }
+        else          { return "other" }
+    }
+}
+assert("type int",    type_desc(42),     "integer")
+assert("type float",  type_desc(3.14),   "float")
+assert("type string", type_desc("hi"),   "text")
+assert("type bool",   type_desc(true),   "boolean")
+assert("type null",   type_desc(null),   "nothing")
+assert("type array",  type_desc([1,2]),  "other")
+
+/* ── Nested match ─────────────────────────────────────── */
+func grade(score) {
+    match true {
+        when score >= 90 {
+            match true {
+                when score >= 97 { return "A+" }
+                else             { return "A"  }
+            }
+        }
+        when score >= 80 { return "B" }
+        when score >= 70 { return "C" }
+        when score >= 60 { return "D" }
+        else              { return "F" }
+    }
+}
+assert("grade A+", grade(98), "A+")
+assert("grade A",  grade(92), "A")
+assert("grade B",  grade(85), "B")
+assert("grade F",  grade(50), "F")
+
+print("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { print("[PASS] test_match") }
+else { print("[FAIL] test_match") }

@@ -1,0 +1,114 @@
+/* Binary search tree — insert, search, traversal */
+
+func bst_new() {
+    return {"root": null}
+}
+
+func node_new(val) {
+    return {"val": val, "left": null, "right": null}
+}
+
+func bst_insert(tree, val) {
+    tree["root"] = _insert(tree["root"], val)
+}
+
+func _insert(node, val) {
+    if node == null { return node_new(val) }
+    if val < node["val"]      { node["left"]  = _insert(node["left"],  val) }
+    elif val > node["val"]    { node["right"] = _insert(node["right"], val) }
+    return node
+}
+
+func bst_contains(tree, val) {
+    return _contains(tree["root"], val)
+}
+
+func _contains(node, val) {
+    if node == null          { return false }
+    if val == node["val"]   { return true }
+    if val < node["val"]    { return _contains(node["left"],  val) }
+    return _contains(node["right"], val)
+}
+
+func bst_inorder(tree) {
+    let result = []
+    _inorder(tree["root"], result)
+    return result
+}
+
+func _inorder(node, result) {
+    if node == null { return }
+    _inorder(node["left"], result)
+    push(result, node["val"])
+    _inorder(node["right"], result)
+}
+
+func bst_height(tree) {
+    return _height(tree["root"])
+}
+
+func _height(node) {
+    if node == null { return 0 }
+    let lh = _height(node["left"])
+    let rh = _height(node["right"])
+    return 1 + (lh > rh ? lh : rh)
+}
+
+func bst_min(tree) {
+    if tree["root"] == null { return null }
+    let node = tree["root"]
+    while node["left"] != null { node = node["left"] }
+    return node["val"]
+}
+
+func bst_max(tree) {
+    if tree["root"] == null { return null }
+    let node = tree["root"]
+    while node["right"] != null { node = node["right"] }
+    return node["val"]
+}
+
+func bst_size(tree) {
+    return _size(tree["root"])
+}
+
+func _size(node) {
+    if node == null { return 0 }
+    return 1 + _size(node["left"]) + _size(node["right"])
+}
+
+/* ── Demo ───────────────────────────────────────────── */
+let tree = bst_new()
+let values = [50, 30, 70, 20, 40, 60, 80, 10, 25, 35, 45]
+for v in values { bst_insert(tree, v) }
+
+output("BST Demo")
+output("Inserted: " + str(values))
+output("In-order (sorted): " + str(bst_inorder(tree)))
+output("Min: " + str(bst_min(tree)) + "  Max: " + str(bst_max(tree)))
+output("Height: " + str(bst_height(tree)) + "  Size: " + str(bst_size(tree)))
+
+output("\nSearch tests:")
+for n in [50, 25, 80, 99, 1] {
+    let found = bst_contains(tree, n)
+    output("  " + str(n) + " -> " + (found ? "found" : "not found"))
+}
+
+/* ── Sorted insertion (degenerate case) ───────────────── */
+output("\nDegenerate tree (sorted insert):")
+let deg = bst_new()
+for v in [1, 2, 3, 4, 5, 6, 7] { bst_insert(deg, v) }
+output("Height: " + str(bst_height(deg)) + " (7 for sorted input = linear)")
+
+/* ── Word frequency tree ──────────────────────────────── */
+output("\nWord frequency counter:")
+let words = split("the quick brown fox jumps over the lazy dog the fox", " ")
+let freq = {}
+for w in words {
+    if w in freq { freq[w] += 1 }
+    else { freq[w] = 1 }
+}
+let word_tree = bst_new()
+for w in freq { bst_insert(word_tree, w) }
+output("Unique words: " + str(bst_size(word_tree)))
+output("Alphabetical: " + str(bst_inorder(word_tree)))
