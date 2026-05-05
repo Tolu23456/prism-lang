@@ -1046,6 +1046,9 @@ static Value vm_bi_xgui_end(Value *args, int argc) {
     xgui_end(g_vm_xgui); return value_null();
 }
 
+/* Skip the optional xgui context arg (always null in Prism) when present */
+#define XGUI_SKIP_CTX(a,n) do { if ((n)>0 && VAL_TYPE((a)[0])==VAL_NULL){(a)++;(n)--;} } while(0)
+
 static Value vm_bi_xgui_label(Value *args, int argc) {
     if (!g_vm_xgui) return value_null();
     XGUI_SKIP_CTX(args, argc);
@@ -1110,9 +1113,6 @@ static Value vm_bi_xgui_separator(Value *args, int argc) {
     if (g_vm_xgui) xgui_separator(g_vm_xgui);
     return value_null();
 }
-/* Skip the optional xgui context arg (always null in Prism) when present */
-#define XGUI_SKIP_CTX(a,n) do { if ((n)>0 && VAL_TYPE((a)[0])==VAL_NULL){(a)++;(n)--;} } while(0)
-
 static Value vm_bi_xgui_checkbox(Value *args, int argc) {
     if (!g_vm_xgui || argc < 2) return value_bool(0);
     XGUI_SKIP_CTX(args, argc);
