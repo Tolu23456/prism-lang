@@ -14,8 +14,11 @@ CC      = gcc
 #   misoptimise the computed-goto dispatch loop.  -fno-optimize-sibling-calls
 #   and -fstack-reuse=none prevent those without hurting dispatch speed.
 VM_CFLAGS_EXTRA = -O2 -fno-optimize-sibling-calls -fstack-reuse=none
+# Enhanced optimization flags for maximum performance
 CFLAGS  = -Wall -Wextra -std=c11 -O3 -fno-gcse -DNDEBUG -march=native \
 	  -fomit-frame-pointer -fno-strict-aliasing -finline-functions \
+	  -flto -fwhole-program -funroll-loops -fprefetch-loop-arrays \
+	  -fvect-cost-model=dynamic -ffunction-sections -fdata-sections \
 	  -Isrc -D_POSIX_C_SOURCE=200809L
 PREFIX  = /usr/local
 BINDIR  = $(DESTDIR)$(PREFIX)/bin
@@ -75,7 +78,7 @@ HEADERS = \
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ -lm $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $^ -lm $(LDFLAGS) -Wl,--gc-sections -Wl,--as-needed -flto
 
 # vm.c gets its own rule: targeted flags to avoid computed-goto misoptimisation
 src/vm.o: src/vm.c $(HEADERS)
