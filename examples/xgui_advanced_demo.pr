@@ -1,0 +1,129 @@
+/* Advanced xgui Demo - Showcasing new 20+ widgets and layouts */
+
+import "lib/gui"
+import "lib/xgui_advanced"
+
+/* Initialize GUI */
+let g = gui_init(1200, 800, "Prism xgui Advanced - Feature Showcase")
+gui_set_dark(g, true)
+
+/* Create data grid example */
+let data_grid = DataGrid(10, 5)
+data_grid.add_row(["ID", "Name", "Email", "Status", "Date"])
+data_grid.add_row([1, "Alice", "alice@example.com", "Active", "2026-05-01"])
+data_grid.add_row([2, "Bob", "bob@example.com", "Pending", "2026-05-02"])
+data_grid.add_row([3, "Charlie", "charlie@example.com", "Active", "2026-05-03"])
+
+/* Create tree view example */
+let tree = TreeView("Projects")
+let project1 = tree.add_root_child("Frontend")
+let project2 = tree.add_root_child("Backend")
+project1.add_child(TreeNode("React"))
+project1.add_child(TreeNode("Vue"))
+project2.add_child(TreeNode("Node.js"))
+project2.add_child(TreeNode("Python"))
+
+/* Create table example */
+let table = Table(["Name", "Score", "Grade"])
+table.add_row(["Student 1", 85, "B+"])
+table.add_row(["Student 2", 92, "A"])
+table.add_row(["Student 3", 78, "B"])
+
+/* Create color picker */
+let color_picker = ColorPicker("theme_color", 0x3498DB)
+
+/* Create menu */
+let menu = Menu()
+menu.add_item("File", null)
+menu.add_item("Edit", null)
+menu.add_item("View", null)
+menu.add_item("Help", null)
+
+/* Create theme */
+let dark_theme = Theme("dark")
+dark_theme.set_color("primary", 0x3498DB)
+dark_theme.set_color("success", 0x27AE60)
+dark_theme.set_color("danger", 0xE74C3C)
+dark_theme.apply()
+
+/* Create responsive grid */
+let resp_grid = ResponsiveGrid(2, 4)
+resp_grid.add_item("Item 1")
+resp_grid.add_item("Item 2")
+resp_grid.add_item("Item 3")
+resp_grid.add_item("Item 4")
+
+/* Create modal */
+let settings_modal = Modal("Settings")
+settings_modal.set_content("Configure your application settings")
+settings_modal.add_button("Save", null)
+settings_modal.add_button("Cancel", null)
+
+/* Main loop */
+while gui_running(g) {
+    gui_begin(g)
+    
+    /* Render menu */
+    menu.render()
+    
+    gui_separator()
+    
+    /* Row 1: Data Grid */
+    gui_section("Data Grid Widget")
+    data_grid.render()
+    
+    gui_separator()
+    
+    /* Row 2: Tree View and Table */
+    gui_row_begin()
+    
+    /* Tree view */
+    gui_group_begin("Tree View")
+    tree.render()
+    gui_group_end()
+    
+    /* Table */
+    gui_group_begin("Table Widget")
+    table.render()
+    gui_group_end()
+    
+    gui_row_end()
+    
+    gui_separator()
+    
+    /* Row 3: Color Picker and Theme */
+    gui_row_begin()
+    
+    gui_group_begin("Color Picker")
+    let selected_color = color_picker.render()
+    gui_label("Selected: " + color_picker.get_hex())
+    gui_group_end()
+    
+    gui_group_begin("Theme")
+    if gui_button("Light Theme") {
+        gui_set_theme("light")
+    }
+    if gui_button("Dark Theme") {
+        gui_set_theme("dark")
+    }
+    gui_group_end()
+    
+    gui_row_end()
+    
+    gui_separator()
+    
+    /* Row 4: Modal and Responsive Grid */
+    if gui_button("Open Settings") {
+        settings_modal.show()
+    }
+    
+    settings_modal.render()
+    
+    gui_separator()
+    
+    /* Responsive Grid */
+    gui_section("Responsive Grid Layout")
+    resp_grid.render()
+    
+    gui_end(g)
+}
