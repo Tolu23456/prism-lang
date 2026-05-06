@@ -1483,16 +1483,23 @@ static Value vm_builtin_ends(Value *args, int argc) {
     return value_bool((sl >= ml && strcmp(AS_STR(args[0]) + sl - ml, AS_STR(args[1])) == 0) ? 1 : 0);
 }
 
-/* chars: return array of chars */
+/* chars: return array of UTF-8 characters (one string per codepoint) */
 static Value vm_builtin_chars(Value *args, int argc) {
     if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_array_new();
-    const char *s = AS_STR(args[0]);
+    const unsigned char *s = (const unsigned char *)AS_STR(args[0]);
     Value arr = value_array_new();
-    char buf[2] = {0, 0};
-    for (int i = 0; s[i]; i++) {
-        buf[0] = s[i];
+    int i = 0;
+    while (s[i]) {
+        int step = 1;
+        if      ((s[i] & 0xF8) == 0xF0 && s[i+1] && s[i+2] && s[i+3]) step = 4;
+        else if ((s[i] & 0xF0) == 0xE0 && s[i+1] && s[i+2])            step = 3;
+        else if ((s[i] & 0xE0) == 0xC0 && s[i+1])                       step = 2;
+        char buf[5] = {0, 0, 0, 0, 0};
+        for (int j = 0; j < step; j++) buf[j] = (char)s[i + j];
         Value cv = value_string(buf);
-        value_array_push(arr, cv); value_release(cv);
+        value_array_push(arr, cv);
+        value_release(cv);
+        i += step;
     }
     return arr;
 }

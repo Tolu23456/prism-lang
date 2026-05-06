@@ -713,13 +713,20 @@ static Value builtin_time_now(Value *a, int n) {
 /* ---- string builtins ---- */
 static Value builtin_chars(Value *a, int n) {
     if (n < 1 || VAL_TYPE(a[0]) != VAL_STRING) return value_array_new();
-    const char *s = AS_STR(a[0]);
+    const unsigned char *s = (const unsigned char *)AS_STR(a[0]);
     Value arr = value_array_new();
-    for (const char *p = s; *p; p++) {
-        char buf[2] = {*p, '\0'};
+    int i = 0;
+    while (s[i]) {
+        int step = 1;
+        if      ((s[i] & 0xF8) == 0xF0 && s[i+1] && s[i+2] && s[i+3]) step = 4;
+        else if ((s[i] & 0xF0) == 0xE0 && s[i+1] && s[i+2])            step = 3;
+        else if ((s[i] & 0xE0) == 0xC0 && s[i+1])                       step = 2;
+        char buf[5] = {0, 0, 0, 0, 0};
+        for (int j = 0; j < step; j++) buf[j] = (char)s[i + j];
         Value cv = value_string(buf);
         value_array_push(arr, cv);
         value_release(cv);
+        i += step;
     }
     return arr;
 }

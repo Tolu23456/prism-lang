@@ -1,17 +1,117 @@
 /* Prism Standard Library — strings module
-   Pure Prism implementation — no Python imports.
-   Comprehensive string manipulation, parsing, and formatting.
+   Comprehensive string manipulation, Unicode-aware utilities, and formatting.
+
+   UTF-8 API  (codepoint-based):
+     utf8_len(s)              → int    — codepoint count (not byte count)
+     utf8_byte_len(s)         → int    — byte count (same as builtin len())
+     utf8_chars(s)            → array  — array of Unicode character strings
+     utf8_codepoints(s)       → array  — array of integer codepoints
+     utf8_slice(s, start, end)→ string — slice by codepoint index
+     utf8_encode(codepoints)  → string — build string from codepoint array
+
+   General string utilities (byte-indexed for ASCII; UTF-8 safe otherwise):
+     capitalize(s)            titleCase(s)      camelCase(s)
+     snakeCase(s)             kebabCase(s)      swapCase(s)
+     padLeft(s, w, ch)        padRight(s, w, ch) padCenter(s, w, ch)
+     repeat(s, n)
+     isBlank(s)               isEmpty(s)
+     countOccurrences(h, n)   indexOfChar(s, ch)  lastIndexOf(s, n)
+     isNumeric(s)             isAlpha(s)          isAlphaNumeric(s)
+     isUpperCase(s)           isLowerCase(s)      isPalindrome(s)
+     startsWithAny(s, ps)     endsWithAny(s, ss)
+     reverse(s)               truncate(s, max, e) stripLeft(s, ch)
+     stripRight(s, ch)        strip(s, ch)        removeAll(s, t)
+     replaceAll(s, f, t)      replaceFirst(s, f, t) insertAt(s, pos, t)
+     deleteAt(s, s, e)        wrap(s, pre, suf)   unwrap(s, pre, suf)
+     toBool(s)                toLines(s)          toWords(s)
+     indent(s, sp)            dedent(s, sp)       slugify(s)
+     template(tmpl, vars)     countWords(s)       commonPrefix(a, b)
+     levenshtein(a, b)        similarity(a, b)    charFrequency(s)
+     wrapWords(s, w)
+
+   NOTE: chars() builtin now returns one element per Unicode codepoint.
+   Byte-level len() and slice() are unchanged — use utf8_len() / utf8_slice()
+   when you need character counts and positions for non-ASCII content.
 */
 
-/* ── Case & Formatting ──────────────────────────────────── */
+/* ── UTF-8 helpers (private) ─────────────────────────────────── */
+
+/* Byte length of the UTF-8 character starting at byte offset i in s */
+func _utf8_step(s, i) {
+    let b = ord(slice(s, i, i + 1))
+    if b >= 240 { return 4 }
+    if b >= 224 { return 3 }
+    if b >= 192 { return 2 }
+    return 1
+}
+
+/* ── UTF-8 public API ────────────────────────────────────────── */
+
+/* Number of Unicode codepoints in s (not byte count) */
+func utf8_len(s) {
+    let count = 0
+    let i     = 0
+    let n     = len(s)
+    while i < n {
+        i += _utf8_step(s, i)
+        count += 1
+    }
+    return count
+}
+
+/* Byte count — same as builtin len(), provided for clarity */
+func utf8_byte_len(s) { return len(s) }
+
+/* Array of Unicode character strings (one element per codepoint).
+   Equivalent to the builtin chars() — provided for explicit naming. */
+func utf8_chars(s) { return chars(s) }
+
+/* Array of integer codepoints */
+func utf8_codepoints(s) {
+    let result = []
+    for c in chars(s) { push(result, ord(c)) }
+    return result
+}
+
+/* Build a string from an array of integer codepoints */
+func utf8_encode(codepoints) {
+    let result = ""
+    for cp in codepoints { result = result + chr(cp) }
+    return result
+}
+
+/* Slice s by codepoint index [start, end).
+   Supports negative indices (Python-style). end=null means "to end". */
+func utf8_slice(s, start, end) {
+    let n = len(s)
+    /* Collect byte offsets of each codepoint boundary + one past the last */
+    let offsets = [0]
+    let i = 0
+    while i < n {
+        i += _utf8_step(s, i)
+        push(offsets, i)
+    }
+    let total = len(offsets) - 1   /* codepoint count */
+    if start == null { start = 0 }
+    if end   == null { end   = total }
+    if start < 0 { start = total + start }
+    if end   < 0 { end   = total + end   }
+    if start < 0 { start = 0 }
+    if end > total { end = total }
+    if start >= end { return "" }
+    return slice(s, offsets[start], offsets[end])
+}
+
+/* ── Case & Formatting ───────────────────────────────────────── */
 
 func capitalize(s) {
     if len(s) == 0 { return s }
-    return upper(slice(s, 0, 1)) + slice(s, 1)
+    let first_char = chars(s)[0]
+    return upper(first_char) + slice(s, len(first_char))
 }
 
 func titleCase(s) {
-    let words = split(s, " ")
+    let words  = split(s, " ")
     let result = []
     for w in words { push(result, capitalize(w)) }
     return join(" ", result)
@@ -21,7 +121,7 @@ func camelCase(s) {
     let parts = split(s, " ")
     if len(parts) == 0 { return s }
     let out = lower(parts[0])
-    let i = 1
+    let i   = 1
     while i < len(parts) {
         out = out + capitalize(parts[i])
         i += 1
@@ -33,12 +133,12 @@ func snakeCase(s) {
     let out = ""
     let chs = chars(s)
     for ch in chs {
-        if ch == " " or ch == "-" {
+        if ch == " " || ch == "-" {
             let n = len(out)
-            if n > 0 and slice(out, n-1) != "_" { out = out + "_" }
-        } elif ch >= "A" and ch <= "Z" {
+            if n > 0 && slice(out, n - 1) != "_" { out = out + "_" }
+        } elif ch >= "A" && ch <= "Z" {
             let n = len(out)
-            if n > 0 and slice(out, n-1) != "_" { out = out + "_" }
+            if n > 0 && slice(out, n - 1) != "_" { out = out + "_" }
             out = out + lower(ch)
         } else {
             out = out + ch
@@ -54,53 +154,50 @@ func kebabCase(s) {
 func swapCase(s) {
     let out = ""
     for ch in chars(s) {
-        if ch >= "A" and ch <= "Z" { out = out + lower(ch) }
-        elif ch >= "a" and ch <= "z" { out = out + upper(ch) }
+        if ch >= "A" && ch <= "Z" { out = out + lower(ch) }
+        elif ch >= "a" && ch <= "z" { out = out + upper(ch) }
         else { out = out + ch }
     }
     return out
 }
 
-/* ── Padding & Alignment ────────────────────────────────── */
+/* ── Padding & Alignment (Unicode-aware width) ───────────────── */
 
 func padLeft(s, width, ch) {
     ch = ch ?? " "
     let out = str(s)
-    while len(out) < width { out = ch + out }
+    while utf8_len(out) < width { out = ch + out }
     return out
 }
 
 func padRight(s, width, ch) {
     ch = ch ?? " "
     let out = str(s)
-    while len(out) < width { out = out + ch }
+    while utf8_len(out) < width { out = out + ch }
     return out
 }
 
 func padCenter(s, width, ch) {
     ch = ch ?? " "
-    let out = str(s)
-    let total_pad = width - len(out)
+    let out       = str(s)
+    let total_pad = width - utf8_len(out)
     if total_pad <= 0 { return out }
-    let left_pad  = total_pad // 2
+    let left_pad  = total_pad / 2
     let right_pad = total_pad - left_pad
     return repeat(ch, left_pad) + out + repeat(ch, right_pad)
 }
 
 func repeat(s, n) {
     let result = ""
-    let i = 0
-    while i < n {
-        result = result + s
-        i += 1
-    }
+    let i      = 0
+    while i < n { result = result + s; i += 1 }
     return result
 }
 
-/* ── Search & Test ──────────────────────────────────────── */
+/* ── Search & Test ───────────────────────────────────────────── */
 
-func isBlank(s)       { return len(trim(s)) == 0 }
-func isEmpty(s)       { return len(s) == 0 }
+func isBlank(s) { return len(trim(s)) == 0 }
+func isEmpty(s) { return len(s) == 0 }
 
 func countOccurrences(haystack, needle) {
     if len(needle) == 0 { return 0 }
@@ -119,7 +216,7 @@ func indexOfChar(s, ch) {
 
 func lastIndexOf(s, needle) {
     let last = -1
-    let i = 0
+    let i    = 0
     while i <= len(s) - len(needle) {
         if slice(s, i, i + len(needle)) == needle { last = i }
         i += 1
@@ -131,7 +228,7 @@ func isNumeric(s) {
     let trimmed = trim(s)
     if len(trimmed) == 0 { return false }
     let dot_count = 0
-    let start = 0
+    let start     = 0
     if slice(trimmed, 0, 1) == "-" { start = 1 }
     let i = start
     while i < len(trimmed) {
@@ -139,7 +236,7 @@ func isNumeric(s) {
         if ch == "." {
             dot_count += 1
             if dot_count > 1 { return false }
-        } elif ch < "0" or ch > "9" {
+        } elif ch < "0" || ch > "9" {
             return false
         }
         i += 1
@@ -150,7 +247,7 @@ func isNumeric(s) {
 func isAlpha(s) {
     if len(s) == 0 { return false }
     for ch in chars(s) {
-        if not ((ch >= "A" and ch <= "Z") or (ch >= "a" and ch <= "z")) {
+        if !((ch >= "A" && ch <= "Z") || (ch >= "a" && ch <= "z")) {
             return false
         }
     }
@@ -160,10 +257,10 @@ func isAlpha(s) {
 func isAlphaNumeric(s) {
     if len(s) == 0 { return false }
     for ch in chars(s) {
-        let ok = (ch >= "A" and ch <= "Z") or
-                 (ch >= "a" and ch <= "z") or
-                 (ch >= "0" and ch <= "9")
-        if not ok { return false }
+        let ok = (ch >= "A" && ch <= "Z") ||
+                 (ch >= "a" && ch <= "z") ||
+                 (ch >= "0" && ch <= "9")
+        if !ok { return false }
     }
     return true
 }
@@ -198,12 +295,13 @@ func endsWithAny(s, suffixes) {
     return false
 }
 
-/* ── Transform ──────────────────────────────────────────── */
+/* ── Transform ───────────────────────────────────────────────── */
 
+/* Reverse by Unicode codepoints (chars() is now UTF-8 aware) */
 func reverse(s) {
     let chs = chars(s)
     let out = ""
-    let i = len(chs) - 1
+    let i   = len(chs) - 1
     while i >= 0 {
         out = out + chs[i]
         i -= 1
@@ -211,23 +309,24 @@ func reverse(s) {
     return out
 }
 
+/* Truncate by codepoint count */
 func truncate(s, maxLen, ellipsis) {
     ellipsis = ellipsis ?? "..."
-    if len(s) <= maxLen { return s }
-    return slice(s, 0, maxLen - len(ellipsis)) + ellipsis
+    if utf8_len(s) <= maxLen { return s }
+    return utf8_slice(s, 0, maxLen - utf8_len(ellipsis)) + ellipsis
 }
 
 func stripLeft(s, ch) {
     ch = ch ?? " "
     let i = 0
-    while i < len(s) and slice(s, i, i + 1) == ch { i += 1 }
+    while i < len(s) && slice(s, i, i + 1) == ch { i += 1 }
     return slice(s, i)
 }
 
 func stripRight(s, ch) {
     ch = ch ?? " "
     let i = len(s)
-    while i > 0 and slice(s, i - 1, i) == ch { i -= 1 }
+    while i > 0 && slice(s, i - 1, i) == ch { i -= 1 }
     return slice(s, 0, i)
 }
 
@@ -271,27 +370,27 @@ func wrap(s, prefix, suffix) {
 
 func unwrap(s, prefix, suffix) {
     suffix = suffix ?? prefix
-    if starts(s, prefix) and ends(s, suffix) {
+    if starts(s, prefix) && ends(s, suffix) {
         return slice(s, len(prefix), len(s) - len(suffix))
     }
     return s
 }
 
-/* ── Parsing & Conversion ───────────────────────────────── */
+/* ── Parsing & Conversion ────────────────────────────────────── */
 
 func toBool(s) {
     let lo = lower(trim(s))
-    if lo == "true" or lo == "yes" or lo == "1" or lo == "on" { return true }
-    if lo == "false" or lo == "no"  or lo == "0" or lo == "off" { return false }
+    if lo == "true"  || lo == "yes" || lo == "1" || lo == "on"  { return true  }
+    if lo == "false" || lo == "no"  || lo == "0" || lo == "off" { return false }
     return null
 }
 
-func toLines(s)   { return split(s, "\n") }
-func toWords(s)   { return split(trim(s), " ") }
+func toLines(s) { return split(s, "\n") }
+func toWords(s) { return split(trim(s), " ") }
 
 func indent(s, spaces) {
     spaces = spaces ?? 4
-    let pad = repeat(" ", spaces)
+    let pad   = repeat(" ", spaces)
     let lines = toLines(s)
     let result = []
     for line in lines { push(result, pad + line) }
@@ -300,11 +399,11 @@ func indent(s, spaces) {
 
 func dedent(s, spaces) {
     spaces = spaces ?? 4
-    let lines = toLines(s)
+    let lines  = toLines(s)
     let result = []
     for line in lines {
         let i = 0
-        while i < spaces and i < len(line) and slice(line, i, i + 1) == " " {
+        while i < spaces && i < len(line) && slice(line, i, i + 1) == " " {
             i += 1
         }
         push(result, slice(line, i))
@@ -313,12 +412,12 @@ func dedent(s, spaces) {
 }
 
 func slugify(s) {
-    let out = lower(s)
-    out = replaceAll(out, " ", "-")
+    let out   = lower(s)
+    out       = replaceAll(out, " ", "-")
     let clean = ""
     for ch in chars(out) {
-        let ok = (ch >= "a" and ch <= "z") or
-                 (ch >= "0" and ch <= "9") or
+        let ok = (ch >= "a" && ch <= "z") ||
+                 (ch >= "0" && ch <= "9") ||
                  ch == "-"
         if ok { clean = clean + ch }
     }
@@ -344,25 +443,21 @@ func countWords(s) {
 
 func commonPrefix(a, b) {
     let i = 0
-    while i < len(a) and i < len(b) and
-          slice(a, i, i + 1) == slice(b, i, i + 1) {
+    while i < len(a) && i < len(b) && slice(a, i, i + 1) == slice(b, i, i + 1) {
         i += 1
     }
     return slice(a, 0, i)
 }
 
 func levenshtein(a, b) {
-    let m = len(a)
-    let n = len(b)
+    let m  = len(a)
+    let n  = len(b)
     let dp = []
-    let i = 0
+    let i  = 0
     while i <= m {
         let row = []
-        let j = 0
-        while j <= n {
-            push(row, 0)
-            j += 1
-        }
+        let j   = 0
+        while j <= n { push(row, 0); j += 1 }
         push(dp, row)
         i += 1
     }
@@ -376,9 +471,9 @@ func levenshtein(a, b) {
         while j <= n {
             let cost = 0
             if slice(a, i - 1, i) != slice(b, j - 1, j) { cost = 1 }
-            let del  = dp[i - 1][j] + 1
-            let ins  = dp[i][j - 1] + 1
-            let sub  = dp[i - 1][j - 1] + cost
+            let del = dp[i - 1][j] + 1
+            let ins = dp[i][j - 1] + 1
+            let sub = dp[i - 1][j - 1] + cost
             dp[i][j] = min(del, min(ins, sub))
             j += 1
         }
@@ -388,7 +483,7 @@ func levenshtein(a, b) {
 }
 
 func similarity(a, b) {
-    let dist = levenshtein(a, b)
+    let dist   = levenshtein(a, b)
     let maxLen = max(len(a), len(b))
     if maxLen == 0 { return 1.0 }
     return 1.0 - float(dist) / float(maxLen)
@@ -404,8 +499,8 @@ func charFrequency(s) {
 }
 
 func wrapWords(s, lineWidth) {
-    let words = toWords(s)
-    let lines = []
+    let words   = toWords(s)
+    let lines   = []
     let current = ""
     for w in words {
         if len(current) == 0 {

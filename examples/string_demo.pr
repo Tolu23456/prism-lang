@@ -1,0 +1,176 @@
+/* examples/string_demo.pr
+   Demonstrates lib/strings.pr — UTF-8 aware and general string utilities.
+*/
+
+import strings
+
+output("=== UTF-8 Character Counting ===")
+
+let cafe    = "café"          /* 4 codepoints, 5 bytes */
+let snowman = "☃ snow"       /* 6 codepoints, 8 bytes */
+let emoji   = "😀🎉🌍"      /* 3 codepoints, 12 bytes */
+
+output("\"café\"     → bytes: " + str(len(cafe))    + "  chars: " + str(utf8_len(cafe)))
+output("\"☃ snow\"   → bytes: " + str(len(snowman)) + "  chars: " + str(utf8_len(snowman)))
+output("\"😀🎉🌍\" → bytes: " + str(len(emoji))   + "  chars: " + str(utf8_len(emoji)))
+
+output("")
+output("=== utf8_chars() — Iterate by Codepoint ===")
+
+let word = "héllo"
+let chs  = utf8_chars(word)
+output("chars of \"héllo\": " + str(len(chs)) + " elements")
+let ci = 0
+while ci < len(chs) {
+    output("  [" + str(ci) + "] = " + chs[ci] + "  (U+" + str(ord(chs[ci])) + ")")
+    ci += 1
+}
+
+output("")
+output("=== utf8_codepoints() ===")
+
+let cps     = utf8_codepoints("café")
+let cps_str = join(", ", cps)
+output("codepoints of \"café\": [" + cps_str + "]")
+
+output("")
+output("=== utf8_encode() — Build from Codepoints ===")
+
+let built = utf8_encode([72, 101, 108, 108, 111, 32, 9825])
+output("utf8_encode([72,101,108,108,111,32,9825]) = " + built)
+
+output("")
+output("=== utf8_slice() — Slice by Character Index ===")
+
+let s = "αβγδε"    /* Greek letters, 2 bytes each */
+output("\"αβγδε\" byte_len=" + str(len(s)) + " utf8_len=" + str(utf8_len(s)))
+output("utf8_slice(s, 1, 4) = \"" + utf8_slice(s, 1, 4) + "\"   (expect βγδ)")
+output("utf8_slice(s, -2)   = \"" + utf8_slice(s, -2, null) + "\"    (expect δε)")
+output("utf8_slice(s, 0, 3) = \"" + utf8_slice(s, 0, 3) + "\"   (expect αβγ)")
+
+output("")
+output("=== reverse() — Unicode-Safe ===")
+
+output("reverse(\"café\")  = " + reverse("café"))
+output("reverse(\"αβγδε\") = " + reverse("αβγδε"))
+output("reverse(\"hello\") = " + reverse("hello"))
+
+output("")
+output("=== isPalindrome() ===")
+
+output("isPalindrome(\"racecar\") = " + str(isPalindrome("racecar")))
+output("isPalindrome(\"hello\")   = " + str(isPalindrome("hello")))
+output("isPalindrome(\"Racecar\") = " + str(isPalindrome("Racecar")))
+
+output("")
+output("=== Case Conversions ===")
+
+output("capitalize(\"hello world\") = "  + capitalize("hello world"))
+output("titleCase(\"the quick fox\") = " + titleCase("the quick fox"))
+output("camelCase(\"hello world\")  = "  + camelCase("hello world"))
+output("snakeCase(\"Hello World\")  = "  + snakeCase("Hello World"))
+output("kebabCase(\"Hello World\")  = "  + kebabCase("Hello World"))
+output("swapCase(\"Hello World\")   = "  + swapCase("Hello World"))
+
+output("")
+output("=== Padding (Unicode-aware width) ===")
+
+let flag = "🇺🇳"    /* 2 codepoints */
+output("padLeft(\"42\", 8)         = \"" + padLeft("42", 8, null) + "\"")
+output("padRight(\"hi\", 8, \".\")  = \"" + padRight("hi", 8, ".") + "\"")
+output("padCenter(\"OK\", 10, \"-\")= \"" + padCenter("OK", 10, "-") + "\"")
+output("padLeft(\"café\", 8)       = \"" + padLeft("café", 8, null) + "\"")
+
+output("")
+output("=== truncate() ===")
+
+let long_s = "The quick brown fox"
+output("truncate(s, 12)      = \"" + truncate(long_s, 12, null) + "\"")
+output("truncate(s, 12, \"…\") = \"" + truncate(long_s, 12, "…") + "\"")
+
+output("")
+output("=== strip / stripLeft / stripRight ===")
+
+output("strip(\"***hi***\", \"*\")      = \"" + strip("***hi***", "*") + "\"")
+output("stripLeft(\"   hello\", \" \")  = \"" + stripLeft("   hello", " ") + "\"")
+output("stripRight(\"world   \", \" \") = \"" + stripRight("world   ", " ") + "\"")
+
+output("")
+output("=== Search Utilities ===")
+
+output("countOccurrences(\"banana\", \"a\") = " + str(countOccurrences("banana", "a")))
+output("indexOfChar(\"hello\", \"l\")       = " + str(indexOfChar("hello", "l")))
+output("lastIndexOf(\"banana\", \"an\")     = " + str(lastIndexOf("banana", "an")))
+
+output("")
+output("=== Classification ===")
+
+output("isNumeric(\"-3.14\")    = " + str(isNumeric("-3.14")))
+output("isNumeric(\"abc\")     = " + str(isNumeric("abc")))
+output("isAlpha(\"Hello\")     = " + str(isAlpha("Hello")))
+output("isAlphaNumeric(\"ab3\")= " + str(isAlphaNumeric("ab3")))
+output("isBlank(\"   \")       = " + str(isBlank("   ")))
+output("toBool(\"yes\")        = " + str(toBool("yes")))
+output("toBool(\"FALSE\")      = " + str(toBool("FALSE")))
+
+output("")
+output("=== replaceAll / replaceFirst ===")
+
+output("replaceAll(\"aabbaa\", \"a\", \"x\")  = " + replaceAll("aabbaa", "a", "x"))
+output("replaceFirst(\"aabbaa\", \"a\", \"x\")= " + replaceFirst("aabbaa", "a", "x"))
+output("removeAll(\"h-e-l-l-o\", \"-\")       = " + removeAll("h-e-l-l-o", "-"))
+
+output("")
+output("=== wrap / unwrap ===")
+
+output("wrap(\"hello\", \"[\", \"]\")   = " + wrap("hello", "[", "]"))
+output("unwrap(\"[hello]\", \"[\", \"]\")= " + unwrap("[hello]", "[", "]"))
+
+output("")
+output("=== template() ===")
+
+let tmpl   = "Hello, {{name}}! You scored {{score}} points."
+let tplvars = {"name": "Alice", "score": 98}
+output(template(tmpl, tplvars))
+
+output("")
+output("=== wrapWords() ===")
+
+let prose = "The quick brown fox jumps over the lazy dog"
+output(wrapWords(prose, 20))
+
+output("")
+output("=== levenshtein / similarity ===")
+
+output("levenshtein(\"kitten\", \"sitting\") = " + str(levenshtein("kitten", "sitting")))
+output("similarity(\"kitten\", \"sitting\")  = " + str(similarity("kitten", "sitting")))
+output("similarity(\"hello\", \"hello\")     = " + str(similarity("hello", "hello")))
+
+output("")
+output("=== charFrequency() ===")
+
+let freq = charFrequency("hello")
+output("charFrequency(\"hello\"): h=" + str(freq["h"]) +
+       " e=" + str(freq["e"]) +
+       " l=" + str(freq["l"]) +
+       " o=" + str(freq["o"]))
+
+output("")
+output("=== startsWithAny / endsWithAny ===")
+
+output("startsWithAny(\"hello\", [\"hi\",\"he\"]) = " + str(startsWithAny("hello", ["hi", "he"])))
+output("endsWithAny(\"hello\", [\".txt\",\"lo\"]) = " + str(endsWithAny("hello", [".txt", "lo"])))
+
+output("")
+output("=== slugify() ===")
+
+output("slugify(\"Hello World! 123\") = " + slugify("Hello World! 123"))
+
+output("")
+output("=== commonPrefix() ===")
+
+output("commonPrefix(\"flower\", \"flow\")  = \"" + commonPrefix("flower", "flow") + "\"")
+output("commonPrefix(\"dog\", \"racecar\") = \"" + commonPrefix("dog", "racecar") + "\"")
+
+output("")
+output("All string_demo checks complete.")

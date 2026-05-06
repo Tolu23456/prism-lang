@@ -139,6 +139,38 @@ let clone = copy(d)
 ONI wire format: `N` null · `T/F` bool · `I42;` int · `R3.14;` float ·
 `"str"` string · `[n:items]` array · `{n:kvs}` dict · `(n:items)` tuple
 
+## strings — String Utilities Library (`lib/strings.pr`)
+Unicode-aware string manipulation. Works in both VM and tree-walker modes.
+
+```prism
+import strings
+
+# UTF-8 aware (codepoint-based)
+utf8_len("café")               # → 4  (not 5 bytes)
+utf8_chars("café")             # → ["c","a","f","é"]
+utf8_codepoints("café")        # → [99, 97, 102, 233]
+utf8_slice("αβγδε", 1, 4)      # → "βγδ"
+utf8_slice("αβγδε", -2, null)  # → "δε"
+utf8_encode([72, 101, 108, 108, 111])  # → "Hello"
+
+# General utilities
+capitalize("hello world")      # → "Hello world"
+titleCase("the quick fox")     # → "The Quick Fox"
+camelCase("hello world")       # → "helloWorld"
+snakeCase("Hello World")       # → "hello_world"
+padLeft("42", 8, null)         # → "      42"  (uses utf8_len for width)
+padCenter("OK", 10, "-")       # → "----OK----"
+reverse("café")                # → "éfac"       (codepoint-safe)
+truncate("The quick brown fox", 12, "…")  # → "The quick b…"
+isPalindrome("racecar")        # → true
+levenshtein("kitten", "sitting")  # → 3
+slugify("Hello World! 123")    # → "hello-world-123"
+template("Hi {{name}}!", {"name": "Alice"})  # → "Hi Alice!"
+```
+
+NOTE: `chars()` builtin now returns one element per Unicode codepoint (not one byte).
+`len()` and `slice()` remain byte-based — use `utf8_len()` / `utf8_slice()` for character-indexed operations on non-ASCII strings.
+
 ## json — JSON Library (`lib/json.pr`)
 Full RFC 8259 JSON encoder / decoder. Works in both VM and tree-walker modes.
 
