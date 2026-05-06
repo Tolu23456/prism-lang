@@ -1,104 +1,156 @@
 /* Prism Standard Library — json module
-   Pure Prism implementation — no Python imports.
-   Full JSON parser (RFC 8259) and serializer from scratch.
+   Full JSON encoder / decoder (RFC 8259).
+   Works in both default VM mode and tree-walker mode.
+
+   API:
+     stringify(val)         → string  — compact JSON string
+     pretty(val)            → string  — pretty-printed JSON (2-space indent)
+     parse(text)            → value   — decode JSON string → Prism value
+     isValid(text)          → bool    — true if text is valid JSON
+     parseOr(text, default) → value   — decode or return default on error
+     minify(text)           → string  — re-encode compactly (strips whitespace)
+
+   Type mapping:
+     Prism null   ↔  JSON null
+     Prism bool   ↔  JSON true / false
+     Prism int    ↔  JSON integer    (e.g. 42)
+     Prism float  ↔  JSON number     (e.g. 3.14); NaN/Inf encoded as null
+     Prism string ↔  JSON string     (full escape support incl. \uXXXX)
+     Prism array  ↔  JSON array
+     Prism tuple  →  JSON array      (decodes back as array)
+     Prism dict   ↔  JSON object     (keys coerced to strings)
+
+   NOTE: In Prism the literal "{"  yields "" (f-string interpolation bug).
+   Brace characters are obtained via chr(123) / chr(125) throughout.
 */
 
-/* ── Serializer ──────────────────────────────────────────── */
+/* Workaround for Prism's { interpolation ambiguity in string literals */
+const _JLBRACE = chr(123)   /* { */
+const _JRBRACE = chr(125)   /* } */
 
-func stringify(val, indent_size, current_depth) {
-    current_depth = current_depth ?? 0
-    let t = type(val)
+/* ── Encoder helpers ─────────────────────────────────────────── */
 
-    if val == null or val == null { return "null" }
-    if t == "bool" {
-        if val { return "true" }
-        return "false"
-    }
-    if t == "int" or t == "float" {
-        let s = str(val)
-        return s
-    }
-    if t == "string" {
-        return _escapeString(val)
-    }
-    if t == "array" {
-        if len(val) == 0 { return "[]" }
-        let items = []
-        for item in val {
-            push(items, stringify(item, indent_size, current_depth + 1))
-        }
-        if indent_size != null {
-            let pad  = repeat("  ", current_depth + 1)
-            let close = repeat("  ", current_depth)
-            return "[\n" + pad + join(",\n" + pad, items) + "\n" + close + "]"
-        }
-        return "[" + join(",", items) + "]"
-    }
-    if t == "dict" {
-        let ks = keys(val)
-        if len(ks) == 0 { return "{}" }
-        let pairs = []
-        for k in ks {
-            let kStr = _escapeString(str(k))
-            let vStr = stringify(val[k], indent_size, current_depth + 1)
-            if indent_size != null {
-                push(pairs, kStr + ": " + vStr)
-            } else {
-                push(pairs, kStr + ":" + vStr)
-            }
-        }
-        if indent_size != null {
-            let pad  = repeat("  ", current_depth + 1)
-            let close = repeat("  ", current_depth)
-            return "{\n" + pad + join(",\n" + pad, pairs) + "\n" + close + "}"
-        }
-        return "{" + join(",", pairs) + "}"
-    }
-    return "null"
-}
-
-func pretty(val) {
-    return stringify(val, 2, 0)
-}
-
-func _escapeString(s) {
-    let out = "\""
-    for ch in chars(s) {
-        if      ch == "\""  { out = out + "\\\"" }
-        elif ch == "\\"  { out = out + "\\\\" }
-        elif ch == "\n"  { out = out + "\\n" }
-        elif ch == "\r"  { out = out + "\\r" }
-        elif ch == "\t"  { out = out + "\\t" }
-        else              { out = out + ch }
-    }
-    return out + "\""
-}
-
-func repeat(s, n) {
+func _jRepeat(s, n) {
     let r = ""
     let i = 0
     while i < n { r = r + s; i += 1 }
     return r
 }
 
-/* ── Parser ──────────────────────────────────────────────── */
-
-let _src  = ""
-let _pos  = 0
-let _len  = 0
-
-func parse(text) {
-    _src = text
-    _pos = 0
-    _len = len(text)
-    _skipWS()
-    let result = _parseValue()
-    _skipWS()
-    if _pos < _len {
-        error("JSON parse error: unexpected trailing characters at pos " + str(_pos))
+func _jEscStr(s) {
+    let out = "\""
+    for ch in chars(s) {
+        if      ch == "\""  { out = out + "\\\"" }
+        elif ch == "\\"     { out = out + "\\\\" }
+        elif ch == "\n"     { out = out + "\\n"  }
+        elif ch == "\r"     { out = out + "\\r"  }
+        elif ch == "\t"     { out = out + "\\t"  }
+        elif ch == chr(8)   { out = out + "\\b"  }
+        elif ch == chr(12)  { out = out + "\\f"  }
+        else                { out = out + ch     }
     }
-    return result
+    return out + "\""
 }
+
+/* ── Compact encoder ─────────────────────────────────────────── */
+
+func stringify(val) {
+    if val == null { return "null" }
+    let t = type(val)
+    if t == "bool" {
+        if val { return "true" }
+        return "false"
+    }
+    if t == "int" { return str(val) }
+    if t == "float" {
+        let s = str(val)
+        if s == "inf" || s == "-inf" || s == "nan" || s == "-nan" { return "null" }
+        return s
+    }
+    if t == "string" { return _jEscStr(val) }
+    if t == "array" || t == "tuple" {
+        let n   = len(val)
+        let out = "["
+        let i   = 0
+        while i < n {
+            if i > 0 { out = out + "," }
+            out = out + stringify(val[i])
+            i += 1
+        }
+        return out + "]"
+    }
+    if t == "dict" {
+        let ks  = keys(val)
+        let n   = len(ks)
+        let out = _JLBRACE
+        let i   = 0
+        while i < n {
+            if i > 0 { out = out + "," }
+            out = out + _jEscStr(str(ks[i])) + ":" + stringify(val[ks[i]])
+            i += 1
+        }
+        return out + _JRBRACE
+    }
+    return "null"
+}
+
+/* ── Pretty encoder ──────────────────────────────────────────── */
+
+func pretty(val) { return _jPretty(val, 0) }
+
+func _jPretty(val, depth) {
+    if val == null { return "null" }
+    let t = type(val)
+    if t == "bool" {
+        if val { return "true" }
+        return "false"
+    }
+    if t == "int" { return str(val) }
+    if t == "float" {
+        let s = str(val)
+        if s == "inf" || s == "-inf" || s == "nan" || s == "-nan" { return "null" }
+        return s
+    }
+    if t == "string" { return _jEscStr(val) }
+    if t == "array" || t == "tuple" {
+        let n = len(val)
+        if n == 0 { return "[]" }
+        let pad_in  = _jRepeat("  ", depth + 1)
+        let pad_out = _jRepeat("  ", depth)
+        let out = "[\n"
+        let i   = 0
+        while i < n {
+            if i > 0 { out = out + ",\n" }
+            out = out + pad_in + _jPretty(val[i], depth + 1)
+            i += 1
+        }
+        return out + "\n" + pad_out + "]"
+    }
+    if t == "dict" {
+        let ks = keys(val)
+        let n  = len(ks)
+        if n == 0 { return _JLBRACE + _JRBRACE }
+        let pad_in  = _jRepeat("  ", depth + 1)
+        let pad_out = _jRepeat("  ", depth)
+        let out = _JLBRACE + "\n"
+        let i   = 0
+        while i < n {
+            if i > 0 { out = out + ",\n" }
+            out = out + pad_in + _jEscStr(str(ks[i])) + ": " + _jPretty(val[ks[i]], depth + 1)
+            i += 1
+        }
+        return out + "\n" + pad_out + _JRBRACE
+    }
+    return "null"
+}
+
+/* ── Parser state (module-level, single-threaded) ────────────── */
+
+let _src = ""
+let _pos = 0
+let _len = 0
+
+/* ── Parser helpers ──────────────────────────────────────────── */
 
 func _peek() {
     if _pos >= _len { return "" }
@@ -113,65 +165,42 @@ func _consume() {
 
 func _expect(ch) {
     let got = _consume()
-    if got != ch { error("JSON parse error: expected '" + ch + "' got '" + got + "' at pos " + str(_pos)) }
+    if got != ch {
+        throw "json: expected '" + ch + "' got '" + got + "' at pos " + str(_pos)
+    }
 }
 
 func _skipWS() {
     while _pos < _len {
         let ch = _peek()
-        if ch == " " or ch == "\n" or ch == "\r" or ch == "\t" {
+        if ch == " " || ch == "\n" || ch == "\r" || ch == "\t" {
             _pos += 1
         } else {
-            return
+            break
         }
     }
 }
 
-func _parseValue() {
-    _skipWS()
-    let ch = _peek()
-    if ch == "{" { return _parseObject() }
-    if ch == "[" { return _parseArray() }
-    if ch == "\"" { return _parseString() }
-    if ch == "t" { return _parseLiteral("true", true) }
-    if ch == "f" { return _parseLiteral("false", false) }
-    if ch == "n" { return _parseLiteral("null", null) }
-    if ch == "-" or (ch >= "0" and ch <= "9") { return _parseNumber() }
-    error("JSON parse error: unexpected character '" + ch + "' at pos " + str(_pos))
+/* Parse four hex digits for \uXXXX (VM-compatible: no parseInt with radix) */
+func _hexDigit(c) {
+    let o = ord(c)
+    if o >= 48 && o <= 57  { return o - 48 }      /* 0-9 */
+    if o >= 65 && o <= 70  { return o - 55 }      /* A-F */
+    if o >= 97 && o <= 102 { return o - 87 }      /* a-f */
+    throw "json: invalid hex digit '" + c + "' in \\u escape"
 }
 
-func _parseLiteral(word, result) {
+func _parseHex4() {
+    let v = 0
     let i = 0
-    while i < len(word) {
-        let got = _consume()
-        if got != slice(word, i, i + 1) {
-            error("JSON parse error: invalid literal at pos " + str(_pos))
-        }
+    while i < 4 {
+        v = v * 16 + _hexDigit(_consume())
         i += 1
     }
-    return result
+    return v
 }
 
-func _parseNumber() {
-    let start = _pos
-    if _peek() == "-" { _pos += 1 }
-    while _pos < _len and _peek() >= "0" and _peek() <= "9" { _pos += 1 }
-    let is_float = false
-    if _pos < _len and _peek() == "." {
-        is_float = true
-        _pos += 1
-        while _pos < _len and _peek() >= "0" and _peek() <= "9" { _pos += 1 }
-    }
-    if _pos < _len and (_peek() == "e" or _peek() == "E") {
-        is_float = true
-        _pos += 1
-        if _peek() == "+" or _peek() == "-" { _pos += 1 }
-        while _pos < _len and _peek() >= "0" and _peek() <= "9" { _pos += 1 }
-    }
-    let numStr = slice(_src, start, _pos)
-    if is_float { return parseFloat(numStr) }
-    return parseInt(numStr)
-}
+/* ── String parser ───────────────────────────────────────────── */
 
 func _parseString() {
     _expect("\"")
@@ -181,73 +210,155 @@ func _parseString() {
         if ch == "\"" { return out }
         if ch == "\\" {
             let esc = _consume()
-            if esc == "\"" { out = out + "\"" }
-            elif esc == "\\" { out = out + "\\" }
-            elif esc == "/"  { out = out + "/" }
-            elif esc == "n"  { out = out + "\n" }
-            elif esc == "r"  { out = out + "\r" }
-            elif esc == "t"  { out = out + "\t" }
-            elif esc == "b"  { out = out + "\b" }
-            elif esc == "f"  { out = out + "\f" }
-            elif esc == "u"  {
-                let hex = slice(_src, _pos, _pos + 4)
-                _pos += 4
-                out = out + fromCharCode(parseInt(hex, 16))
-            } else {
-                out = out + "\\" + esc
-            }
+            if      esc == "\""  { out = out + "\"" }
+            elif esc == "\\"     { out = out + "\\" }
+            elif esc == "/"      { out = out + "/"  }
+            elif esc == "n"      { out = out + "\n" }
+            elif esc == "r"      { out = out + "\r" }
+            elif esc == "t"      { out = out + "\t" }
+            elif esc == "b"      { out = out + chr(8)  }
+            elif esc == "f"      { out = out + chr(12) }
+            elif esc == "u"      { out = out + chr(_parseHex4()) }
+            else                 { out = out + "\\" + esc }
         } else {
             out = out + ch
         }
     }
-    error("JSON parse error: unterminated string")
+    throw "json: unterminated string"
 }
+
+/* ── Number parser ───────────────────────────────────────────── */
+
+func _parseNumber() {
+    let start    = _pos
+    let is_float = false
+
+    if _peek() == "-" { _pos += 1 }
+
+    while _pos < _len {
+        let o = ord(_peek())
+        if o >= 48 && o <= 57 { _pos += 1 }
+        else { break }
+    }
+
+    if _peek() == "." {
+        is_float = true
+        _pos += 1
+        while _pos < _len {
+            let o = ord(_peek())
+            if o >= 48 && o <= 57 { _pos += 1 }
+            else { break }
+        }
+    }
+
+    let ec = _peek()
+    if ec == "e" || ec == "E" {
+        is_float = true
+        _pos += 1
+        let sc = _peek()
+        if sc == "+" || sc == "-" { _pos += 1 }
+        while _pos < _len {
+            let o = ord(_peek())
+            if o >= 48 && o <= 57 { _pos += 1 }
+            else { break }
+        }
+    }
+
+    let raw = slice(_src, start, _pos)
+    if raw == "" || raw == "-" {
+        throw "json: invalid number at pos " + str(start)
+    }
+    if is_float { return parseFloat(raw) }
+    return parseInt(raw)
+}
+
+/* ── Array parser ────────────────────────────────────────────── */
 
 func _parseArray() {
     _expect("[")
     _skipWS()
     let result = []
-    if _peek() == "]" { _consume(); return result }
+    if _peek() == "]" { _pos += 1; return result }
     while true {
-        _skipWS()
         push(result, _parseValue())
         _skipWS()
         let ch = _peek()
-        if ch == "]" { _consume(); return result }
-        if ch != "," { error("JSON parse error: expected ',' or ']' in array at pos " + str(_pos)) }
-        _consume()
+        if ch == "]" { _pos += 1; break }
+        if ch == "," { _pos += 1 }
+        else { throw "json: expected ',' or ']' in array, got '" + ch + "' at pos " + str(_pos) }
     }
     return result
 }
 
+/* ── Object parser ───────────────────────────────────────────── */
+
 func _parseObject() {
-    _expect("{")
+    _expect(_JLBRACE)
     _skipWS()
     let result = {}
-    if _peek() == "}" { _consume(); return result }
+    if _peek() == _JRBRACE { _pos += 1; return result }
     while true {
         _skipWS()
-        if _peek() != "\"" { error("JSON parse error: expected string key at pos " + str(_pos)) }
+        if _peek() != "\"" {
+            throw "json: expected string key, got '" + _peek() + "' at pos " + str(_pos)
+        }
         let k = _parseString()
         _skipWS()
         _expect(":")
-        _skipWS()
         let v = _parseValue()
         result[k] = v
         _skipWS()
         let ch = _peek()
-        if ch == "}" { _consume(); return result }
-        if ch != "," { error("JSON parse error: expected ',' or '}' in object at pos " + str(_pos)) }
-        _consume()
+        if ch == _JRBRACE { _pos += 1; break }
+        if ch == "," { _pos += 1 }
+        else { throw "json: expected ',' or '" + _JRBRACE + "' in object, got '" + ch + "' at pos " + str(_pos) }
     }
     return result
 }
+
+/* ── Value dispatcher ────────────────────────────────────────── */
+
+func _parseValue() {
+    _skipWS()
+    let ch = _peek()
+
+    if ch == "\""    { return _parseString() }
+    if ch == "["     { return _parseArray()  }
+    if ch == _JLBRACE { return _parseObject() }
+
+    if ch == "t" { _pos += 4; return true  }
+    if ch == "f" { _pos += 5; return false }
+    if ch == "n" { _pos += 4; return null  }
+
+    let o = ord(ch)
+    if (o >= 48 && o <= 57) || ch == "-" { return _parseNumber() }
+
+    if ch == "" { throw "json: unexpected end of input" }
+    throw "json: unexpected token '" + ch + "' at pos " + str(_pos)
+}
+
+/* ── Public decode entry point ───────────────────────────────── */
+
+func parse(text) {
+    _src = text
+    _pos = 0
+    _len = len(text)
+    _skipWS()
+    let result = _parseValue()
+    _skipWS()
+    if _pos < _len {
+        throw "json: trailing data at pos " + str(_pos)
+    }
+    return result
+}
+
+/* ── Utilities ───────────────────────────────────────────────── */
 
 func isValid(text) {
     try {
         parse(text)
         return true
-    } catch (e) {
+    } catch e {
         return false
     }
 }
@@ -255,23 +366,11 @@ func isValid(text) {
 func parseOr(text, default_val) {
     try {
         return parse(text)
-    } catch (e) {
+    } catch e {
         return default_val
     }
 }
 
 func minify(text) {
-    return stringify(parse(text), null, 0)
-}
-
-func merge(a_text, b_text) {
-    let a = parse(a_text)
-    let b = parse(b_text)
-    if type(a) != "dict" or type(b) != "dict" {
-        error("json.merge: both values must be objects")
-    }
-    let result = {}
-    for k in keys(a) { result[k] = a[k] }
-    for k in keys(b) { result[k] = b[k] }
-    return stringify(result)
+    return stringify(parse(text))
 }

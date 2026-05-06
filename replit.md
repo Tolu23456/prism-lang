@@ -139,6 +139,30 @@ let clone = copy(d)
 ONI wire format: `N` null · `T/F` bool · `I42;` int · `R3.14;` float ·
 `"str"` string · `[n:items]` array · `{n:kvs}` dict · `(n:items)` tuple
 
+## json — JSON Library (`lib/json.pr`)
+Full RFC 8259 JSON encoder / decoder. Works in both VM and tree-walker modes.
+
+```prism
+import json
+
+# Encode Prism value → compact JSON string
+let s = stringify({"name": "Alice", "scores": [98, 87]})
+
+# Decode JSON string → Prism value
+let d = parse(s)
+
+# Pretty-printed output (2-space indent)
+output(pretty(d))
+
+# Validation and safe decode
+isValid("[1,2,3]")          # → true
+parseOr("bad!", null)       # → null (no throw)
+minify("{ \"x\" : 1 }")    # → {"x":1}
+```
+
+NOTE: `\uXXXX` escapes decode correctly for ASCII range (U+0000–U+007F).
+Code points > 127 are subject to Prism's `chr()` 7-bit truncation limit.
+
 ## Gotchas
 - **`"{"` is an empty string** — Prism's lexer treats `{` inside double-quoted
   strings as an f-string interpolation opener, so `"{"` yields `""`.
@@ -146,3 +170,5 @@ ONI wire format: `N` null · `T/F` bool · `I42;` int · `R3.14;` float ·
   `"}"`, `"["`, `"]"`, `"("`, or `")"`.
 - `import X as alias` (dict-namespacing) only works in `--tree` mode; use
   plain `import X` (star-import) when targeting the default bytecode VM.
+- **`chr()` is 7-bit**: `chr(n)` yields the character at `n mod 128`, so
+  non-ASCII Unicode (code points > 127) cannot be produced via `chr()`.

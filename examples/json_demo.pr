@@ -1,0 +1,186 @@
+/* json_demo.pr — demonstrates the json library
+   Run:  ./prism examples/json_demo.pr
+
+   NOTE: In Prism, "{" in a string literal yields "" (f-string interpolation
+   bug). We use chr(123) for { and chr(125) for } wherever needed.
+*/
+
+import json
+
+/* Convenience constants for brace characters */
+let LB = chr(123)   /* { */
+let RB = chr(125)   /* } */
+
+output("=== json library demo ===")
+output("")
+
+func check(label, got, want) {
+    let ok = str(got) == str(want)
+    if ok {
+        output("  [OK]  " + label)
+    } else {
+        output("  [FAIL] " + label + "  got=" + str(got) + "  want=" + str(want))
+    }
+}
+
+/* ── 1. Primitive encoding ───────────────────────────────────── */
+output("-- Primitive encoding --")
+check("null",       stringify(null),    "null")
+check("true",       stringify(true),    "true")
+check("false",      stringify(false),   "false")
+check("int 42",     stringify(42),      "42")
+check("int -7",     stringify(-7),      "-7")
+check("float 3.14", stringify(3.14),    "3.14")
+check("string",     stringify("hello"), "\"hello\"")
+check("empty str",  stringify(""),      "\"\"")
+output("")
+
+/* ── 2. Special-character string encoding ────────────────────── */
+output("-- String escaping --")
+check("quote",     stringify("say \"hi\""),   "\"say \\\"hi\\\"\"")
+check("backslash", stringify("a\\b"),         "\"a\\\\b\"")
+check("newline",   stringify("line1\nline2"), "\"line1\\nline2\"")
+check("tab",       stringify("a\tb"),         "\"a\\tb\"")
+output("")
+
+/* ── 3. Array and dict encoding ──────────────────────────────── */
+output("-- Composite encoding --")
+check("empty array", stringify([]),            "[]")
+check("int array",   stringify([1, 2, 3]),     "[1,2,3]")
+check("nested arr",  stringify([[1], [2, 3]]), "[[1],[2,3]]")
+
+/* Empty dict: "{}" can't be a literal — use chr() */
+check("empty dict", stringify({}), LB + RB)
+
+let person = {"name": "Alice", "age": 30, "active": true}
+let enc    = stringify(person)
+output("  person JSON: " + enc)
+check("person has name",   contains(enc, "\"name\":\"Alice\""), true)
+check("person has age",    contains(enc, "\"age\":30"),         true)
+check("person has active", contains(enc, "\"active\":true"),    true)
+output("")
+
+/* ── 4. Primitive decoding ───────────────────────────────────── */
+output("-- Primitive decoding --")
+check("null",    parse("null"),      null)
+check("true",    parse("true"),      true)
+check("false",   parse("false"),     false)
+check("int",     parse("42"),        42)
+check("neg int", parse("-7"),        -7)
+check("float",   parse("3.14"),      3.14)
+check("string",  parse("\"hello\""), "hello")
+output("")
+
+/* ── 5. Number formats ───────────────────────────────────────── */
+output("-- Number formats --")
+check("zero",    parse("0"),      0)
+check("neg zero",parse("-0"),     0)
+check("frac",    parse("1.5"),    1.5)
+check("exp",     parse("1e2"),    100.0)
+check("neg exp", parse("1e-1"),   0.1)
+check("big int", parse("999999"), 999999)
+output("")
+
+/* ── 6. Nested structure decoding ────────────────────────────── */
+output("-- Nested decoding --")
+
+/* Build the JSON string via stringify to avoid the { literal bug */
+let nested_data = {"user": {"name": "Bob", "scores": [10, 20, 30]}, "ok": true}
+let json_str    = stringify(nested_data)
+output("  JSON input: " + json_str)
+let obj = parse(json_str)
+check("user.name",      obj["user"]["name"],       "Bob")
+check("user.scores[1]", obj["user"]["scores"][1],  20)
+check("ok",             obj["ok"],                 true)
+output("")
+
+/* ── 7. Whitespace tolerance ─────────────────────────────────── */
+output("-- Whitespace handling --")
+
+/* Build spaced JSON strings without { literals */
+let spaced = "  " + LB + " \"x\" : 1 , \"y\" : 2 " + RB
+let sp     = parse(spaced)
+check("spaced x", sp["x"], 1)
+check("spaced y", sp["y"], 2)
+
+let arr_spaced = "[ 1 , 2 , 3 ]"
+let ar = parse(arr_spaced)
+check("spaced arr[0]", ar[0], 1)
+check("spaced arr[2]", ar[2], 3)
+output("")
+
+/* ── 8. Round-trip ───────────────────────────────────────────── */
+output("-- Round-trip --")
+let data = {
+    "language": "Prism",
+    "version":  1,
+    "stable":   true,
+    "pi":       3.14159,
+    "tags":     ["fast", "safe", "fun"],
+    "meta":     {"author": "you", "year": 2026}
+}
+let rt = parse(stringify(data))
+check("rt language",  rt["language"],     "Prism")
+check("rt version",   rt["version"],      1)
+check("rt stable",    rt["stable"],       true)
+check("rt pi",        rt["pi"],           3.14159)
+check("rt tags[2]",   rt["tags"][2],      "fun")
+check("rt meta year", rt["meta"]["year"], 2026)
+output("")
+
+/* ── 9. Unicode escape sequences ─────────────────────────────── */
+output("-- Unicode escapes --")
+/* \uXXXX within ASCII range (0x00-0x7F) decodes correctly.
+   Code points > 127 are constrained by Prism's chr() — it produces
+   the character at (codepoint mod 128), a known VM limitation. */
+let uni_A   = parse("\"\\u0041\"")   /* \u0041 = 'A' */
+check("\\u0041 = A", uni_A, "A")
+let uni_sp  = parse("\"\\u0020\"")   /* \u0020 = space */
+check("\\u0020 = space", uni_sp, " ")
+let uni_tilde = parse("\"\\u007E\"") /* \u007E = '~' */
+check("\\u007E = ~", uni_tilde, "~")
+let uni_tab = parse("\"a\\u0009b\"") /* \u0009 = tab */
+check("\\u0009 = tab", uni_tab, "a\tb")
+output("")
+
+/* ── 10. Pretty printing ─────────────────────────────────────── */
+output("-- Pretty printing --")
+let pretty_out = pretty({"a": 1, "b": [2, 3]})
+output("Pretty output:")
+output(pretty_out)
+check("pretty has newline", contains(pretty_out, "\n"), true)
+check("pretty has indent",  contains(pretty_out, "  "), true)
+output("")
+
+/* ── 11. isValid ─────────────────────────────────────────────── */
+output("-- isValid --")
+/* Build valid-object JSON without a { string literal */
+let valid_obj_json = LB + "\"x\":1" + RB
+check("valid object",  isValid(valid_obj_json),  true)
+check("valid array",   isValid("[1,2,3]"),        true)
+check("valid null",    isValid("null"),            true)
+/* Invalid: use a clearly wrong token without brace issues */
+check("bad token",     isValid("notjson"),         false)
+check("empty string",  isValid(""),                false)
+check("trailing junk", isValid("[1] extra"),       false)
+output("")
+
+/* ── 12. parseOr ─────────────────────────────────────────────── */
+output("-- parseOr --")
+let good = parseOr("42",           -1)
+let bad  = parseOr("!!!invalid!!!", -1)
+check("parseOr good", good, 42)
+check("parseOr bad",  bad,  -1)
+output("")
+
+/* ── 13. minify ──────────────────────────────────────────────── */
+output("-- minify --")
+/* Build messy JSON string without { literals */
+let messy   = "  " + LB + " \"a\" : 1 ,  \"b\" :  [ 2 , 3 ]  " + RB + "  "
+let compact = minify(messy)
+check("minify trims spaces",  len(compact) < len(messy),        true)
+check("minify has a",         contains(compact, "\"a\":1"),      true)
+check("minify has b array",   contains(compact, "\"b\":[2,3]"), true)
+output("")
+
+output("=== all done ===")
