@@ -1,0 +1,368 @@
+/* lib/regex.pr — pure-Prism backtracking regex engine
+   Unicode-aware (UTF-8). Works in both VM and tree-walker modes.
+
+   Supported syntax:
+     .           any single character (including non-ASCII codepoints)
+     *           zero or more (greedy)
+     +           one or more (greedy)
+     ?           zero or one
+     ^           anchor to start of string (must be first char of pattern)
+     $           anchor to end of string   (must be last  char of pattern)
+     [abc]       character class — match any of a, b, c
+     [^abc]      negated class   — match anything except a, b, c
+     [a-z]       range inside class
+     \d  \D      digit [0-9]           / non-digit
+     \w  \W      word char [A-Za-z0-9_] / non-word
+     \s  \S      whitespace [ \t\n\r]  / non-whitespace
+     \n  \t  \r  literal newline, tab, carriage-return
+     \\          literal backslash
+     pat1|pat2   alternation — try pat1, then pat2
+
+   Public API:
+     re_test(pat, str)              → bool   — true if pat found anywhere
+     re_match(pat, str)             → bool   — true if pat matches whole string
+     re_search(pat, str)            → string|null — first matching substring
+     re_search_pos(pat, str)        → [start,end]|null — byte positions
+     re_find_all(pat, str)          → array of matched substrings
+     re_replace(pat, str, repl)     → string — replace first match
+     re_replace_all(pat, str, repl) → string — replace all matches
+     re_split(pat, str)             → array — split at each match
+
+   Limitations:
+     - No capture groups (parentheses not supported as grouping)
+     - Greedy quantifiers only (no lazy *? +? ??)
+     - The | operator splits the entire pattern (no nested alternation)
+*/
+
+/* ── Module state ──────────────────────────────────────────── */
+let _rp          = ""     /* active pattern string (anchors stripped) */
+let _rs          = ""     /* active subject string */
+let _rpl         = 0      /* byte length of _rp */
+let _rsl         = 0      /* byte length of _rs */
+let _r_anc_start = false  /* pattern had leading ^  */
+let _r_anc_end   = false  /* pattern had trailing $ */
+
+/* ── UTF-8 byte-step helper ────────────────────────────────── */
+func _rsu(s, i) {
+    let b = ord(slice(s, i, i + 1))
+    if b >= 240 { return 4 }
+    if b >= 224 { return 3 }
+    if b >= 192 { return 2 }
+    return 1
+}
+
+/* ── Character predicates ──────────────────────────────────── */
+func _re_isdigit(c) { return c >= "0" && c <= "9" }
+func _re_isword(c) {
+    return (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") ||
+           (c >= "0" && c <= "9") || c == "_"
+}
+func _re_isspace(c) {
+    return c == " " || c == "\t" || c == "\n" || c == "\r"
+}
+
+/* ── Atom end: byte index in _rp just past atom at pi ─────── */
+func _re_atom_end(pi) {
+    if pi >= _rpl { return pi }
+    let pc = slice(_rp, pi, pi + 1)
+    if pc == "\\" { return pi + 2 }
+    if pc == "[" {
+        let j = pi + 1
+        /* ] immediately after [ or [^ is literal */
+        if j < _rpl && slice(_rp, j, j + 1) == "^" { j += 1 }
+        if j < _rpl && slice(_rp, j, j + 1) == "]" { j += 1 }
+        while j < _rpl && slice(_rp, j, j + 1) != "]" { j += 1 }
+        return j + 1
+    }
+    return pi + 1
+}
+
+/* ── Atom match: does _rp atom at pi match the char at _rs[si]? ── */
+/* Requires si < _rsl. Returns 1 or 0. */
+func _re_match_atom(pi, si) {
+    let step = _rsu(_rs, si)
+    let sc   = slice(_rs, si, si + step)
+    let pc   = slice(_rp, pi, pi + 1)
+
+    if pc == "." { return 1 }
+
+    if pc == "\\" {
+        let ec = slice(_rp, pi + 1, pi + 2)
+        if ec == "d" { return _re_isdigit(sc) ? 1 : 0 }
+        if ec == "D" { return _re_isdigit(sc) ? 0 : 1 }
+        if ec == "w" { return _re_isword(sc)  ? 1 : 0 }
+        if ec == "W" { return _re_isword(sc)  ? 0 : 1 }
+        if ec == "s" { return _re_isspace(sc) ? 1 : 0 }
+        if ec == "S" { return _re_isspace(sc) ? 0 : 1 }
+        if ec == "n" { return sc == "\n"      ? 1 : 0 }
+        if ec == "t" { return sc == "\t"      ? 1 : 0 }
+        if ec == "r" { return sc == "\r"      ? 1 : 0 }
+        return sc == ec ? 1 : 0
+    }
+
+    if pc == "[" {
+        let negate = false
+        let j      = pi + 1
+        if j < _rpl && slice(_rp, j, j + 1) == "^" { negate = true; j += 1 }
+        let found = false
+        while j < _rpl && slice(_rp, j, j + 1) != "]" {
+            let cc = slice(_rp, j, j + 1)
+            if cc == "\\" && j + 1 < _rpl {
+                let ec = slice(_rp, j + 1, j + 2)
+                if (ec == "d" && _re_isdigit(sc)) ||
+                   (ec == "w" && _re_isword(sc))  ||
+                   (ec == "s" && _re_isspace(sc)) ||
+                   sc == ec { found = true }
+                j += 2
+            } elif j + 2 < _rpl &&
+                   slice(_rp, j + 1, j + 2) == "-" &&
+                   slice(_rp, j + 2, j + 3) != "]" {
+                if sc >= cc && sc <= slice(_rp, j + 2, j + 3) { found = true }
+                j += 3
+            } else {
+                if sc == cc { found = true }
+                j += 1
+            }
+        }
+        return (negate ? !found : found) ? 1 : 0
+    }
+
+    return sc == pc ? 1 : 0
+}
+
+/* ── Core: try to match _rp[pi..] against _rs[si..] ───────── */
+/* Returns the byte index in _rs at end of match, or -1 on failure. */
+func _re_match_here(pi, si) {
+    if pi >= _rpl {
+        if _r_anc_end && si != _rsl { return -1 }
+        return si
+    }
+
+    let ae   = _re_atom_end(pi)
+    let qc   = ae < _rpl ? slice(_rp, ae, ae + 1) : ""
+    let has_q = qc == "*" || qc == "+" || qc == "?"
+    let npi  = has_q ? ae + 1 : ae
+
+    if qc == "*" || qc == "+" {
+        /* Greedy: collect all positions where the atom continues to match */
+        let pos = [si]
+        let cur = si
+        while cur < _rsl && _re_match_atom(pi, cur) {
+            cur += _rsu(_rs, cur)
+            push(pos, cur)
+        }
+        /* For + we need at least one match (pos must have ≥ 2 elements) */
+        if qc == "+" && len(pos) < 2 { return -1 }
+        let lo  = qc == "+" ? 1 : 0
+        let idx = len(pos) - 1
+        while idx >= lo {
+            let r = _re_match_here(npi, pos[idx])
+            if r >= 0 { return r }
+            idx -= 1
+        }
+        return -1
+    }
+
+    if qc == "?" {
+        if si < _rsl && _re_match_atom(pi, si) {
+            let r = _re_match_here(npi, si + _rsu(_rs, si))
+            if r >= 0 { return r }
+        }
+        return _re_match_here(npi, si)
+    }
+
+    /* Exact match (no quantifier) */
+    if si >= _rsl { return -1 }
+    if !_re_match_atom(pi, si) { return -1 }
+    return _re_match_here(npi, si + _rsu(_rs, si))
+}
+
+/* ── Setup one alternative pattern ────────────────────────── */
+func _re_load(pat) {
+    _rp          = pat
+    _r_anc_start = false
+    _r_anc_end   = false
+    if len(_rp) > 0 && slice(_rp, 0, 1) == "^" {
+        _r_anc_start = true
+        _rp = slice(_rp, 1)
+    }
+    let plen = len(_rp)
+    if plen > 0 && slice(_rp, plen - 1) == "$" {
+        _r_anc_end = true
+        _rp = slice(_rp, 0, plen - 1)
+    }
+    _rpl = len(_rp)
+}
+
+/* ── Split a pattern on top-level | (skip inside [...]) ───── */
+func _re_split_alts(pat) {
+    let alts  = []
+    let start = 0
+    let i     = 0
+    let depth = 0
+    let plen  = len(pat)
+    while i < plen {
+        let c = slice(pat, i, i + 1)
+        if c == "[" {
+            depth += 1; i += 1
+        } elif c == "]" && depth > 0 {
+            depth -= 1; i += 1
+        } elif c == "\\" {
+            i += 2
+        } elif c == "|" && depth == 0 {
+            push(alts, slice(pat, start, i))
+            start = i + 1; i += 1
+        } else {
+            i += 1
+        }
+    }
+    push(alts, slice(pat, start))
+    return alts
+}
+
+/* ── Find first match (of any alternative) starting at si0 ── */
+/* Returns [start, end] byte pair, or null. Sets up module state. */
+func _re_find_from(alts, si0) {
+    let si = si0
+    while si <= _rsl {
+        for alt in alts {
+            _re_load(alt)
+            if _r_anc_start && si != 0 { continue }
+            let e = _re_match_here(0, si)
+            if e >= 0 { return [si, e] }
+        }
+        if si == _rsl { break }
+        si += _rsu(_rs, si)
+    }
+    return null
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PUBLIC API
+   ═══════════════════════════════════════════════════════════ */
+
+/* re_test(pat, str) → bool
+   True if pat matches anywhere in str. */
+func re_test(pat, str) {
+    _rs  = str
+    _rsl = len(str)
+    let alts = _re_split_alts(pat)
+    return _re_find_from(alts, 0) != null
+}
+
+/* re_match(pat, str) → bool
+   True if pat matches the ENTIRE string. */
+func re_match(pat, str) {
+    _rs  = str
+    _rsl = len(str)
+    let alts = _re_split_alts(pat)
+    for alt in alts {
+        _re_load(alt)
+        let e = _re_match_here(0, 0)
+        if e == _rsl { return true }
+    }
+    return false
+}
+
+/* re_search(pat, str) → string or null
+   Returns the first matching substring, or null if not found. */
+func re_search(pat, str) {
+    _rs  = str
+    _rsl = len(str)
+    let alts = _re_split_alts(pat)
+    let m    = _re_find_from(alts, 0)
+    if m == null { return null }
+    return slice(_rs, m[0], m[1])
+}
+
+/* re_search_pos(pat, str) → [start, end] or null
+   Returns byte positions [start, end) of first match, or null. */
+func re_search_pos(pat, str) {
+    _rs  = str
+    _rsl = len(str)
+    let alts = _re_split_alts(pat)
+    return _re_find_from(alts, 0)
+}
+
+/* re_find_all(pat, str) → array of matched substrings
+   Returns every non-overlapping match. */
+func re_find_all(pat, str) {
+    _rs  = str
+    _rsl = len(str)
+    let alts    = _re_split_alts(pat)
+    let results = []
+    let si      = 0
+    while si <= _rsl {
+        let m = _re_find_from(alts, si)
+        if m == null { break }
+        push(results, slice(_rs, m[0], m[1]))
+        if m[1] > m[0] {
+            si = m[1]
+        } else {
+            if si < _rsl { si += _rsu(_rs, si) } else { break }
+        }
+    }
+    return results
+}
+
+/* re_replace(pat, str, repl) → string
+   Replace the first match with repl. */
+func re_replace(pat, str, repl) {
+    _rs  = str
+    _rsl = len(str)
+    let alts = _re_split_alts(pat)
+    let m    = _re_find_from(alts, 0)
+    if m == null { return str }
+    return slice(_rs, 0, m[0]) + repl + slice(_rs, m[1])
+}
+
+/* re_replace_all(pat, str, repl) → string
+   Replace every non-overlapping match with repl. */
+func re_replace_all(pat, str, repl) {
+    _rs  = str
+    _rsl = len(str)
+    let alts   = _re_split_alts(pat)
+    let result = ""
+    let si     = 0
+    while si <= _rsl {
+        let m = _re_find_from(alts, si)
+        if m == null {
+            result = result + slice(_rs, si)
+            break
+        }
+        result = result + slice(_rs, si, m[0]) + repl
+        if m[1] > m[0] {
+            si = m[1]
+        } else {
+            if si < _rsl {
+                result = result + slice(_rs, si, si + _rsu(_rs, si))
+                si += _rsu(_rs, si)
+            } else { break }
+        }
+    }
+    return result
+}
+
+/* re_split(pat, str) → array of substrings
+   Split str at every match of pat. */
+func re_split(pat, str) {
+    _rs  = str
+    _rsl = len(str)
+    let alts  = _re_split_alts(pat)
+    let parts = []
+    let si    = 0
+    let last  = 0
+    while si <= _rsl {
+        let m = _re_find_from(alts, si)
+        if m == null { break }
+        push(parts, slice(_rs, last, m[0]))
+        last = m[1]
+        if m[1] > m[0] {
+            si = m[1]
+        } else {
+            if si < _rsl { si += _rsu(_rs, si) } else { break }
+        }
+    }
+    push(parts, slice(_rs, last))
+    return parts
+}

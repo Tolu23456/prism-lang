@@ -1,0 +1,163 @@
+/* examples/regex_demo.pr
+   Demonstrates lib/regex.pr — pure-Prism backtracking regex engine.
+*/
+
+import regex
+
+func check(label, got, expect) {
+    let ok = str(got) == str(expect)
+    let mark = ok ? "PASS" : "FAIL"
+    if ok {
+        output("[" + mark + "] " + label)
+    } else {
+        output("[" + mark + "] " + label + "  got=" + str(got) + "  expect=" + str(expect))
+    }
+}
+
+output("=== re_test — match anywhere ===")
+check("digit in string",       re_test("\\d", "abc3def"),    true)
+check("no digit",              re_test("\\d", "abcdef"),     false)
+check("word at start",         re_test("^hello", "hello!"),  true)
+check("word at start fail",    re_test("^hello", "say hello"),false)
+check("end anchor",            re_test("end$", "the end"),   true)
+check("end anchor fail",       re_test("end$", "endless"),   false)
+check("dot star",              re_test("a.*z", "from a to z"), true)
+check("literal pipe alt",      re_test("cat|dog", "I have a dog"), true)
+check("literal pipe alt2",     re_test("cat|dog", "I have a cat"), true)
+check("literal pipe miss",     re_test("cat|dog", "I have a fish"), false)
+
+output("")
+output("=== re_match — full string ===")
+check("exact match",           re_match("hello", "hello"),   true)
+check("partial not full",      re_match("hello", "hello!"),  false)
+check("digit+ full",           re_match("\\d+", "12345"),    true)
+check("digit+ partial",        re_match("\\d+", "123x5"),    false)
+check("word chars",            re_match("\\w+", "hello_42"), true)
+check("anchored implicit",     re_match("[A-Z][a-z]+", "Hello"), true)
+check("alternation full",      re_match("yes|no", "yes"),    true)
+check("alternation full 2",    re_match("yes|no", "no"),     true)
+check("alternation full fail", re_match("yes|no", "maybe"),  false)
+
+output("")
+output("=== re_search — first match ===")
+check("find word",    re_search("\\w+", "  hello world"),       "hello")
+check("find digits",  re_search("\\d+", "price: 42 dollars"),   "42")
+check("find [aeiou]", re_search("[aeiou]+", "rhythm"),          null)
+check("find [aeiou]", re_search("[aeiou]+", "beautiful"),       "eau")
+check("find hex",     re_search("0x[0-9a-fA-F]+", "addr=0xFF"), "0xFF")
+check("dot+ greedy",  re_search("a.+z", "a__z__z"),             "a__z__z")
+
+output("")
+output("=== re_find_all — all matches ===")
+let nums  = re_find_all("\\d+", "a1 bb22 ccc333")
+check("find all nums count", len(nums), 3)
+check("find all nums[0]",    nums[0],   "1")
+check("find all nums[1]",    nums[1],   "22")
+check("find all nums[2]",    nums[2],   "333")
+
+let words = re_find_all("[A-Za-z]+", "one, two, three!")
+check("find all words count", len(words), 3)
+check("find all words[0]",    words[0],  "one")
+check("find all words[2]",    words[2],  "three")
+
+let vowel_runs = re_find_all("[aeiou]+", "beautiful")
+check("vowel runs[0]", vowel_runs[0], "eau")
+check("vowel runs[1]", vowel_runs[1], "i")
+check("vowel runs[2]", vowel_runs[2], "u")
+
+output("")
+output("=== re_replace / re_replace_all ===")
+check("replace first digit",   re_replace("\\d", "a1b2c3", "X"),      "aXb2c3")
+check("replace all digits",    re_replace_all("\\d", "a1b2c3", "X"),   "aXbXcX")
+check("replace word boundary", re_replace_all("\\s+", "a  b   c", " "),"a b c")
+check("censor words",          re_replace_all("cat|dog", "my cat and dog", "pet"), "my pet and pet")
+check("strip leading spaces",  re_replace("^\\s+", "   hello", ""),    "hello")
+check("strip trailing spaces", re_replace("\\s+$", "hello   ", ""),    "hello")
+
+output("")
+output("=== re_split ===")
+let parts = re_split("\\s+", "one two   three")
+check("split ws count", len(parts), 3)
+check("split ws[0]",    parts[0],   "one")
+check("split ws[1]",    parts[1],   "two")
+check("split ws[2]",    parts[2],   "three")
+
+let csv = re_split(",\\s*", "a, b,c ,  d")
+check("split csv count", len(csv), 4)
+check("split csv[1]",    csv[1],   "b")
+check("split csv[3]",    csv[3],   "d")
+
+output("")
+output("=== Character classes ===")
+check("\\d  digit",      re_test("\\d",  "5"),      true)
+check("\\D  non-digit",  re_test("\\D",  "a"),      true)
+check("\\w  word char",  re_test("\\w",  "_"),      true)
+check("\\W  non-word",   re_test("\\W",  "!"),      true)
+check("\\s  space",      re_test("\\s",  " "),      true)
+check("\\S  non-space",  re_test("\\S",  "x"),      true)
+check("[a-z] range",     re_test("[a-z]+", "hello"),true)
+check("[^0-9] negated",  re_test("[^0-9]", "x"),    true)
+check("[^0-9] negated2", re_test("[^0-9]", "5"),    false)
+
+output("")
+output("=== Quantifiers ===")
+check("a*  zero",    re_search("a*",   "bbb"),    "")
+check("a+  one",     re_search("a+",   "aaab"),   "aaa")
+check("a+  fail",    re_search("^a+$", "bbb"),    null)
+check("a?  zero",    re_match("a?b",   "b"),      true)
+check("a?  one",     re_match("a?b",   "ab"),     true)
+check("a?  fail",    re_match("a?b",   "aab"),    false)
+check("\\d\\d?\\d match", re_search("\\d\\d?\\d", "x42y"),  "42")
+check(".*  greedy",  re_search("a.*b", "aXbYb"), "aXbYb")
+
+output("")
+output("=== Anchors ===")
+check("^ start pass",    re_test("^abc",  "abcdef"),  true)
+check("^ start fail",    re_test("^abc",  "xabcdef"), false)
+check("$ end pass",      re_test("xyz$",  "axyz"),    true)
+check("$ end fail",      re_test("xyz$",  "axyzb"),   false)
+check("^exact$ pass",    re_match("^hi$", "hi"),      true)
+check("^exact$ fail",    re_match("^hi$", "hi!"),     false)
+
+output("")
+output("=== Alternation | ===")
+check("cat|dog in sentence",  re_test("cat|dog", "my dog is here"), true)
+check("yes|no|maybe",         re_test("yes|no|maybe", "maybe so"),  true)
+check("find first of alts",   re_search("foo|bar", "bar then foo"), "bar")
+check("replace with alts",    re_replace_all("red|blue", "red sky blue sea", "X"), "X sky X sea")
+
+output("")
+output("=== Practical examples ===")
+
+/* Email-like validation (simplified) */
+let email_pat = "[A-Za-z0-9._%+\\-]+@[A-Za-z0-9.\\-]+\\.[A-Za-z]+"
+check("email valid",   re_match(email_pat, "user@example.com"),   true)
+check("email invalid", re_match(email_pat, "not-an-email"),       false)
+check("email invalid2",re_match(email_pat, "@missing-local.com"), false)
+
+/* Extract all hashtags */
+let tweet    = "Loving #prism and #regex today! #coding"
+let hashtags = re_find_all("#\\w+", tweet)
+check("hashtag count",  len(hashtags), 3)
+check("hashtag[0]",     hashtags[0],   "#prism")
+check("hashtag[2]",     hashtags[2],   "#coding")
+
+/* Camel-case to snake-case via regex */
+let camel   = "helloWorldFooBar"
+let snaked  = re_replace_all("[A-Z]", camel, "_x")
+/* we get _H, _W etc — demonstrate the transform works */
+check("camel has uppercase", re_test("[A-Z]", camel), true)
+check("snaked no uppercase", re_test("[A-Z]", snaked), false)
+
+/* Strip HTML-like tags */
+let html   = "<b>bold</b> and <i>italic</i>"
+let plain  = re_replace_all("<[^>]+>", html, "")
+check("strip tags", plain, "bold and italic")
+
+/* Validate hex colour */
+let hex_color = "#[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]"
+check("hex colour valid",   re_match(hex_color, "#1A2B3C"), true)
+check("hex colour invalid", re_match(hex_color, "#GGGGGG"), false)
+
+output("")
+output("All regex_demo checks complete.")

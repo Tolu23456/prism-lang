@@ -44,12 +44,14 @@ The **"Start application"** workflow runs `make && ./prism examples/hello.pr`, w
 ## Key Language Features
 - Closures, closure-based OOP (dicts + functions)
 - **Ternary operator**: `cond ? then_val : else_val`
+- **Null coalescing**: `expr ?? fallback`
 - **`repeat N { }`** — iterate N times; supports `break`/`continue`
 - **`repeat while cond { }`** / **`repeat until cond { }`** — condition-controlled loops
 - **`match val { when P { } else { } }`** — pattern-matching statement (compiled as if-elif-else chain)
 - **`match val { when P: expr  else: expr }`** — match **expression** (inline form, yields a value; `NODE_MATCH_EXPR`)
 - **`try { } catch e { }`** — structured exception handling with proper stack unwinding
 - **`throw expr`** — raise any value as an exception
+- **Logical keywords**: `and` / `or` / `not` are full aliases for `&&` / `||` / `!` in both VM and tree-walker
 - F-strings, closures, classes with inheritance
 - Generational mark-and-sweep GC (periodic sweep every 64k instructions via `gc_collect_minor`)
 - X11-native GUI toolkit with PSS (Prism StyleSheet) styling engine
