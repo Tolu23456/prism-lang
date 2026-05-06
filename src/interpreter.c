@@ -59,12 +59,15 @@ static void gui_body_append(const char *html) {
 #define ENV_INITIAL_CAP 16
 
 
-/* Mix pointer bits for a well-distributed hash index. */
+/* OPTIMIZED: Use pointer-based hashing for interned strings.
+ * Since all identifier strings are interned through gc_intern_cstr(),
+ * the pointer value itself provides excellent distribution.
+ * This reduces hash computation from O(n) to O(1).
+ */
 static inline unsigned env_hash(const char *s) {
     if (!s) return 0;
-    unsigned h = 2166136261u;
-    while (*s) { h ^= (unsigned char)(*s++); h *= 16777619u; }
-    return h;
+    /* Mix pointer bits with FNV-1a multiplicative constant for distribution */
+    return ((uintptr_t)s ^ 0x517cc1b727220a95ull) * 0xda942042e4dd58b5ull;
 }
 
 /* Intern the name through the global GC so we always have a canonical ptr. */

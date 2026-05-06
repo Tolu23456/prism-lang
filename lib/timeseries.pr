@@ -1,0 +1,139 @@
+/* Prism Standard Library — timeseries module
+   Time series data analysis and manipulation.
+*/
+
+import "lib/ml"
+import "lib/collections"
+
+/* TimeSeries class */
+class TimeSeries {
+    func init(timestamps, values) {
+        this.timestamps = timestamps
+        this.values = values
+        this.length = len(values)
+    }
+    
+    func get(index) {
+        return this.values[index]
+    }
+    
+    func get_at_time(timestamp) {
+        for i in range(this.length) {
+            if this.timestamps[i] == timestamp {
+                return this.values[i]
+            }
+        }
+        return null
+    }
+    
+    func moving_average(window) {
+        let result = []
+        for i in range(this.length - window + 1) {
+            let sum = 0
+            for j in range(i, i + window) {
+                sum = sum + this.values[j]
+            }
+            push(result, sum / window)
+        }
+        return result
+    }
+    
+    func moving_std(window) {
+        let result = []
+        let means = this.moving_average(window)
+        
+        for i in range(len(means)) {
+            let sum_sq = 0
+            for j in range(i, i + window) {
+                let diff = this.values[j] - means[i]
+                sum_sq = sum_sq + (diff * diff)
+            }
+            push(result, sqrt(sum_sq / window))
+        }
+        return result
+    }
+    
+    func resample(new_timestamps) {
+        let result = []
+        for ts in new_timestamps {
+            let closest_idx = 0
+            let min_diff = abs(this.timestamps[0] - ts)
+            
+            for i in range(1, this.length) {
+                let diff = abs(this.timestamps[i] - ts)
+                if diff < min_diff {
+                    min_diff = diff
+                    closest_idx = i
+                }
+            }
+            
+            push(result, this.values[closest_idx])
+        }
+        return TimeSeries(new_timestamps, result)
+    }
+    
+    func interpolate(new_timestamps) {
+        let result = []
+        
+        for new_ts in new_timestamps {
+            let idx = 0
+            while idx < this.length - 1 and this.timestamps[idx + 1] < new_ts {
+                idx = idx + 1
+            }
+            
+            if idx == this.length - 1 {
+                push(result, this.values[idx])
+            } else {
+                let t1 = this.timestamps[idx]
+                let t2 = this.timestamps[idx + 1]
+                let v1 = this.values[idx]
+                let v2 = this.values[idx + 1]
+                
+                let ratio = (new_ts - t1) / (t2 - t1)
+                let interp = v1 + (v2 - v1) * ratio
+                push(result, interp)
+            }
+        }
+        
+        return TimeSeries(new_timestamps, result)
+    }
+    
+    func to_array() {
+        return this.values
+    }
+}
+
+/* Create time series from arrays */
+func create(timestamps, values) {
+    return TimeSeries(timestamps, values)
+}
+
+/* Generate time series with function */
+func generate(timestamps, func_fn) {
+    let values = []
+    for ts in timestamps {
+        push(values, func_fn(ts))
+    }
+    return TimeSeries(timestamps, values)
+}
+
+/* Trend analysis */
+func trend(ts) {
+    let n = len(ts.values)
+    let x_sum = 0
+    let y_sum = 0
+    let xy_sum = 0
+    let x2_sum = 0
+    
+    for i in range(n) {
+        x_sum = x_sum + i
+        y_sum = y_sum + ts.values[i]
+        xy_sum = xy_sum + (i * ts.values[i])
+        x2_sum = x2_sum + (i * i)
+    }
+    
+    let slope = (n * xy_sum - x_sum * y_sum) / (n * x2_sum - x_sum * x_sum)
+    let intercept = (y_sum - slope * x_sum) / n
+    
+    return {slope: slope, intercept: intercept}
+}

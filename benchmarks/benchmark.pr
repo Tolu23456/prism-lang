@@ -1,0 +1,178 @@
+/* Comprehensive benchmarking suite for Prism */
+
+import "lib/testing"
+
+/* Benchmark 1: Recursive Fibonacci - CPU intensive */
+func bench_fib() {
+    print("\n=== Fibonacci (Recursive) ===")
+    func fib(n) {
+        if n <= 1 { return n }
+        return fib(n - 1) + fib(n - 2)
+    }
+    
+    let result = fib(30)
+    print("fib(30) = " + str(result))
+}
+
+/* Benchmark 2: Array operations - Memory intensive */
+func bench_arrays() {
+    print("\n=== Array Operations ===")
+    
+    let arr = []
+    for i in range(1, 1001) {
+        push(arr, i)
+    }
+    
+    let sum = 0
+    for i in range(1, 1001) {
+        for x in arr {
+            sum = sum + x
+        }
+    }
+    
+    print("Sum of 1000-element array 1000x: " + str(sum / 1000))
+}
+
+/* Benchmark 3: String concatenation */
+func bench_strings() {
+    print("\n=== String Concatenation ===")
+    
+    let s = "a"
+    for i in range(1, 101) {
+        s = s + "b"
+    }
+    
+    print("Final string length: " + str(len(s)))
+}
+
+/* Benchmark 4: Dictionary operations */
+func bench_dict() {
+    print("\n=== Dictionary Operations ===")
+    
+    let dict = {}
+    for i in range(1, 1001) {
+        dict["key" + str(i)] = i * 2
+    }
+    
+    let sum = 0
+    for i in range(1, 1001) {
+        let v = dict["key" + str(i)]
+        sum = sum + v
+    }
+    
+    print("Sum from dictionary lookups: " + str(sum))
+}
+
+/* Benchmark 5: Function calls - Call overhead */
+func bench_function_calls() {
+    print("\n=== Function Call Overhead ===")
+    
+    func add(a, b) { return a + b }
+    
+    let result = 0
+    for i in range(1, 10001) {
+        result = add(result, i)
+    }
+    
+    print("Sum via function calls: " + str(result))
+}
+
+/* Benchmark 6: Nested loops */
+func bench_nested_loops() {
+    print("\n=== Nested Loops ===")
+    
+    let count = 0
+    for i in range(1, 51) {
+        for j in range(1, 51) {
+            for k in range(1, 21) {
+                count = count + 1
+            }
+        }
+    }
+    
+    print("Iterations: " + str(count))
+}
+
+/* Benchmark 7: List operations */
+func bench_list_ops() {
+    print("\n=== List Operations (insert/remove) ===")
+    
+    let arr = []
+    for i in range(1, 101) {
+        push(arr, i)
+    }
+    
+    for i in range(1, 51) {
+        insert(arr, 0, i)
+    }
+    
+    print("Array length after inserts: " + str(len(arr)))
+}
+
+/* Benchmark 8: Mathematical operations */
+func bench_math() {
+    print("\n=== Mathematical Operations ===")
+    
+    let result = 0.0
+    for i in range(1, 1001) {
+        result = sqrt(i)
+        result = result + sin(i)
+        result = result + cos(i)
+    }
+    
+    print("Math result: " + str(result))
+}
+
+/* Benchmark 9: Conditional operations */
+func bench_conditions() {
+    print("\n=== Conditional Logic ===")
+    
+    let count = 0
+    for i in range(1, 10001) {
+        if i % 2 == 0 {
+            if i % 3 == 0 {
+                if i % 5 == 0 {
+                    count = count + 1
+                }
+            }
+        }
+    }
+    
+    print("Numbers divisible by 2, 3, and 5: " + str(count))
+}
+
+/* Benchmark 10: Type conversions */
+func bench_conversions() {
+    print("\n=== Type Conversions ===")
+    
+    let sum = 0
+    for i in range(1, 10001) {
+        let s = str(i)
+        let n = int(s)
+        let f = float(s)
+        sum = sum + n
+    }
+    
+    print("Sum from conversions: " + str(sum))
+}
+
+/* Main benchmark runner */
+print("╔════════════════════════════════════════╗")
+print("║    Prism Performance Benchmark Suite   ║")
+print("╚════════════════════════════════════════╝")
+
+bench_fib()
+bench_arrays()
+bench_strings()
+bench_dict()
+bench_function_calls()
+bench_nested_loops()
+bench_list_ops()
+bench_math()
+bench_conditions()
+bench_conversions()
+
+print("\n╔════════════════════════════════════════╗")
+print("║      Benchmark Suite Completed         ║")
+print("╚════════════════════════════════════════╝")
+print("\nNote: Run with 'time prism benchmarks/benchmark.pr' to measure execution time")

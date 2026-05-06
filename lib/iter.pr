@@ -17,7 +17,7 @@ func range(start, stop, step) {
     return result
 }
 
-func repeat(val, n) {
+func _repeat_array(val, n) {
     let result = []
     let i = 0
     while i < n {

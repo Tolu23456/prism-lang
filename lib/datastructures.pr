@@ -1,0 +1,419 @@
+/* Prism Standard Library — datastructures module
+   Pure Prism implementation.
+   Advanced data structures: Heap (min/max), Trie, Graph,
+   BloomFilter, UnionFind, SegmentTree, and more.
+*/
+
+/* ── Min Heap ───────────────────────────────────────────── */
+
+func MinHeap() {
+    let heap = {
+        data: [],
+        size: 0,
+    }
+    
+    func parent(i) { return (i - 1) / 2 }
+    func left(i) { return 2 * i + 1 }
+    func right(i) { return 2 * i + 2 }
+    
+    func swap(i, j) {
+        let tmp = heap.data[i]
+        heap.data[i] = heap.data[j]
+        heap.data[j] = tmp
+    }
+    
+    func siftUp(i) {
+        while i > 0 and heap.data[parent(i)] > heap.data[i] {
+            swap(i, parent(i))
+            i = parent(i)
+        }
+    }
+    
+    func siftDown(i) {
+        while true {
+            let smallest = i
+            let l = left(i)
+            let r = right(i)
+            
+            if l < heap.size and heap.data[l] < heap.data[smallest] {
+                smallest = l
+            }
+            if r < heap.size and heap.data[r] < heap.data[smallest] {
+                smallest = r
+            }
+            if smallest == i { break }
+            
+            swap(i, smallest)
+            i = smallest
+        }
+    }
+    
+    heap.push = fn(val) {
+        push(heap.data, val)
+        heap.size += 1
+        siftUp(heap.size - 1)
+    }
+    
+    heap.pop = fn() {
+        if heap.size == 0 { error("MinHeap: pop on empty heap") }
+        let root = heap.data[0]
+        heap.data[0] = heap.data[heap.size - 1]
+        heap.size -= 1
+        if heap.size > 0 { siftDown(0) }
+        return root
+    }
+    
+    heap.peek = fn() {
+        if heap.size == 0 { error("MinHeap: peek on empty heap") }
+        return heap.data[0]
+    }
+    
+    heap.isEmpty = fn() { return heap.size == 0 }
+    heap.len = fn() { return heap.size }
+    
+    return heap
+}
+
+/* ── Max Heap ───────────────────────────────────────────── */
+
+func MaxHeap() {
+    let heap = MinHeap()
+    let original_push = heap.push
+    let original_pop = heap.pop
+    let original_peek = heap.peek
+    
+    heap.push = fn(val) {
+        original_push(-val)
+    }
+    
+    heap.pop = fn() {
+        return -original_pop()
+    }
+    
+    heap.peek = fn() {
+        return -original_peek()
+    }
+    
+    return heap
+}
+
+/* ── Trie (Prefix Tree) ─────────────────────────────────── */
+
+func Trie() {
+    let trie = { root: {}, size: 0 }
+    
+    trie.insert = fn(word) {
+        let node = trie.root
+        for ch in chars(word) {
+            if not has(node, ch) {
+                node[ch] = {}
+            }
+            node = node[ch]
+        }
+        if not has(node, "$") {
+            node["$"] = true
+            trie.size += 1
+        }
+    }
+    
+    trie.search = fn(word) {
+        let node = trie.root
+        for ch in chars(word) {
+            if not has(node, ch) { return false }
+            node = node[ch]
+        }
+        return has(node, "$")
+    }
+    
+    trie.startsWith = fn(prefix) {
+        let node = trie.root
+        for ch in chars(prefix) {
+            if not has(node, ch) { return false }
+            node = node[ch]
+        }
+        return true
+    }
+    
+    trie.delete = fn(word) {
+        let node = trie.root
+        let path = []
+        for ch in chars(word) {
+            if not has(node, ch) { return false }
+            push(path, [node, ch])
+            node = node[ch]
+        }
+        if not has(node, "$") { return false }
+        
+        del(node, "$")
+        trie.size -= 1
+        return true
+    }
+    
+    trie.getSize = fn() { return trie.size }
+    
+    return trie
+}
+
+/* ── Graph ──────────────────────────────────────────────── */
+
+func Graph() {
+    let graph = { vertices: {}, size: 0 }
+    
+    graph.addVertex = fn(v) {
+        if not has(graph.vertices, str(v)) {
+            graph.vertices[str(v)] = []
+            graph.size += 1
+        }
+    }
+    
+    graph.addEdge = fn(from, to, weight) {
+        weight = weight ?? 1
+        graph.addVertex(from)
+        graph.addVertex(to)
+        let edges = graph.vertices[str(from)]
+        push(edges, {to: to, weight: weight})
+    }
+    
+    graph.getNeighbors = fn(v) {
+        if not has(graph.vertices, str(v)) { return [] }
+        return graph.vertices[str(v)]
+    }
+    
+    graph.bfs = fn(start) {
+        let visited = {}
+        let queue = [start]
+        let result = []
+        visited[str(start)] = true
+        
+        let i = 0
+        while i < len(queue) {
+            let v = queue[i]
+            push(result, v)
+            for edge in graph.getNeighbors(v) {
+                if not has(visited, str(edge.to)) {
+                    visited[str(edge.to)] = true
+                    push(queue, edge.to)
+                }
+            }
+            i += 1
+        }
+        return result
+    }
+    
+    graph.dfs = fn(start) {
+        let visited = {}
+        let result = []
+        
+        func dfs_helper(v) {
+            visited[str(v)] = true
+            push(result, v)
+            for edge in graph.getNeighbors(v) {
+                if not has(visited, str(edge.to)) {
+                    dfs_helper(edge.to)
+                }
+            }
+        }
+        
+        dfs_helper(start)
+        return result
+    }
+    
+    graph.dijkstra = fn(start) {
+        let dist = {}
+        let visited = {}
+        for v in keys(graph.vertices) {
+            dist[v] = 99999999
+            visited[v] = false
+        }
+        dist[str(start)] = 0
+        
+        for _ in range(graph.size) {
+            let u = nil
+            let minDist = 99999999
+            for v in keys(graph.vertices) {
+                if not visited[v] and dist[v] < minDist {
+                    u = v
+                    minDist = dist[v]
+                }
+            }
+            if u == nil { break }
+            visited[u] = true
+            
+            for edge in graph.vertices[u] {
+                let alt = dist[u] + edge.weight
+                if alt < dist[str(edge.to)] {
+                    dist[str(edge.to)] = alt
+                }
+            }
+        }
+        return dist
+    }
+    
+    return graph
+}
+
+/* ── Union-Find (Disjoint Set Union) ────────────────────── */
+
+func UnionFind(n) {
+    let uf = {
+        parent: [],
+        rank: [],
+        size: n,
+    }
+    
+    let i = 0
+    while i < n {
+        push(uf.parent, i)
+        push(uf.rank, 0)
+        i += 1
+    }
+    
+    uf.find = fn(x) {
+        if uf.parent[x] != x {
+            uf.parent[x] = uf.find(uf.parent[x])
+        }
+        return uf.parent[x]
+    }
+    
+    uf.union = fn(x, y) {
+        let px = uf.find(x)
+        let py = uf.find(y)
+        if px == py { return false }
+        
+        if uf.rank[px] < uf.rank[py] {
+            uf.parent[px] = py
+        } elif uf.rank[px] > uf.rank[py] {
+            uf.parent[py] = px
+        } else {
+            uf.parent[py] = px
+            uf.rank[px] += 1
+        }
+        return true
+    }
+    
+    uf.connected = fn(x, y) {
+        return uf.find(x) == uf.find(y)
+    }
+    
+    return uf
+}
+
+/* ── Bloom Filter ───────────────────────────────────────── */
+
+func BloomFilter(size, hash_functions) {
+    hash_functions = hash_functions ?? 3
+    let bf = {
+        bits: [],
+        size: size,
+        hashes: hash_functions,
+    }
+    
+    let i = 0
+    while i < size {
+        push(bf.bits, false)
+        i += 1
+    }
+    
+    func hash_func(s, seed) {
+        let hash = seed
+        for ch in chars(str(s)) {
+            hash = ((hash << 5) - hash) + ord(ch)
+            hash = hash & 0xFFFFFFFF
+        }
+        return abs(hash) % bf.size
+    }
+    
+    bf.add = fn(item) {
+        let i = 0
+        while i < bf.hashes {
+            let idx = hash_func(item, i)
+            bf.bits[idx] = true
+            i += 1
+        }
+    }
+    
+    bf.mightContain = fn(item) {
+        let i = 0
+        while i < bf.hashes {
+            let idx = hash_func(item, i)
+            if not bf.bits[idx] { return false }
+            i += 1
+        }
+        return true
+    }
+    
+    return bf
+}
+
+/* ── Segment Tree ───────────────────────────────────────– */
+
+func SegmentTree(arr, op) {
+    op = op ?? fn(a, b) { return a + b }
+    let n = len(arr)
+    let tree = []
+    let i = 0
+    while i < 4 * n {
+        push(tree, 0)
+        i += 1
+    }
+    
+    func build(node, start, end) {
+        if start == end {
+            tree[node] = arr[start]
+        } else {
+            let mid = (start + end) / 2
+            build(2 * node, start, mid)
+            build(2 * node + 1, mid + 1, end)
+            tree[node] = op(tree[2 * node], tree[2 * node + 1])
+        }
+    }
+    
+    if n > 0 { build(1, 0, n - 1) }
+    
+    let st = { tree: tree, arr: arr, n: n, op: op }
+    
+    st.query = fn(l, r) {
+        func query_helper(node, start, end, l, r) {
+            if r < start or end < l { return 0 }
+            if l <= start and end <= r { return st.tree[node] }
+            let mid = (start + end) / 2
+            let p1 = query_helper(2 * node, start, mid, l, r)
+            let p2 = query_helper(2 * node + 1, mid + 1, end, l, r)
+            return st.op(p1, p2)
+        }
+        if st.n == 0 { return 0 }
+        return query_helper(1, 0, st.n - 1, l, r)
+    }
+    
+    return st
+}
+
+/* ── Stack ──────────────────────────────────────────────── */
+
+func Stack() {
+    let stack = { items: [] }
+    stack.push = fn(x) { push(stack.items, x) }
+    stack.pop = fn() { return pop(stack.items) }
+    stack.peek = fn() { return last(stack.items) }
+    stack.isEmpty = fn() { return len(stack.items) == 0 }
+    stack.size = fn() { return len(stack.items) }
+    return stack
+}
+
+/* ── Queue ──────────────────────────────────────────────– */
+
+func Queue() {
+    let queue = { items: [] }
+    queue.enqueue = fn(x) { push(queue.items, x) }
+    queue.dequeue = fn() {
+        if len(queue.items) == 0 { error("Queue: dequeue on empty") }
+        return queue.items[0]
+    }
+    queue.front = fn() {
+        if len(queue.items) == 0 { error("Queue: front on empty") }
+        return queue.items[0]
+    }
+    queue.isEmpty = fn() { return len(queue.items) == 0 }
+    queue.size = fn() { return len(queue.items) }
+    return queue
+}

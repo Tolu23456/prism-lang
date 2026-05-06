@@ -1,0 +1,299 @@
+/* Comprehensive tests for Data Structures library */
+
+import "lib/datastructures"
+import "lib/testing"
+
+describe("MinHeap", fn() {
+    test("basic push and pop", fn() {
+        let heap = MinHeap()
+        heap.push(5)
+        heap.push(3)
+        heap.push(7)
+        heap.push(1)
+        
+        assertEqual(heap.pop(), 1)
+        assertEqual(heap.pop(), 3)
+        assertEqual(heap.pop(), 5)
+        assertEqual(heap.pop(), 7)
+    })
+    
+    test("single element", fn() {
+        let heap = MinHeap()
+        heap.push(42)
+        assertEqual(heap.pop(), 42)
+    })
+    
+    test("duplicates", fn() {
+        let heap = MinHeap()
+        heap.push(5)
+        heap.push(5)
+        heap.push(5)
+        assertEqual(heap.pop(), 5)
+        assertEqual(heap.pop(), 5)
+        assertEqual(heap.pop(), 5)
+    })
+    
+    test("empty heap edge case", fn() {
+        let heap = MinHeap()
+        // Popping from empty heap should handle gracefully
+        assertFalse(len(heap.heap) > 0)
+    })
+    
+    test("large dataset", fn() {
+        let heap = MinHeap()
+        let nums = range(100, 0)
+        for num in nums {
+            heap.push(num)
+        }
+        
+        let prev = heap.pop()
+        while len(heap.heap) > 0 {
+            let curr = heap.pop()
+            assert(curr >= prev)
+            prev = curr
+        }
+    })
+})
+
+describe("MaxHeap", fn() {
+    test("basic max heap operation", fn() {
+        let heap = MaxHeap()
+        heap.push(5)
+        heap.push(3)
+        heap.push(7)
+        
+        assertEqual(heap.pop(), 7)
+        assertEqual(heap.pop(), 5)
+        assertEqual(heap.pop(), 3)
+    })
+    
+    test("max element extraction", fn() {
+        let heap = MaxHeap()
+        for i in range(1, 11) {
+            heap.push(i)
+        }
+        assertEqual(heap.pop(), 10)
+    })
+})
+
+describe("Trie", fn() {
+    test("insert and search", fn() {
+        let trie = Trie()
+        trie.insert("hello")
+        assertTrue(trie.search("hello"))
+        assertFalse(trie.search("hell"))
+    })
+    
+    test("prefix matching", fn() {
+        let trie = Trie()
+        trie.insert("apple")
+        trie.insert("application")
+        trie.insert("apply")
+        
+        assertTrue(trie.startsWith("app"))
+        assertTrue(trie.startsWith("apple"))
+        assertFalse(trie.startsWith("orange"))
+    })
+    
+    test("delete", fn() {
+        let trie = Trie()
+        trie.insert("test")
+        assertTrue(trie.search("test"))
+        trie.delete("test")
+        assertFalse(trie.search("test"))
+    })
+    
+    test("overlapping words", fn() {
+        let trie = Trie()
+        trie.insert("car")
+        trie.insert("card")
+        trie.insert("care")
+        
+        assertTrue(trie.search("car"))
+        assertTrue(trie.search("card"))
+        assertTrue(trie.search("care"))
+        assertFalse(trie.search("ca"))
+    })
+    
+    test("empty string", fn() {
+        let trie = Trie()
+        trie.insert("")
+        assertTrue(trie.search(""))
+    })
+})
+
+describe("Graph", fn() {
+    test("dijkstra shortest path", fn() {
+        let graph = Graph()
+        graph.addEdge("A", "B", 1)
+        graph.addEdge("B", "C", 2)
+        graph.addEdge("A", "C", 5)
+        
+        let distances = graph.dijkstra("A")
+        assertEqual(distances["C"], 3)
+    })
+    
+    test("disconnected components", fn() {
+        let graph = Graph()
+        graph.addEdge("A", "B", 1)
+        graph.addEdge("C", "D", 2)
+        
+        // A and C are not connected
+        let distances = graph.dijkstra("A")
+        // D should be unreachable from A
+        assertTrue(distances["D"] == null or distances["D"] > 999)
+    })
+    
+    test("self loop", fn() {
+        let graph = Graph()
+        graph.addEdge("A", "A", 0)
+        let distances = graph.dijkstra("A")
+        assertEqual(distances["A"], 0)
+    })
+    
+    test("negative weight edge", fn() {
+        let graph = Graph()
+        graph.addEdge("A", "B", -1)
+        graph.addEdge("B", "C", 2)
+        
+        // Dijkstra doesn't handle negatives, but shouldn't crash
+        let distances = graph.dijkstra("A")
+        assertTrue(true)  // Just verify it doesn't crash
+    })
+})
+
+describe("UnionFind", fn() {
+    test("basic union and find", fn() {
+        let uf = UnionFind(5)
+        uf.union(0, 1)
+        uf.union(1, 2)
+        
+        assertEqual(uf.find(0), uf.find(2))
+        assertNotEqual(uf.find(0), uf.find(3))
+    })
+    
+    test("multiple components", fn() {
+        let uf = UnionFind(6)
+        uf.union(0, 1)
+        uf.union(2, 3)
+        uf.union(4, 5)
+        
+        let root01 = uf.find(0)
+        let root23 = uf.find(2)
+        let root45 = uf.find(4)
+        
+        assertNotEqual(root01, root23)
+        assertNotEqual(root23, root45)
+    })
+    
+    test("path compression", fn() {
+        let uf = UnionFind(100)
+        for i in range(0, 99) {
+            uf.union(i, i + 1)
+        }
+        
+        // All should be in same set
+        let root = uf.find(0)
+        for i in range(1, 100) {
+            assertEqual(uf.find(i), root)
+        }
+    })
+})
+
+describe("BloomFilter", fn() {
+    test("basic membership", fn() {
+        let filter = BloomFilter(100, 3)
+        filter.add("hello")
+        filter.add("world")
+        
+        assertTrue(filter.might_contain("hello"))
+        assertTrue(filter.might_contain("world"))
+        assertFalse(filter.might_contain("xyz"))
+    })
+    
+    test("false positives possible", fn() {
+        let filter = BloomFilter(10, 1)
+        filter.add("a")
+        // With small filter, false positives are likely
+        // Just verify it doesn't crash
+        let contains = filter.might_contain("z")
+        assertTrue(true)
+    })
+    
+    test("large dataset", fn() {
+        let filter = BloomFilter(1000, 5)
+        for i in range(0, 100) {
+            filter.add(str(i))
+        }
+        
+        assertTrue(filter.might_contain("50"))
+        // Most non-added items should be correctly identified
+        let false_pos = 0
+        for i in range(100, 200) {
+            if filter.might_contain(str(i)) {
+                false_pos = false_pos + 1
+            }
+        }
+        // Some false positives expected, but not all
+        assertTrue(false_pos < 50)
+    })
+})
+
+describe("SegmentTree", fn() {
+    test("range sum query", fn() {
+        let tree = SegmentTree([1, 2, 3, 4, 5])
+        assertEqual(tree.rangeSum(0, 2), 6)  // 1+2+3
+        assertEqual(tree.rangeSum(1, 4), 14) // 2+3+4+5
+    })
+    
+    test("update and query", fn() {
+        let tree = SegmentTree([1, 2, 3, 4, 5])
+        tree.update(2, 10)
+        assertEqual(tree.rangeSum(0, 2), 13)  // 1+2+10
+    })
+    
+    test("single element", fn() {
+        let tree = SegmentTree([42])
+        assertEqual(tree.rangeSum(0, 0), 42)
+    })
+    
+    test("full range", fn() {
+        let tree = SegmentTree([1, 2, 3, 4, 5])
+        assertEqual(tree.rangeSum(0, 4), 15)  // sum of all
+    })
+})
+
+describe("Stack", fn() {
+    test("basic LIFO", fn() {
+        let stack = Stack()
+        push(stack.items, 1)
+        push(stack.items, 2)
+        push(stack.items, 3)
+        
+        assertEqual(pop(stack.items), 3)
+        assertEqual(pop(stack.items), 2)
+        assertEqual(pop(stack.items), 1)
+    })
+    
+    test("empty stack", fn() {
+        let stack = Stack()
+        assertTrue(len(stack.items) == 0)
+    })
+})
+
+describe("Queue", fn() {
+    test("basic FIFO", fn() {
+        let queue = Queue()
+        push(queue.items, 1)
+        push(queue.items, 2)
+        push(queue.items, 3)
+        
+        let first = shift(queue.items)
+        assertEqual(first, 1)
+        
+        let second = shift(queue.items)
+        assertEqual(second, 2)
+    })
+})
+
+print("Data Structures test suite completed")

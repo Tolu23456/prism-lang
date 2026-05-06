@@ -1,0 +1,172 @@
+/* Compression and Encoding Examples */
+
+import "lib/compression"
+
+func exampleBase64() {
+    print("\n=== Base64 Encoding ===")
+    
+    let text = "Hello, World!"
+    let encoded = base64Encode(text)
+    let decoded = base64Decode(encoded)
+    
+    print("Original: " + text)
+    print("Encoded: " + encoded)
+    print("Decoded: " + decoded)
+    print("Match: " + str(text == decoded))
+}
+
+func exampleHex() {
+    print("\n=== Hex Encoding ===")
+    
+    let text = "ABC"
+    let hex = toHex(text)
+    let back = fromHex(hex)
+    
+    print("Original: " + text)
+    print("Hex: " + hex)
+    print("Restored: " + back)
+    print("Match: " + str(text == back))
+}
+
+func exampleURLEncoding() {
+    print("\n=== URL Encoding ===")
+    
+    let text = "hello world & special=chars"
+    let encoded = encodeUrl(text)
+    let decoded = decodeUrl(encoded)
+    
+    print("Original: " + text)
+    print("Encoded: " + encoded)
+    print("Decoded: " + decoded)
+    print("Match: " + str(text == decoded))
+}
+
+func exampleRLE() {
+    print("\n=== Run-Length Encoding ===")
+    
+    let data = "AAAAAABBBBCCCD"
+    let compressed = rleEncode(data)
+    let decompressed = rleDecode(compressed)
+    
+    print("Original: " + data)
+    print("Compressed: " + compressed)
+    print("Decompressed: " + decompressed)
+    print("Match: " + str(data == decompressed))
+    
+    let ratio = len(data) / len(compressed)
+    print("Compression ratio: " + str(ratio) + "x")
+}
+
+func exampleLZ77() {
+    print("\n=== LZ77 Compression ===")
+    
+    let data = "the quick brown fox jumps over the lazy dog the quick brown"
+    let compressed = lz77Compress(data)
+    let decompressed = lz77Decompress(compressed)
+    
+    print("Original length: " + str(len(data)))
+    print("Compressed length: " + str(len(compressed)))
+    print("Decompressed matches: " + str(data == decompressed))
+    
+    let savings = (len(data) - len(compressed)) * 100 / len(data)
+    print("Space saved: " + str(savings) + "%")
+}
+
+func exampleCRC32() {
+    print("\n=== CRC32 Checksums ===")
+    
+    let data = "important data that must not be corrupted"
+    let checksum1 = crc32(data)
+    let checksum2 = crc32(data)
+    let checksum3 = crc32(data + "!")
+    
+    print("Data: " + data)
+    print("Checksum: " + str(checksum1))
+    print("Same data same checksum: " + str(checksum1 == checksum2))
+    print("Modified data different checksum: " + str(checksum1 != checksum3))
+}
+
+func exampleMultipleEncodings() {
+    print("\n=== Multiple Encoding Formats ===")
+    
+    let text = "Prism"
+    
+    let base64 = base64Encode(text)
+    let hex = toHex(text)
+    let url = encodeUrl(text)
+    
+    print("Text: " + text)
+    print("Base64: " + base64)
+    print("Hex: " + hex)
+    print("URL: " + url)
+}
+
+func exampleDataIntegrity() {
+    print("\n=== Data Integrity Check ===")
+    
+    let file = "database.pdb"
+    let data = "database content here"
+    
+    // Create checksum
+    let checksum = crc32(data)
+    
+    // Verify later
+    let dataLater = "database content here"
+    let checksumLater = crc32(dataLater)
+    
+    if checksum == checksumLater {
+        print("✓ File " + file + " integrity verified")
+    } else {
+        print("✗ File " + file + " may be corrupted")
+    }
+}
+
+func exampleCompression() {
+    print("\n=== Compression Strategy ===")
+    
+    let text = "mississippi river"
+    
+    // Try both compression methods
+    let rle = rleEncode(text)
+    let lz77 = lz77Compress(text)
+    
+    print("Original: " + str(len(text)) + " bytes")
+    print("RLE: " + str(len(rle)) + " bytes")
+    print("LZ77: " + str(len(lz77)) + " bytes")
+    
+    if len(rle) < len(lz77) {
+        print("Best: RLE")
+    } else {
+        print("Best: LZ77")
+    }
+}
+
+func exampleSafeTransmission() {
+    print("\n=== Safe Data Transmission ===")
+    
+    let password = "super_secret_password"
+    let encoded = base64Encode(password)
+    
+    print("Sending over network: " + encoded)
+    
+    // Receive and decode
+    let received = encoded
+    let decoded = base64Decode(received)
+    
+    print("Received and decoded: " + decoded)
+    print("Integrity: " + str(password == decoded))
+}
+
+// Run all examples
+exampleBase64()
+exampleHex()
+exampleURLEncoding()
+exampleRLE()
+exampleLZ77()
+exampleCRC32()
+exampleMultipleEncodings()
+exampleDataIntegrity()
+exampleCompression()
+exampleSafeTransmission()
+
+print("\n=== All compression examples completed ===")

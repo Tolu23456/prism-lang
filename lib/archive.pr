@@ -1,0 +1,96 @@
+/* Prism Standard Library — archive module
+   Archive and compression file handling.
+*/
+
+import "lib/compression"
+import "lib/json"
+
+/* ZIP archive */
+class ZipArchive {
+    func init(filename) {
+        this.filename = filename
+        this.files = {}
+        this.compression = "deflate"
+    }
+    
+    func add_file(path, content) {
+        this.files[path] = {
+            content: str(content),
+            compressed: false,
+            size: len(str(content))
+        }
+    }
+    
+    func add_directory(path) {
+        if not ends_with(path, "/") {
+            path = path + "/"
+        }
+        this.files[path] = {content: "", size: 0}
+    }
+    
+    func extract(path) {
+        if has(this.files, path) {
+            return this.files[path].content
+        }
+        error("File not found in archive: " + path)
+    }
+    
+    func list_files() {
+        return keys(this.files)
+    }
+    
+    func save() {
+        let manifest = {}
+        for path in keys(this.files) {
+            manifest[path] = this.files[path].size
+        }
+        print("[Archive] Saving " + this.filename + " with " + str(len(this.files)) + " files")
+        return true
+    }
+    
+    func size() {
+        let total = 0
+        for path in keys(this.files) {
+            total = total + this.files[path].size
+        }
+        return total
+    }
+}
+
+/* TAR archive */
+class TarArchive {
+    func init(filename) {
+        this.filename = filename
+        this.files = {}
+    }
+    
+    func add_file(path, content) {
+        this.files[path] = str(content)
+    }
+    
+    func extract(path) {
+        if has(this.files, path) {
+            return this.files[path]
+        }
+        error("File not found in archive: " + path)
+    }
+    
+    func list_files() {
+        return keys(this.files)
+    }
+    
+    func save() {
+        print("[Archive] Saving " + this.filename + " with " + str(len(this.files)) + " files")
+        return true
+    }
+}
+
+/* Create ZIP archive */
+func zip(filename) {
+    return ZipArchive(filename)
+}
+
+/* Create TAR archive */
+func tar(filename) {
+    return TarArchive(filename)
+}

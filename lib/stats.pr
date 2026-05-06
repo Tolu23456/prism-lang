@@ -1,0 +1,154 @@
+/* Prism Standard Library — stats module
+   Advanced statistical analysis.
+*/
+
+import "lib/ml"
+import "lib/math"
+
+/* Descriptive statistics */
+func describe(data) {
+    return {
+        count: len(data),
+        mean: ml.mean(data),
+        median: ml.median(data),
+        mode: ml.mode(data),
+        std: ml.std(data),
+        variance: ml.variance(data),
+        min: ml.min(data),
+        max: ml.max(data),
+        range: ml.max(data) - ml.min(data),
+        q1: percentile(data, 25),
+        q3: percentile(data, 75),
+        iqr: percentile(data, 75) - percentile(data, 25)
+    }
+}
+
+/* Percentile calculation */
+func percentile(data, p) {
+    let sorted = sort(data)
+    let n = len(sorted)
+    let idx = (p / 100) * (n - 1)
+    let lower_idx = floor(idx)
+    let upper_idx = ceil(idx)
+    let fraction = idx - lower_idx
+    
+    if lower_idx == upper_idx {
+        return sorted[lower_idx]
+    }
+    
+    return sorted[lower_idx] * (1 - fraction) + sorted[upper_idx] * fraction
+}
+
+/* Z-score standardization */
+func z_score(data) {
+    let mean_val = ml.mean(data)
+    let std_val = ml.std(data)
+    let result = []
+    
+    for value in data {
+        push(result, (value - mean_val) / std_val)
+    }
+    
+    return result
+}
+
+/* T-test (two samples) */
+func t_test(sample1, sample2) {
+    let n1 = len(sample1)
+    let n2 = len(sample2)
+    let mean1 = ml.mean(sample1)
+    let mean2 = ml.mean(sample2)
+    let var1 = ml.variance(sample1)
+    let var2 = ml.variance(sample2)
+    
+    let pooled_std = sqrt(((n1 - 1) * var1 + (n2 - 1) * var2) / (n1 + n2 - 2))
+    let t = (mean1 - mean2) / (pooled_std * sqrt(1/n1 + 1/n2))
+    let df = n1 + n2 - 2
+    
+    return {t_stat: t, degrees_of_freedom: df}
+}
+
+/* Chi-square test */
+func chi_square(observed, expected) {
+    if len(observed) != len(expected) {
+        error("Chi-square: observed and expected must have same length")
+    }
+    
+    let chi2 = 0
+    for i in range(len(observed)) {
+        let diff = observed[i] - expected[i]
+        chi2 = chi2 + (diff * diff) / expected[i]
+    }
+    
+    return chi2
+}
+
+/* Confidence interval for mean */
+func confidence_interval(data, confidence) {
+    confidence = confidence ?? 0.95
+    let n = len(data)
+    let mean_val = ml.mean(data)
+    let std_err = ml.std(data) / sqrt(n)
+    
+    /* Z-score for 95% confidence */
+    let z = confidence == 0.95 ? 1.96 : (confidence == 0.99 ? 2.576 : 1.645)
+    let margin = z * std_err
+    
+    return {
+        mean: mean_val,
+        lower: mean_val - margin,
+        upper: mean_val + margin,
+        margin_of_error: margin
+    }
+}
+
+/* Covariance matrix */
+func covariance_matrix(data) {
+    let n = len(data[0])
+    let p = len(data)
+    let means = []
+    
+    for i in range(p) {
+        push(means, ml.mean(data[i]))
+    }
+    
+    let cov = []
+    for i in range(p) {
+        let row = []
+        for j in range(p) {
+            let sum = 0
+            for k in range(n) {
+                sum = sum + (data[i][k] - means[i]) * (data[j][k] - means[j])
+            }
+            push(row, sum / (n - 1))
+        }
+        push(cov, row)
+    }
+    
+    return cov
+}
+
+func sort(arr) {
+    let a = arr
+    let n = len(a)
+    for i in range(n) {
+        for j in range(i + 1, n) {
+            if a[j] < a[i] {
+                let temp = a[i]
+                a[i] = a[j]
+                a[j] = temp
+            }
+        }
+    }
+    return a
+}
+
+func floor(x) {
+    let i = int(x)
+    return x < 0 and x != i ? i - 1 : i
+}
+
+func ceil(x) {
+    let i = int(x)
+    return x > 0 and x != i ? i + 1 : i
+}

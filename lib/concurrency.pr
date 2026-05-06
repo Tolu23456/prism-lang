@@ -1,0 +1,461 @@
+/* Prism Standard Library — concurrency module
+   Pure Prism implementation.
+   Promises, async patterns, locks, semaphores, thread pools.
+*/
+
+/* ── Promise Implementation ─────────────────────────────– */
+
+func Promise(executor) {
+    let promise = {
+        state: "pending",
+        value: nil,
+        reason: nil,
+        onResolve: [],
+        onReject: [],
+    }
+    
+    func resolve(val) {
+        if promise.state == "pending" {
+            promise.state = "resolved"
+            promise.value = val
+            for callback in promise.onResolve {
+                callback(val)
+            }
+        }
+    }
+    
+    func reject(err) {
+        if promise.state == "pending" {
+            promise.state = "rejected"
+            promise.reason = err
+            for callback in promise.onReject {
+                callback(err)
+            }
+        }
+    }
+    
+    promise.then = fn(on_resolve, on_reject) {
+        let new_promise = Promise(fn(res, rej) {})
+        
+        func handle_resolve(val) {
+            if on_resolve != nil {
+                let result = on_resolve(val)
+                if type(result) == "promise" {
+                    result.then(fn(v) { res(v) }, fn(e) { rej(e) })
+                } else {
+                    res(result)
+                }
+            }
+        }
+        
+        func handle_reject(err) {
+            if on_reject != nil {
+                let result = on_reject(err)
+                if type(result) == "promise" {
+                    result.then(fn(v) { res(v) }, fn(e) { rej(e) })
+                } else {
+                    rej(result)
+                }
+            } else {
+                rej(err)
+            }
+        }
+        
+        if promise.state == "resolved" {
+            handle_resolve(promise.value)
+        } elif promise.state == "rejected" {
+            handle_reject(promise.reason)
+        } else {
+            push(promise.onResolve, handle_resolve)
+            push(promise.onReject, handle_reject)
+        }
+        
+        return new_promise
+    }
+    
+    promise.catch = fn(on_reject) {
+        return promise.then(nil, on_reject)
+    }
+    
+    promise.finally = fn(callback) {
+        return promise.then(
+            fn(val) { callback(); return val },
+            fn(err) { callback(); error(err) }
+        )
+    }
+    
+    if executor != nil {
+        executor(resolve, reject)
+    }
+    
+    return promise
+}
+
+/* ── Promise.all ────────────────────────────────────────– */
+
+func promiseAll(promises) {
+    let results = []
+    let completed = 0
+    let total = len(promises)
+    
+    let result_promise = Promise(fn(resolve, reject) {
+        if total == 0 {
+            resolve([])
+            return
+        }
+        
+        let i = 0
+        while i < total {
+            let promise = promises[i]
+            let idx = i
+            promise.then(
+                fn(val) {
+                    results[idx] = val
+                    completed += 1
+                    if completed == total {
+                        resolve(results)
+                    }
+                },
+                fn(err) {
+                    reject(err)
+                }
+            )
+            i += 1
+        }
+    })
+    
+    return result_promise
+}
+
+/* ── Promise.race ───────────────────────────────────────– */
+
+func promiseRace(promises) {
+    let resolved = false
+    
+    return Promise(fn(resolve, reject) {
+        for promise in promises {
+            promise.then(
+                fn(val) {
+                    if not resolved {
+                        resolved = true
+                        resolve(val)
+                    }
+                },
+                fn(err) {
+                    if not resolved {
+                        resolved = true
+                        reject(err)
+                    }
+                }
+            )
+        }
+    })
+}
+
+/* ── Mutex (Mutual Exclusion Lock) ──────────────────────– */
+
+func Mutex() {
+    let mutex = {
+        locked: false,
+        waiters: [],
+    }
+    
+    mutex.lock = fn() {
+        let lock_promise = Promise(fn(resolve, reject) {
+            if not mutex.locked {
+                mutex.locked = true
+                resolve(true)
+            } else {
+                push(mutex.waiters, resolve)
+            }
+        })
+        return lock_promise
+    }
+    
+    mutex.unlock = fn() {
+        if len(mutex.waiters) > 0 {
+            let next_waiter = shift(mutex.waiters)
+            next_waiter(true)
+        } else {
+            mutex.locked = false
+        }
+    }
+    
+    mutex.tryLock = fn() {
+        if not mutex.locked {
+            mutex.locked = true
+            return true
+        }
+        return false
+    }
+    
+    return mutex
+}
+
+/* ── Semaphore ──────────────────────────────────────────– */
+
+func Semaphore(permits) {
+    let semaphore = {
+        permits: permits,
+        waiters: [],
+    }
+    
+    semaphore.acquire = fn() {
+        let acquire_promise = Promise(fn(resolve, reject) {
+            if semaphore.permits > 0 {
+                semaphore.permits -= 1
+                resolve(true)
+            } else {
+                push(semaphore.waiters, fn() {
+                    semaphore.permits -= 1
+                    resolve(true)
+                })
+            }
+        })
+        return acquire_promise
+    }
+    
+    semaphore.release = fn() {
+        semaphore.permits += 1
+        if len(semaphore.waiters) > 0 {
+            let waiter = shift(semaphore.waiters)
+            waiter()
+        }
+    }
+    
+    semaphore.availablePermits = fn() {
+        return semaphore.permits
+    }
+    
+    return semaphore
+}
+
+/* ── Read-Write Lock ────────────────────────────────────– */
+
+func ReadWriteLock() {
+    let rwlock = {
+        readers: 0,
+        writers: 0,
+        write_waiters: [],
+        read_waiters: [],
+    }
+    
+    rwlock.readLock = fn() {
+        return Promise(fn(resolve, reject) {
+            if rwlock.writers == 0 and len(rwlock.write_waiters) == 0 {
+                rwlock.readers += 1
+                resolve(true)
+            } else {
+                push(rwlock.read_waiters, fn() {
+                    rwlock.readers += 1
+                    resolve(true)
+                })
+            }
+        })
+    }
+    
+    rwlock.writeLock = fn() {
+        return Promise(fn(resolve, reject) {
+            if rwlock.readers == 0 and rwlock.writers == 0 {
+                rwlock.writers += 1
+                resolve(true)
+            } else {
+                push(rwlock.write_waiters, fn() {
+                    rwlock.writers += 1
+                    resolve(true)
+                })
+            }
+        })
+    }
+    
+    rwlock.readUnlock = fn() {
+        rwlock.readers -= 1
+        if rwlock.readers == 0 and len(rwlock.write_waiters) > 0 {
+            let waiter = shift(rwlock.write_waiters)
+            waiter()
+        }
+    }
+    
+    rwlock.writeUnlock = fn() {
+        rwlock.writers -= 1
+        if len(rwlock.write_waiters) > 0 {
+            let waiter = shift(rwlock.write_waiters)
+            waiter()
+        } elif len(rwlock.read_waiters) > 0 {
+            while len(rwlock.read_waiters) > 0 {
+                let waiter = shift(rwlock.read_waiters)
+                waiter()
+            }
+        }
+    }
+    
+    return rwlock
+}
+
+/* ── Thread Pool ────────────────────────────────────────– */
+
+func ThreadPool(size) {
+    let pool = {
+        workers: size,
+        task_queue: [],
+        active_tasks: 0,
+        running: true,
+    }
+    
+    pool.execute = fn(task) {
+        let task_promise = Promise(fn(resolve, reject) {
+            push(pool.task_queue, {fn: task, resolve: resolve, reject: reject})
+            pool.process_next()
+        })
+        return task_promise
+    }
+    
+    pool.process_next = fn() {
+        if pool.active_tasks < pool.workers and len(pool.task_queue) > 0 {
+            pool.active_tasks += 1
+            let task = shift(pool.task_queue)
+            
+            let result = task.fn()
+            task.resolve(result)
+            
+            pool.active_tasks -= 1
+            if len(pool.task_queue) > 0 {
+                pool.process_next()
+            }
+        }
+    }
+    
+    pool.shutdown = fn() {
+        pool.running = false
+    }
+    
+    pool.getQueueSize = fn() {
+        return len(pool.task_queue)
+    }
+    
+    pool.getActiveCount = fn() {
+        return pool.active_tasks
+    }
+    
+    return pool
+}
+
+/* ── Timeout Utility ────────────────────────────────────– */
+
+func timeout(ms) {
+    return Promise(fn(resolve, reject) {
+        sleep(ms / 1000)
+        resolve(nil)
+    })
+}
+
+/* ── Retry with Exponential Backoff ────────────────────– */
+
+func retryAsync(task, max_attempts, initial_delay) {
+    max_attempts = max_attempts ?? 3
+    initial_delay = initial_delay ?? 1000
+    
+    return Promise(fn(resolve, reject) {
+        func attempt(count) {
+            if count > max_attempts {
+                reject("Max retries exceeded")
+                return
+            }
+            
+            let result = task()
+            if result {
+                resolve(result)
+            } else {
+                let delay = initial_delay * pow(2, count - 1)
+                timeout(delay).then(fn(v) {
+                    attempt(count + 1)
+                })
+            }
+        }
+        
+        attempt(1)
+    })
+}
+
+/* ── Async Sequence Execution ───────────────────────────– */
+
+func series(tasks) {
+    let results = []
+    
+    func execute_next(index) {
+        if index >= len(tasks) {
+            return Promise(fn(res, rej) { res(results) })
+        }
+        
+        let task = tasks[index]
+        return Promise(fn(res, rej) {
+            let result = task()
+            push(results, result)
+            execute_next(index + 1).then(fn(v) { res(v) })
+        })
+    }
+    
+    return execute_next(0)
+}
+
+/* ── Async Parallel Execution ───────────────────────────– */
+
+func parallel(tasks) {
+    let promises = []
+    for task in tasks {
+        push(promises, Promise(fn(res, rej) {
+            let result = task()
+            res(result)
+        }))
+    }
+    return promiseAll(promises)
+}
+
+/* ── Event Emitter Pattern ──────────────────────────────– */
+
+func EventEmitter() {
+    let emitter = {
+        listeners: {},
+    }
+    
+    emitter.on = fn(event, callback) {
+        if not has(emitter.listeners, event) {
+            emitter.listeners[event] = []
+        }
+        push(emitter.listeners[event], callback)
+        return emitter
+    }
+    
+    emitter.off = fn(event, callback) {
+        if has(emitter.listeners, event) {
+            let idx = indexOf(emitter.listeners[event], callback)
+            if idx >= 0 {
+                remove(emitter.listeners[event], idx)
+            }
+        }
+        return emitter
+    }
+    
+    emitter.once = fn(event, callback) {
+        func wrapper() {
+            callback()
+            emitter.off(event, wrapper)
+        }
+        return emitter.on(event, wrapper)
+    }
+    
+    emitter.emit = fn(event, data) {
+        if has(emitter.listeners, event) {
+            for callback in emitter.listeners[event] {
+                callback(data)
+            }
+        }
+        return emitter
+    }
+    
+    emitter.listenerCount = fn(event) {
+        return has(emitter.listeners, event) ? len(emitter.listeners[event]) : 0
+    }
+    
+    return emitter
+}

@@ -1,0 +1,134 @@
+/* Prism Standard Library — viz module
+   Data visualization and charting.
+*/
+
+import "lib/strings"
+
+/* ASCII bar chart */
+func bar_chart(data, width, title) {
+    width = width ?? 40
+    title = title ?? "Bar Chart"
+    
+    print("\n" + title)
+    print("=" * len(title))
+    
+    let max_val = 0
+    for item in data {
+        if item.value > max_val {
+            max_val = item.value
+        }
+    }
+    
+    for item in data {
+        let bar_len = (item.value / max_val) * width
+        let bar = "#" * int(bar_len)
+        print(strings.pad_right(item.label, 20) + " | " + bar + " " + str(item.value))
+    }
+    print("")
+}
+
+/* ASCII line chart */
+func line_chart(data, height, width, title) {
+    height = height ?? 10
+    width = width ?? 40
+    title = title ?? "Line Chart"
+    
+    print("\n" + title)
+    print("=" * len(title))
+    
+    let max_val = 0
+    let min_val = 0
+    for value in data {
+        if value > max_val { max_val = value }
+        if value < min_val { min_val = value }
+    }
+    
+    let range_val = max_val - min_val
+    if range_val == 0 { range_val = 1 }
+    
+    /* Normalize data */
+    let normalized = []
+    for value in data {
+        let norm = (value - min_val) / range_val
+        let row = int(norm * (height - 1))
+        push(normalized, row)
+    }
+    
+    /* Draw chart */
+    for row in range(height - 1, -1, -1) {
+        let line = ""
+        for i in range(len(normalized)) {
+            if normalized[i] == row {
+                line = line + "*"
+            } else if normalized[i] > row {
+                line = line + "|"
+            } else {
+                line = line + " "
+            }
+        }
+        print(line)
+    }
+    print("-" * len(data))
+    print("")
+}
+
+/* ASCII histogram */
+func histogram(data, bins, title) {
+    bins = bins ?? 10
+    title = title ?? "Histogram"
+    
+    print("\n" + title)
+    print("=" * len(title))
+    
+    let min_val = data[0]
+    let max_val = data[0]
+    
+    for value in data {
+        if value < min_val { min_val = value }
+        if value > max_val { max_val = value }
+    }
+    
+    let bin_width = (max_val - min_val) / bins
+    let bin_counts = []
+    
+    for i in range(bins) {
+        push(bin_counts, 0)
+    }
+    
+    for value in data {
+        let bin_idx = int((value - min_val) / bin_width)
+        if bin_idx >= bins { bin_idx = bins - 1 }
+        bin_counts[bin_idx] = bin_counts[bin_idx] + 1
+    }
+    
+    for i in range(bins) {
+        let bin_start = min_val + (i * bin_width)
+        let bin_end = bin_start + bin_width
+        let bar = "#" * bin_counts[i]
+        print(strings.format("{} - {} | {}", bin_start, bin_end, bar))
+    }
+    print("")
+}
+
+/* HTML chart generation */
+func html_bar_chart(data, title) {
+    title = title ?? "Bar Chart"
+    
+    let html = "<div class='chart'>\n"
+    html = html + "<h3>" + title + "</h3>\n"
+    html = html + "<div class='bars'>\n"
+    
+    let max_val = 0
+    for item in data {
+        if item.value > max_val { max_val = item.value }
+    }
+    
+    for item in data {
+        let pct = (item.value / max_val) * 100
+        html = html + "<div class='bar' style='width: " + str(pct) + "%'>"
+        html = html + "<span>" + item.label + ": " + str(item.value) + "</span></div>\n"
+    }
+    
+    html = html + "</div>\n</div>"
+    return html
+}

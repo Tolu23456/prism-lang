@@ -1,0 +1,110 @@
+/* Prism Standard Library — cache module
+   In-memory caching with TTL and LRU eviction.
+*/
+
+import "lib/time"
+
+/* Cache entry */
+struct CacheEntry {
+    value,
+    timestamp,
+    ttl,
+    access_count
+}
+
+/* LRU Cache */
+class LRUCache {
+    func init(max_size, default_ttl) {
+        this.max_size = max_size ?? 1000
+        this.default_ttl = default_ttl ?? 3600
+        this.cache = {}
+        this.access_order = []
+    }
+    
+    func set(key, value, ttl) {
+        ttl = ttl ?? this.default_ttl
+        
+        if len(this.cache) >= this.max_size and not has(this.cache, key) {
+            this._evict()
+        }
+        
+        this.cache[key] = {
+            value: value,
+            timestamp: system_time(),
+            ttl: ttl,
+            access_count: 0
+        }
+        
+        if has(this.access_order, key) {
+            remove_value(this.access_order, key)
+        }
+        push(this.access_order, key)
+    }
+    
+    func get(key) {
+        if not has(this.cache, key) {
+            return null
+        }
+        
+        let entry = this.cache[key]
+        let age = system_time() - entry.timestamp
+        
+        if age > entry.ttl {
+            remove_key(this.cache, key)
+            return null
+        }
+        
+        entry.access_count = entry.access_count + 1
+        return entry.value
+    }
+    
+    func delete(key) {
+        if has(this.cache, key) {
+            remove_key(this.cache, key)
+            remove_value(this.access_order, key)
+        }
+    }
+    
+    func clear() {
+        this.cache = {}
+        this.access_order = []
+    }
+    
+    func _evict() {
+        if len(this.access_order) == 0 {
+            return
+        }
+        
+        let lru_key = this.access_order[0]
+        remove_key(this.cache, lru_key)
+        remove_at(this.access_order, 0)
+    }
+    
+    func size() {
+        return len(this.cache)
+    }
+}
+
+/* Simple memoization decorator */
+func memoize(fn, ttl) {
+    ttl = ttl ?? 3600
+    let cache = LRUCache(100, ttl)
+    
+    return fn(args) {
+        let key = str(args)
+        let cached = cache.get(key)
+        
+        if cached != null {
+            return cached
+        }
+        
+        let result = fn(args)
+        cache.set(key, result, ttl)
+        return result
+    }
+}
+
+/* Create cache */
+func create(max_size, default_ttl) {
+    return LRUCache(max_size, default_ttl)
+}

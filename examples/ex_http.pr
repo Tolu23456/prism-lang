@@ -1,0 +1,245 @@
+/* HTTP and Web Examples - REST API and routing */
+
+import "lib/http"
+
+func exampleBasicRouting() {
+    print("\n=== Basic HTTP Routing ===")
+    
+    let router = Router()
+    
+    // GET endpoint
+    router.get("/", fn(req, res) {
+        return res.text("Hello, World!")
+    })
+    
+    // GET with URL params
+    router.get("/users/:id", fn(req, res) {
+        let id = req.params["id"]
+        let user = {id: id, name: "User " + id}
+        return res.json(user)
+    })
+    
+    // POST endpoint
+    router.post("/api/data", fn(req, res) {
+        let body = req.body
+        return res.status(201).json({message: "Created", data: body})
+    })
+    
+    print("Router configured with 3 routes")
+}
+
+func exampleRequestBuilding() {
+    print("\n=== HTTP Request Building ===")
+    
+    let req = HttpRequest("GET", "https://api.example.com/data")
+        .header("Authorization", "Bearer token123")
+        .header("User-Agent", "Prism-HTTP-Client/1.0")
+        .timeout(5000)
+        .build()
+    
+    print("Request built:")
+    print("  Method: " + req.method)
+    print("  URL: " + req.url)
+    print("  Timeout: 5000ms")
+    // print("  Headers: " + str(req.headers))
+}
+
+func exampleResponseBuilding() {
+    print("\n=== HTTP Response Building ===")
+    
+    let res = HttpResponse()
+        .status(200)
+        .header("Content-Type", "application/json")
+        .json({success: true, data: [1, 2, 3]})
+    
+    print("Response built:")
+    print("  Status: 200")
+    print("  Type: application/json")
+}
+
+func exampleURLParsing() {
+    print("\n=== URL Parsing ===")
+    
+    let url = "https://user:pass@example.com:8080/path/to/resource?key=value&foo=bar#section"
+    let parsed = parseUrl(url)
+    
+    print("Parsed URL:")
+    print("  Protocol: " + parsed.protocol)
+    print("  Host: " + parsed.host)
+    print("  Port: " + str(parsed.port))
+    print("  Path: " + parsed.pathname)
+    print("  Query: " + parsed.search)
+    print("  Hash: " + parsed.hash)
+}
+
+func exampleURLEncoding() {
+    print("\n=== URL Encoding/Decoding ===")
+    
+    let original = "hello world & special chars!"
+    let encoded = encodeUrl(original)
+    let decoded = decodeUrl(encoded)
+    
+    print("Original: " + original)
+    print("Encoded: " + encoded)
+    print("Decoded: " + decoded)
+    print("Match: " + str(original == decoded))
+}
+
+func exampleMimeTypes() {
+    print("\n=== MIME Type Detection ===")
+    
+    let mimeExamples = [
+        {file: "index.html", expected: "text/html"},
+        {file: "style.css", expected: "text/css"},
+        {file: "app.js", expected: "application/javascript"},
+        {file: "data.json", expected: "application/json"},
+        {file: "image.png", expected: "image/png"},
+        {file: "video.mp4", expected: "video/mp4"}
+    ]
+    
+    print("MIME type detection:")
+    for example in mimeExamples {
+        let mime = getMimeType(example.file)
+        let match = mime == example.expected ? "✓" : "✗"
+        print("  " + match + " " + example.file + " -> " + mime)
+    }
+}
+
+func exampleCookies() {
+    print("\n=== Cookie Management ===")
+    
+    let res = HttpResponse()
+    
+    // Set cookie with options
+    res.setCookie("sessionId", "abc123def456", {
+        path: "/",
+        secure: true,
+        httpOnly: true,
+        sameSite: "Strict",
+        maxAge: 3600
+    })
+    
+    // Set another cookie
+    res.setCookie("preferences", "dark_mode=true", {
+        path: "/",
+        maxAge: 86400
+    })
+    
+    print("Cookies set:")
+    print("  sessionId (1 hour, httpOnly)")
+    print("  preferences (24 hours)")
+}
+
+func exampleRESTAPI() {
+    print("\n=== Complete REST API Example ===")
+    
+    // Simple in-memory data store
+    let users = [
+        {id: 1, name: "Alice", email: "alice@example.com"},
+        {id: 2, name: "Bob", email: "bob@example.com"}
+    ]
+    
+    let router = Router()
+    
+    // GET /users - list all
+    router.get("/users", fn(req, res) {
+        return res.json(users)
+    })
+    
+    // GET /users/:id - get specific
+    router.get("/users/:id", fn(req, res) {
+        let id = int(req.params["id"])
+        for user in users {
+            if user.id == id {
+                return res.json(user)
+            }
+        }
+        return res.status(404).json({error: "User not found"})
+    })
+    
+    // POST /users - create
+    router.post("/users", fn(req, res) {
+        let body = req.body
+        let newId = len(users) + 1
+        let newUser = {id: newId, name: body.name, email: body.email}
+        push(users, newUser)
+        return res.status(201).json(newUser)
+    })
+    
+    // PUT /users/:id - update
+    router.put("/users/:id", fn(req, res) {
+        let id = int(req.params["id"])
+        let body = req.body
+        for user in users {
+            if user.id == id {
+                user.name = body.name ?? user.name
+                user.email = body.email ?? user.email
+                return res.json(user)
+            }
+        }
+        return res.status(404).json({error: "User not found"})
+    })
+    
+    // DELETE /users/:id - delete
+    router.delete("/users/:id", fn(req, res) {
+        let id = int(req.params["id"])
+        let index = 0
+        for i in range(0, len(users)) {
+            if users[i].id == id {
+                index = i
+                break
+            }
+        }
+        if index >= 0 {
+            remove(users, users[index])
+            return res.status(204).send()
+        }
+        return res.status(404).json({error: "User not found"})
+    })
+    
+    print("REST API configured:")
+    print("  GET /users")
+    print("  GET /users/:id")
+    print("  POST /users")
+    print("  PUT /users/:id")
+    print("  DELETE /users/:id")
+}
+
+func exampleErrorHandling() {
+    print("\n=== Error Handling ===")
+    
+    let router = Router()
+    
+    router.get("/safe", fn(req, res) {
+        return res.json({status: "ok"})
+    })
+    
+    router.get("/error", fn(req, res) {
+        return res.status(500).json({
+            error: "Internal Server Error",
+            message: "Something went wrong"
+        })
+    })
+    
+    router.get("/notfound", fn(req, res) {
+        return res.status(404).json({
+            error: "Not Found",
+            message: "Requested resource does not exist"
+        })
+    })
+    
+    print("Error handling configured")
+}
+
+// Run all examples
+exampleBasicRouting()
+exampleRequestBuilding()
+exampleResponseBuilding()
+exampleURLParsing()
+exampleURLEncoding()
+exampleMimeTypes()
+exampleCookies()
+exampleRESTAPI()
+exampleErrorHandling()
+
+print("\n=== All HTTP examples completed ===")

@@ -1,0 +1,111 @@
+/* Prism Standard Library — logging module
+   Structured logging with multiple levels and outputs.
+*/
+
+import "lib/strings"
+import "lib/time"
+
+/* Log levels */
+let LEVEL_DEBUG = 0
+let LEVEL_INFO = 1
+let LEVEL_WARN = 2
+let LEVEL_ERROR = 3
+let LEVEL_FATAL = 4
+
+let current_level = LEVEL_INFO
+let log_format = "[{timestamp}] [{level}] {message}"
+let loggers = []
+
+/* Logger class */
+class Logger {
+    func init(name) {
+        this.name = name
+        this.level = current_level
+    }
+    
+    func debug(message) {
+        this._log(LEVEL_DEBUG, message)
+    }
+    
+    func info(message) {
+        this._log(LEVEL_INFO, message)
+    }
+    
+    func warn(message) {
+        this._log(LEVEL_WARN, message)
+    }
+    
+    func error(message) {
+        this._log(LEVEL_ERROR, message)
+    }
+    
+    func fatal(message) {
+        this._log(LEVEL_FATAL, message)
+        exit(1)
+    }
+    
+    func _log(level, message) {
+        if level < this.level {
+            return
+        }
+        
+        let level_names = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
+        let timestamp = time.now()
+        let formatted = log_format
+        
+        formatted = strings.replace(formatted, "{timestamp}", str(timestamp))
+        formatted = strings.replace(formatted, "{level}", level_names[level])
+        formatted = strings.replace(formatted, "{message}", str(message))
+        formatted = strings.replace(formatted, "{logger}", this.name)
+        
+        print(formatted)
+    }
+}
+
+/* Create named logger */
+func get_logger(name) {
+    let logger = Logger(name)
+    push(loggers, logger)
+    return logger
+}
+
+/* Set global log level */
+func set_level(level) {
+    current_level = level
+    for logger in loggers {
+        logger.level = level
+    }
+}
+
+/* Set log format string */
+func set_format(format_str) {
+    log_format = format_str
+}
+
+/* Get log level name */
+func level_name(level) {
+    let names = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
+    return names[level] ?? "UNKNOWN"
+}
+
+/* Simple logging functions */
+func debug(message) {
+    print("[DEBUG] " + str(message))
+}
+
+func info(message) {
+    print("[INFO] " + str(message))
+}
+
+func warn(message) {
+    print("[WARN] " + str(message))
+}
+
+func error(message) {
+    print("[ERROR] " + str(message))
+}
+
+func fatal(message) {
+    print("[FATAL] " + str(message))
+    exit(1)
+}

@@ -1,0 +1,128 @@
+/* Prism Standard Library — data module
+   Data frame and tabular data utilities.
+*/
+
+import "lib/collections"
+
+/* DataFrame class */
+class DataFrame {
+    func init(columns, data) {
+        this.columns = columns
+        this.data = data ?? []
+        this.rows = len(this.data)
+        this.cols = len(columns)
+    }
+    
+    func add_row(row) {
+        if len(row) != this.cols {
+            error("Row length doesn't match column count")
+        }
+        push(this.data, row)
+        this.rows = this.rows + 1
+    }
+    
+    func get_column(col_name) {
+        let col_idx = -1
+        for i in range(len(this.columns)) {
+            if this.columns[i] == col_name {
+                col_idx = i
+                break
+            }
+        }
+        
+        if col_idx == -1 {
+            error("Column not found: " + col_name)
+        }
+        
+        let column = []
+        for row in this.data {
+            push(column, row[col_idx])
+        }
+        return column
+    }
+    
+    func get_row(idx) {
+        if idx < 0 or idx >= this.rows {
+            error("Row index out of bounds")
+        }
+        return this.data[idx]
+    }
+    
+    func filter(column, value) {
+        let col_idx = -1
+        for i in range(len(this.columns)) {
+            if this.columns[i] == column {
+                col_idx = i
+                break
+            }
+        }
+        
+        let filtered = []
+        for row in this.data {
+            if row[col_idx] == value {
+                push(filtered, row)
+            }
+        }
+        
+        return DataFrame(this.columns, filtered)
+    }
+    
+    func sort_by(column, ascending) {
+        ascending = ascending ?? true
+        let col_idx = -1
+        for i in range(len(this.columns)) {
+            if this.columns[i] == column {
+                col_idx = i
+                break
+            }
+        }
+        
+        let sorted = this.data
+        let n = len(sorted)
+        for i in range(n) {
+            for j in range(i + 1, n) {
+                let cmp = sorted[i][col_idx] > sorted[j][col_idx]
+                if (ascending and cmp) or (not ascending and not cmp) {
+                    let temp = sorted[i]
+                    sorted[i] = sorted[j]
+                    sorted[j] = temp
+                }
+            }
+        }
+        
+        return DataFrame(this.columns, sorted)
+    }
+    
+    func describe() {
+        return {
+            rows: this.rows,
+            columns: this.cols,
+            column_names: this.columns
+        }
+    }
+}
+
+/* Create DataFrame */
+func create(columns, data) {
+    return DataFrame(columns, data)
+}
+
+/* Read DataFrame from CSV string */
+func from_csv(csv_string) {
+    let lines = strings.split(csv_string, "\n")
+    if len(lines) == 0 {
+        error("Empty CSV data")
+    }
+    
+    let header = strings.split(lines[0], ",")
+    let data = []
+    
+    for i in range(1, len(lines)) {
+        if len(lines[i]) > 0 {
+            let row = strings.split(lines[i], ",")
+            push(data, row)
+        }
+    }
+    
+    return DataFrame(header, data)
+}

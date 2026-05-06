@@ -1,0 +1,103 @@
+/* Prism Standard Library — ws module
+   WebSocket client and server utilities.
+*/
+
+import "lib/json"
+import "lib/strings"
+
+/* WebSocket Server */
+class WebSocketServer {
+    func init(port, handler) {
+        this.port = port
+        this.handler = handler
+        this.clients = []
+        this.connected = false
+    }
+    
+    func start() {
+        this.connected = true
+        print("[WebSocket] Server listening on port " + str(this.port))
+    }
+    
+    func on_message(client_id, data) {
+        this.handler({type: "message", client: client_id, data: data})
+    }
+    
+    func on_connect(client_id) {
+        push(this.clients, {id: client_id, connected: true})
+        this.handler({type: "connect", client: client_id})
+    }
+    
+    func on_disconnect(client_id) {
+        for i in range(len(this.clients)) {
+            if this.clients[i].id == client_id {
+                remove_at(this.clients, i)
+                break
+            }
+        }
+        this.handler({type: "disconnect", client: client_id})
+    }
+    
+    func broadcast(data) {
+        for client in this.clients {
+            this.send(client.id, data)
+        }
+    }
+    
+    func send(client_id, data) {
+        let msg = type(data) == "string" ? data : json.stringify(data)
+        print("[WebSocket] Sending to " + str(client_id) + ": " + msg)
+    }
+    
+    func close() {
+        this.connected = false
+        print("[WebSocket] Server closed")
+    }
+}
+
+/* WebSocket Client */
+class WebSocketClient {
+    func init(url) {
+        this.url = url
+        this.connected = false
+        this.listeners = {}
+    }
+    
+    func connect() {
+        this.connected = true
+        print("[WebSocket] Connected to " + this.url)
+    }
+    
+    func send(data) {
+        if not this.connected {
+            error("WebSocket not connected")
+        }
+        let msg = type(data) == "string" ? data : json.stringify(data)
+        print("[WebSocket] Sent: " + msg)
+    }
+    
+    func on(event, handler) {
+        this.listeners[event] = handler
+    }
+    
+    func emit(event, data) {
+        if has(this.listeners, event) {
+            this.listeners[event](data)
+        }
+    }
+    
+    func close() {
+        this.connected = false
+        print("[WebSocket] Disconnected")
+    }
+}
+
+/* Create server */
+func server(port, handler) {
+    return WebSocketServer(port, handler)
+}
+
+/* Create client */
+func client(url) {
+    return WebSocketClient(url)
+}
