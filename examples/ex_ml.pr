@@ -1,0 +1,215 @@
+/* Machine Learning Examples - Statistics, regression, clustering */
+
+import "lib/ml"
+
+func exampleStatistics() {
+    print("\n=== Basic Statistics ===")
+    
+    let data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    
+    print("Data: " + str(data))
+    print("Mean: " + str(mean(data)))
+    print("Median: " + str(median(data)))
+    print("StdDev: " + str(stddev(data)))
+    print("Variance: " + str(variance(data)))
+    print("Min: " + str(min(data)))
+    print("Max: " + str(max(data)))
+    print("Sum: " + str(sum(data)))
+    print("Range: " + str(max(data) - min(data)))
+}
+
+func exampleCorrelation() {
+    print("\n=== Correlation Analysis ===")
+    
+    let height = [170, 175, 180, 165, 182]
+    let weight = [65, 70, 75, 60, 80]
+    
+    let corr = correlation(height, weight)
+    let cov = covariance(height, weight)
+    
+    print("Height: " + str(height))
+    print("Weight: " + str(weight))
+    print("Correlation: " + str(corr))
+    print("Covariance: " + str(cov))
+    
+    if corr > 0.7 {
+        print("Strong positive correlation")
+    }
+}
+
+func exampleLinearRegression() {
+    print("\n=== Linear Regression ===")
+    
+    let model = LinearRegression()
+    
+    // Training data: temperature vs ice cream sales
+    let temperature = [20, 22, 24, 26, 28, 30]
+    let sales = [15, 20, 30, 40, 45, 50]
+    
+    model.fit(temperature, sales)
+    
+    print("Training data:")
+    print("  Temperature: " + str(temperature))
+    print("  Sales: " + str(sales))
+    
+    print("\nPredictions:")
+    let t25 = model.predict(25)
+    let t32 = model.predict(32)
+    print("  At 25°C: " + str(t25) + " units")
+    print("  At 32°C: " + str(t32) + " units")
+    
+    print("\nModel quality:")
+    print("  R²: " + str(model.rSquared()))
+}
+
+func exampleKMeans() {
+    print("\n=== K-Means Clustering ===")
+    
+    let kmeans = KMeans(3)
+    
+    let data = [
+        [1, 2], [1.5, 2.5], [2, 1],
+        [8, 8], [8.5, 9], [9, 8.5],
+        [15, 15], [15.5, 16], [16, 15.5]
+    ]
+    
+    print("Data points: " + str(len(data)))
+    
+    kmeans.fit(data, 10)
+    
+    print("Cluster assignments:")
+    for point in data {
+        let cluster = kmeans.predict(point)
+        print("  Point " + str(point) + " -> Cluster " + str(cluster))
+    }
+}
+
+func exampleNaiveBayes() {
+    print("\n=== Naive Bayes Classification ===")
+    
+    let classifier = NaiveBayes()
+    
+    let trainingData = [
+        {text: "great movie wonderful film", label: "positive"},
+        {text: "amazing excellent stunning", label: "positive"},
+        {text: "terrible awful horrible", label: "negative"},
+        {text: "bad poor disappointing", label: "negative"}
+    ]
+    
+    classifier.train(trainingData)
+    
+    print("Classification results:")
+    
+    let test1 = classifier.predict("amazing movie")
+    print("'amazing movie': " + str(test1))
+    
+    let test2 = classifier.predict("terrible film")
+    print("'terrible film': " + str(test2))
+}
+
+func exampleModelEvaluation() {
+    print("\n=== Model Evaluation Metrics ===")
+    
+    let yTrue = [1, 0, 1, 1, 0, 1, 0, 0, 1, 1]
+    let yPred = [1, 0, 1, 0, 0, 1, 0, 1, 1, 1]
+    
+    print("True labels:      " + str(yTrue))
+    print("Predicted labels: " + str(yPred))
+    
+    print("\nMetrics:")
+    print("  Accuracy:  " + str(accuracy(yTrue, yPred)))
+    print("  Precision: " + str(precision(yTrue, yPred)))
+    print("  Recall:    " + str(recall(yTrue, yPred)))
+    print("  F1 Score:  " + str(f1Score(yTrue, yPred)))
+}
+
+func exampleFeatureScaling() {
+    print("\n=== Feature Scaling ===")
+    
+    let data = [10, 20, 30, 40, 50]
+    
+    print("Original: " + str(data))
+    
+    let normalized = normalize(data)
+    print("Normalized (0-1): " + str(normalized))
+    
+    let standardized = standardize(data)
+    print("Standardized (mean=0, std=1): " + str(standardized))
+}
+
+func exampleOutlierDetection() {
+    print("\n=== Outlier Detection ===")
+    
+    let data = [10, 11, 12, 13, 14, 15, 100]
+    
+    let mean_val = mean(data)
+    let std = stddev(data)
+    let threshold = 2  // 2-sigma rule
+    
+    print("Data: " + str(data))
+    print("Mean: " + str(mean_val))
+    print("StdDev: " + str(std))
+    print("\nOutliers (> 2 sigma):")
+    
+    for val in data {
+        let zScore = (val - mean_val) / std
+        if zScore > threshold {
+            print("  Value " + str(val) + " is an outlier (z=" + str(zScore) + ")")
+        }
+    }
+}
+
+func exampleQuartiles() {
+    print("\n=== Quartile Analysis ===")
+    
+    let data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    
+    let sorted = data
+    let n = len(sorted)
+    
+    // Q1, Q2 (median), Q3
+    let q1_idx = (n + 1) / 4
+    let q2_idx = (n + 1) / 2
+    let q3_idx = 3 * (n + 1) / 4
+    
+    print("Data: " + str(data))
+    print("Q1 (25th percentile): " + str(sorted[q1_idx - 1]))
+    print("Q2 (50th percentile/median): " + str(sorted[q2_idx - 1]))
+    print("Q3 (75th percentile): " + str(sorted[q3_idx - 1]))
+}
+
+func exampleDistributionAnalysis() {
+    print("\n=== Distribution Analysis ===")
+    
+    let data = [1, 1, 2, 2, 2, 3, 3, 3, 3, 4, 4, 5]
+    
+    let frequencies = {}
+    for val in data {
+        let key = str(val)
+        frequencies[key] = (frequencies[key] ?? 0) + 1
+    }
+    
+    print("Value Distribution:")
+    for val in range(1, 6) {
+        let count = frequencies[str(val)] ?? 0
+        let stars = ""
+        for i in range(0, count) {
+            stars = stars + "*"
+        }
+        print("  " + str(val) + ": " + stars)
+    }
+}
+
+// Run all examples
+exampleStatistics()
+exampleCorrelation()
+exampleLinearRegression()
+exampleKMeans()
+exampleNaiveBayes()
+exampleModelEvaluation()
+exampleFeatureScaling()
+exampleOutlierDetection()
+exampleQuartiles()
+exampleDistributionAnalysis()
+
+print("\n=== All ML examples completed ===")

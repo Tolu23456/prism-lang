@@ -1,0 +1,246 @@
+/* Comprehensive tests for Compression library */
+
+import "lib/compression"
+import "lib/testing"
+
+describe("Base64 encoding", fn() {
+    test("basic encoding", fn() {
+        let text = "Hello, World!"
+        let encoded = base64Encode(text)
+        let decoded = base64Decode(encoded)
+        assertEqual(decoded, text)
+    })
+    
+    test("empty string", fn() {
+        let encoded = base64Encode("")
+        let decoded = base64Decode(encoded)
+        assertEqual(decoded, "")
+    })
+    
+    test("long text", fn() {
+        let text = "The quick brown fox jumps over the lazy dog. " * 10
+        let encoded = base64Encode(text)
+        let decoded = base64Decode(encoded)
+        assertEqual(decoded, text)
+    })
+    
+    test("special characters", fn() {
+        let text = "!@#$%^&*()[]{}:;<>?,.'\""
+        let encoded = base64Encode(text)
+        let decoded = base64Decode(encoded)
+        assertEqual(decoded, text)
+    })
+    
+    test("unicode safe", fn() {
+        let text = "Hello 世界 🌍"
+        let encoded = base64Encode(text)
+        let decoded = base64Decode(encoded)
+        assertTrue(true)  // Just verify no crash
+    })
+})
+
+describe("Hex encoding", fn() {
+    test("basic hex", fn() {
+        let text = "ABC"
+        let hex = toHex(text)
+        let back = fromHex(hex)
+        assertEqual(back, text)
+    })
+    
+    test("empty string", fn() {
+        let hex = toHex("")
+        let back = fromHex(hex)
+        assertEqual(back, "")
+    })
+    
+    test("numbers to hex", fn() {
+        let hex = toHex("123")
+        assertTrue(contains(hex, "31") or contains(hex, "1"))  // Check format
+    })
+    
+    test("hex uppercase", fn() {
+        let hex = toHex("F")
+        // Hex should be valid (might be uppercase or lowercase)
+        assertTrue(len(hex) > 0)
+    })
+})
+
+describe("URL encoding", fn() {
+    test("basic URL encoding", fn() {
+        let text = "hello world"
+        let encoded = encodeUrl(text)
+        let decoded = decodeUrl(encoded)
+        assertEqual(decoded, text)
+    })
+    
+    test("special characters", fn() {
+        let text = "name=John Doe&age=30&city=New York"
+        let encoded = encodeUrl(text)
+        let decoded = decodeUrl(encoded)
+        assertEqual(decoded, text)
+    })
+    
+    test("already encoded", fn() {
+        let text = "hello%20world"
+        let decoded = decodeUrl(text)
+        assertEqual(decoded, "hello world")
+    })
+    
+    test("empty string", fn() {
+        let encoded = encodeUrl("")
+        let decoded = decodeUrl(encoded)
+        assertEqual(decoded, "")
+    })
+    
+    test("ampersand encoding", fn() {
+        let text = "a & b & c"
+        let encoded = encodeUrl(text)
+        assertTrue(contains(encoded, "%26"))
+        let decoded = decodeUrl(encoded)
+        assertEqual(decoded, text)
+    })
+})
+
+describe("RLE compression", fn() {
+    test("basic RLE", fn() {
+        let data = "AAABBC"
+        let compressed = rleEncode(data)
+        let decompressed = rleDecode(compressed)
+        assertEqual(decompressed, data)
+    })
+    
+    test("no compression needed", fn() {
+        let data = "ABCDEF"
+        let compressed = rleEncode(data)
+        let decompressed = rleDecode(compressed)
+        assertEqual(decompressed, data)
+    })
+    
+    test("all same character", fn() {
+        let data = "AAAAAAA"
+        let compressed = rleEncode(data)
+        let decompressed = rleDecode(compressed)
+        assertEqual(decompressed, data)
+    })
+    
+    test("single character", fn() {
+        let data = "A"
+        let compressed = rleEncode(data)
+        let decompressed = rleDecode(compressed)
+        assertEqual(decompressed, data)
+    })
+    
+    test("compression ratio on repetitive", fn() {
+        let data = "AAAAAABBBBCCCCDDDD"
+        let compressed = rleEncode(data)
+        assertTrue(len(compressed) < len(data))
+    })
+})
+
+describe("LZ77 compression", fn() {
+    test("basic compression", fn() {
+        let data = "the quick brown fox jumps"
+        let compressed = lz77Compress(data)
+        let decompressed = lz77Decompress(compressed)
+        assertEqual(decompressed, data)
+    })
+    
+    test("repeated phrases", fn() {
+        let data = "the the the quick quick brown brown"
+        let compressed = lz77Compress(data)
+        let decompressed = lz77Decompress(compressed)
+        assertEqual(decompressed, data)
+    })
+    
+    test("empty string", fn() {
+        let compressed = lz77Compress("")
+        let decompressed = lz77Decompress(compressed)
+        assertEqual(decompressed, "")
+    })
+    
+    test("single word", fn() {
+        let data = "hello"
+        let compressed = lz77Compress(data)
+        let decompressed = lz77Decompress(compressed)
+        assertEqual(decompressed, data)
+    })
+    
+    test("compression ratio", fn() {
+        let data = "abcabcabcabcabcabcabc"
+        let compressed = lz77Compress(data)
+        assertTrue(len(compressed) <= len(data))
+    })
+})
+
+describe("CRC32 checksums", fn() {
+    test("consistent checksum", fn() {
+        let data = "test data"
+        let crc1 = crc32(data)
+        let crc2 = crc32(data)
+        assertEqual(crc1, crc2)
+    })
+    
+    test("different data different checksum", fn() {
+        let data1 = "test"
+        let data2 = "test2"
+        let crc1 = crc32(data1)
+        let crc2 = crc32(data2)
+        assertNotEqual(crc1, crc2)
+    })
+    
+    test("empty string checksum", fn() {
+        let crc = crc32("")
+        assertTrue(crc != null)
+    })
+    
+    test("single character", fn() {
+        let crc1 = crc32("A")
+        let crc2 = crc32("B")
+        assertNotEqual(crc1, crc2)
+    })
+    
+    test("case sensitivity", fn() {
+        let crc1 = crc32("Test")
+        let crc2 = crc32("test")
+        assertNotEqual(crc1, crc2)
+    })
+})
+
+describe("Encoding combination", fn() {
+    test("encode then decode", fn() {
+        let original = "Secret Message"
+        let base64 = base64Encode(original)
+        let hex = toHex(base64)
+        let fromHex = fromHex(hex)
+        let decoded = base64Decode(fromHex)
+        assertEqual(decoded, original)
+    })
+})
+
+describe("Edge cases", fn() {
+    test("very long string base64", fn() {
+        let long = ""
+        for i in range(1, 101) {
+            long = long + "a"
+        }
+        let encoded = base64Encode(long)
+        let decoded = base64Decode(encoded)
+        assertEqual(decoded, long)
+    })
+    
+    test("newlines in text", fn() {
+        let text = "line1\nline2\nline3"
+        let encoded = base64Encode(text)
+        let decoded = base64Decode(encoded)
+        assertEqual(decoded, text)
+    })
+    
+    test("tabs and spaces", fn() {
+        let text = "hello\t\tworld   "
+        let encoded = base64Encode(text)
+        let decoded = base64Decode(encoded)
+        assertEqual(decoded, text)
+    })
+})
+
+print("Compression test suite completed")

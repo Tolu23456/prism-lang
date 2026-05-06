@@ -1,0 +1,217 @@
+/* Database Examples - CRUD, transactions, and ORM patterns */
+
+import "lib/database"
+
+func exampleBasicCRUD() {
+    print("\n=== Basic CRUD Operations ===")
+    
+    let db = PrismaDB(":memory:")
+    
+    // Create table
+    db.exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)")
+    
+    // Create (Insert)
+    let userId1 = db.insert("users", {name: "Alice", email: "alice@example.com"})
+    let userId2 = db.insert("users", {name: "Bob", email: "bob@example.com"})
+    print("Created users: " + str(userId1) + ", " + str(userId2))
+    
+    // Read (Select)
+    let user1 = db.selectOne("users", {id: userId1})
+    print("Retrieved user: " + str(user1))
+    
+    // Read multiple
+    let allUsers = db.select("users")
+    print("Total users: " + str(len(allUsers)))
+    
+    // Update
+    db.update("users", {id: userId1}, {name: "Alice Smith"})
+    let updated = db.selectOne("users", {id: userId1})
+    print("Updated name: " + updated.name)
+    
+    // Delete
+    db.delete("users", {id: userId2})
+    let remaining = db.select("users")
+    print("After delete: " + str(len(remaining)) + " users remaining")
+}
+
+func exampleQueryOperators() {
+    print("\n=== Query Operators ===")
+    
+    let db = PrismaDB(":memory:")
+    db.exec("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price INTEGER)")
+    
+    // Insert test data
+    db.insert("products", {name: "Laptop", price: 1000})
+    db.insert("products", {name: "Mouse", price: 25})
+    db.insert("products", {name: "Keyboard", price: 75})
+    db.insert("products", {name: "Monitor", price: 300})
+    
+    // Greater than
+    let expensive = db.select("products", {price: {$gt: 100}})
+    print("Items over $100: " + str(len(expensive)))
+    
+    // Less than
+    let cheap = db.select("products", {price: {$lt: 100}})
+    print("Items under $100: " + str(len(cheap)))
+    
+    // Between (using comparison)
+    let mid = db.select("products", {price: {$gte: 50, $lte: 500}})
+    print("Items $50-$500: " + str(len(mid)))
+    
+    // Count
+    let count = db.count("products")
+    print("Total products: " + str(count))
+}
+
+func exampleTransactions() {
+    print("\n=== Transactions ===")
+    
+    let db = PrismaDB(":memory:")
+    db.exec("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT, balance INTEGER)")
+    
+    // Insert accounts
+    let acc1 = db.insert("accounts", {name: "Checking", balance: 1000})
+    let acc2 = db.insert("accounts", {name: "Savings", balance: 5000})
+    
+    print("Before transfer:")
+    let c1 = db.selectOne("accounts", {id: acc1})
+    let c2 = db.selectOne("accounts", {id: acc2})
+    print("  Checking: " + str(c1.balance))
+    print("  Savings: " + str(c2.balance))
+    
+    // Transaction: transfer money
+    db.transaction(fn() {
+        db.update("accounts", {id: acc1}, {balance: c1.balance - 500})
+        db.update("accounts", {id: acc2}, {balance: c2.balance + 500})
+    })
+    
+    print("After transfer:")
+    let c1_after = db.selectOne("accounts", {id: acc1})
+    let c2_after = db.selectOne("accounts", {id: acc2})
+    print("  Checking: " + str(c1_after.balance))
+    print("  Savings: " + str(c2_after.balance))
+}
+
+func exampleIndexing() {
+    print("\n=== Indexing ===")
+    
+    let db = PrismaDB(":memory:")
+    db.exec("CREATE TABLE employees (id INTEGER PRIMARY KEY, email TEXT, name TEXT)")
+    
+    // Create unique index on email
+    db.createIndex("employees", "email", {unique: true})
+    
+    // Insert data
+    db.insert("employees", {email: "alice@company.com", name: "Alice"})
+    db.insert("employees", {email: "bob@company.com", name: "Bob"})
+    
+    // Query using indexed field (faster)
+    let employee = db.selectOne("employees", {email: "alice@company.com"})
+    print("Found employee: " + employee.name)
+    
+    // List indexes
+    let indexes = db.getIndexes("employees")
+    print("Indexes on employees: " + str(len(indexes)))
+}
+
+func exampleDataTypes() {
+    print("\n=== Data Types ===")
+    
+    let db = PrismaDB(":memory:")
+    db.exec("CREATE TABLE entries (id INTEGER, text TEXT, number INTEGER, flag INTEGER)")
+    
+    db.insert("entries", {
+        id: 1,
+        text: "Hello",
+        number: 42,
+        flag: 1
+    })
+    
+    let entry = db.selectOne("entries", {id: 1})
+    print("Stored and retrieved:")
+    print("  String: " + entry.text)
+    print("  Number: " + str(entry.number))
+    print("  Flag: " + str(entry.flag))
+}
+
+func exampleBackupRestore() {
+    print("\n=== Backup and Restore ===")
+    
+    let db = PrismaDB(":memory:")
+    db.exec("CREATE TABLE data (id INTEGER, value TEXT)")
+    db.insert("data", {id: 1, value: "important"})
+    
+    // Export data
+    let exported = db.export()
+    print("Database exported to JSON: " + str(len(exported)) + " bytes")
+    
+    // Create new database and restore
+    let db2 = PrismaDB(":memory:")
+    db2.import(exported)
+    
+    let restored = db2.selectOne("data", {id: 1})
+    print("Restored value: " + restored.value)
+}
+
+func exampleBatchOperations() {
+    print("\n=== Batch Operations ===")
+    
+    let db = PrismaDB(":memory:")
+    db.exec("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, stock INTEGER)")
+    
+    // Batch insert using transaction
+    db.transaction(fn() {
+        for i in range(1, 11) {
+            db.insert("items", {name: "Item " + str(i), stock: i * 10})
+        }
+    })
+    
+    let count = db.count("items")
+    print("Batch inserted " + str(count) + " items")
+    
+    // Batch update
+    db.updateMany("items", {}, {stock: 0})
+    let updated = db.select("items")
+    print("All items restocked")
+}
+
+func exampleQuery() {
+    print("\n=== Advanced Query ===")
+    
+    let db = PrismaDB(":memory:")
+    db.exec("CREATE TABLE products (id INTEGER PRIMARY KEY, category TEXT, price INTEGER, inStock INTEGER)")
+    
+    let products = [
+        {category: "Electronics", price: 500, inStock: 1},
+        {category: "Electronics", price: 100, inStock: 1},
+        {category: "Books", price: 20, inStock: 1},
+        {category: "Books", price: 15, inStock: 0}
+    ]
+    
+    for p in products {
+        db.insert("products", p)
+    }
+    
+    // Complex query
+    let inStockElectronics = db.select("products", {
+        category: "Electronics",
+        inStock: 1
+    })
+    
+    print("In-stock electronics: " + str(len(inStockElectronics)))
+    for p in inStockElectronics {
+        print("  - $" + str(p.price))
+    }
+}
+
+// Run all examples
+exampleBasicCRUD()
+exampleQueryOperators()
+exampleTransactions()
+exampleIndexing()
+exampleDataTypes()
+exampleBackupRestore()
+exampleBatchOperations()
+exampleQuery()
+
+print("\n=== All database examples completed ===")
