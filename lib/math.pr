@@ -223,7 +223,9 @@ func statMean(arr) {
 
 func statMedian(arr) {
     if len(arr) == 0 { error("median: empty array") }
-    let s = arr.sort()
+    let s = []
+    for x in arr { push(s, x) }
+    sort(s)
     let n = len(s)
     let mid = n // 2
     if n % 2 == 0 {

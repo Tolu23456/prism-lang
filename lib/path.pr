@@ -1,0 +1,180 @@
+/* Prism Standard Library — path module
+   Pure string-based path manipulation (POSIX "/" separator).
+   VM-compatible: no varargs, no class/struct.
+
+   pathJoin takes an ARRAY of parts, not varargs:
+     pathJoin(["/usr", "local", "bin"])  → "/usr/local/bin"
+*/
+
+/* ── Predicates ───────────────────────────────────────────── */
+
+func pathIsAbsolute(p) {
+    return starts(p, "/")
+}
+
+func pathHasTrailingSep(p) {
+    return len(p) > 1 and ends(p, "/")
+}
+
+/* ── Components ───────────────────────────────────────────── */
+
+func pathDirname(p) {
+    if p == "" { return "." }
+    while len(p) > 1 and ends(p, "/") { p = slice(p, 0, len(p) - 1) }
+    let idx = len(p) - 1
+    while idx > 0 and slice(p, idx, idx + 1) != "/" { idx -= 1 }
+    if idx == 0 {
+        if slice(p, 0, 1) == "/" { return "/" }
+        return "."
+    }
+    let dir = slice(p, 0, idx)
+    while len(dir) > 1 and ends(dir, "/") { dir = slice(dir, 0, len(dir) - 1) }
+    return dir
+}
+
+func pathBasename(p) {
+    if p == "" { return "" }
+    while len(p) > 1 and ends(p, "/") { p = slice(p, 0, len(p) - 1) }
+    if p == "/" { return "/" }
+    let parts = split(p, "/")
+    return parts[len(parts) - 1]
+}
+
+func pathExtname(p) {
+    let base = pathBasename(p)
+    if base == "" or base == "." or base == ".." { return "" }
+    let i = len(base) - 1
+    while i > 0 {
+        if slice(base, i, i + 1) == "." { return slice(base, i) }
+        i -= 1
+    }
+    return ""
+}
+
+func pathStem(p) {
+    let base = pathBasename(p)
+    let ext  = pathExtname(p)
+    if ext == "" { return base }
+    return slice(base, 0, len(base) - len(ext))
+}
+
+func pathSplit(p) {
+    return [pathDirname(p), pathBasename(p)]
+}
+
+func pathSplitExt(p) {
+    return [pathDirname(p) + "/" + pathStem(p), pathExtname(p)]
+}
+
+/* ── Normalise ────────────────────────────────────────────── */
+
+func pathNormalize(p) {
+    if p == "" { return "." }
+    let is_abs = starts(p, "/")
+    let parts  = split(p, "/")
+    let stack  = []
+    for part in parts {
+        if part == "" or part == "." {
+            /* skip */
+        } elif part == ".." {
+            let n = len(stack)
+            if n > 0 and stack[n - 1] != ".." {
+                stack = slice(stack, 0, n - 1)
+            } elif not is_abs {
+                push(stack, "..")
+            }
+        } else {
+            push(stack, part)
+        }
+    }
+    let result = join("/", stack)
+    if is_abs { return "/" + result }
+    if result == "" { return "." }
+    return result
+}
+
+/* ── Join ─────────────────────────────────────────────────── */
+
+func pathJoin(parts) {
+    if len(parts) == 0 { return "." }
+    let segments = []
+    for p in parts {
+        if p != "" { push(segments, p) }
+    }
+    if len(segments) == 0 { return "." }
+    let result = segments[0]
+    let i = 1
+    while i < len(segments) {
+        let seg = segments[i]
+        if starts(seg, "/") {
+            result = seg
+        } elif ends(result, "/") {
+            result = result + seg
+        } else {
+            result = result + "/" + seg
+        }
+        i += 1
+    }
+    return pathNormalize(result)
+}
+
+/* ── Relative ─────────────────────────────────────────────── */
+
+func pathRelative(from_path, to_path) {
+    let f = split(pathNormalize(from_path), "/")
+    let t = split(pathNormalize(to_path),   "/")
+    let common = 0
+    while common < len(f) and common < len(t) and f[common] == t[common] {
+        common += 1
+    }
+    let parts = []
+    let i = common
+    while i < len(f) { push(parts, ".."); i += 1 }
+    let j = common
+    while j < len(t) { push(parts, t[j]); j += 1 }
+    if len(parts) == 0 { return "." }
+    return join("/", parts)
+}
+
+/* ── Common Directory Prefix ─────────────────────────────── */
+
+func pathCommonDir(paths) {
+    if len(paths) == 0 { return "" }
+    let first = split(pathNormalize(paths[0]), "/")
+    let common = first
+    let pi = 1
+    while pi < len(paths) {
+        let other = split(pathNormalize(paths[pi]), "/")
+        let new_common = []
+        let ci = 0
+        while ci < len(common) and ci < len(other) and common[ci] == other[ci] {
+            push(new_common, common[ci])
+            ci += 1
+        }
+        common = new_common
+        pi += 1
+    }
+    if len(common) == 0 { return "/" }
+    return join("/", common)
+}
+
+/* ── Convenience ──────────────────────────────────────────── */
+
+func pathWithExt(p, new_ext) {
+    let dir  = pathDirname(p)
+    let stem = pathStem(p)
+    let base = stem + new_ext
+    if dir == "." { return base }
+    return dir + "/" + base
+}
+
+func pathDepth(p) {
+    let norm = pathNormalize(p)
+    if norm == "." or norm == "/" { return 0 }
+    let parts = split(norm, "/")
+    let count = 0
+    for part in parts {
+        if part != "" { count += 1 }
+    }
+    return count
+}

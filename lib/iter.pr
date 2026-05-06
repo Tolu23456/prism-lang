@@ -146,7 +146,7 @@ func chunked(arr, size) {
 
 /* ── Combining ───────────────────────────────────────────── */
 
-func chain(...arrs) {
+func chain(arrs) {
     let result = []
     for arr in arrs {
         for x in arr { push(result, x) }
@@ -214,7 +214,7 @@ func interpose(arr, sep) {
     return result
 }
 
-func roundRobin(...arrs) {
+func roundRobin(arrs) {
     let result  = []
     let indices = []
     for _ in arrs { push(indices, 0) }
@@ -229,14 +229,16 @@ func roundRobin(...arrs) {
             i += 1
         }
         active = 0
-        for j in range(0, len(arrs), 1) {
+        let j = 0
+        while j < len(arrs) {
             if indices[j] < len(arrs[j]) { active += 1 }
+            j += 1
         }
     }
     return result
 }
 
-func product_iter(...arrs) {
+func product_iter(arrs) {
     let result = [[]]
     for arr in arrs {
         let next = []
@@ -290,7 +292,7 @@ func filterMap(arr, f) {
 func starMap(pairs, f) {
     let result = []
     for pair in pairs {
-        push(result, f(...pair))
+        push(result, f(pair))
     }
     return result
 }

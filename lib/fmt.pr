@@ -1,0 +1,219 @@
+/* Prism Standard Library — fmt module
+   Number formatting, byte sizes, durations, progress bars,
+   text alignment, ordinals, plurals, and ASCII tables.
+   VM-compatible: no varargs, no class/struct.
+*/
+
+/* ── Internal helpers ─────────────────────────────────────── */
+
+func _strRep(s, n) {
+    let out = ""
+    let i = 0
+    while i < n { out = out + s; i += 1 }
+    return out
+}
+
+func _fmt2dec(v) {
+    let iv = int(v * 100.0 + 0.5)
+    let int_p = iv // 100
+    let dec_p = iv % 100
+    let dec_s = str(dec_p)
+    if len(dec_s) < 2 { dec_s = "0" + dec_s }
+    return str(int_p) + "." + dec_s
+}
+
+/* ── Integer Formatting ───────────────────────────────────── */
+
+func fmtInt(n, sep) {
+    sep = sep ?? ","
+    let neg = n < 0
+    if neg { n = -n }
+    let s = str(int(n))
+    let result = ""
+    let rem = len(s) % 3
+    if rem > 0 {
+        result = slice(s, 0, rem)
+        s = slice(s, rem)
+    }
+    let i = 0
+    while i < len(s) {
+        if len(result) > 0 { result = result + sep }
+        result = result + slice(s, i, i + 3)
+        i += 3
+    }
+    if result == "" { result = "0" }
+    if neg { return "-" + result }
+    return result
+}
+
+/* ── Float Formatting ─────────────────────────────────────── */
+
+func fmtFloat(f, decimals, sep) {
+    decimals = decimals ?? 2
+    sep = sep ?? ","
+    let neg = f < 0.0
+    if neg { f = -f }
+    let factor = 1
+    let di = 0
+    while di < decimals { factor = factor * 10; di += 1 }
+    let total = int(f * float(factor) + 0.5)
+    let int_part = total // factor
+    let dec_part = total % factor
+    let dec_str = str(dec_part)
+    while len(dec_str) < decimals { dec_str = "0" + dec_str }
+    let int_str = fmtInt(int_part, sep)
+    if neg { int_str = "-" + int_str }
+    if decimals == 0 { return int_str }
+    return int_str + "." + dec_str
+}
+
+/* ── Byte-size Formatting ─────────────────────────────────── */
+
+func fmtBytes(n) {
+    if n < 0 { return "-" + fmtBytes(-n) }
+    if n < 1024 { return str(int(n)) + " B" }
+    let units = ["KB", "MB", "GB", "TB", "PB"]
+    let val = float(n) / 1024.0
+    let ui = 0
+    while ui < len(units) - 1 and val >= 1024.0 {
+        val = val / 1024.0
+        ui += 1
+    }
+    return _fmt2dec(val) + " " + units[ui]
+}
+
+/* ── Duration Formatting ──────────────────────────────────── */
+
+func fmtDuration(secs) {
+    secs = int(abs(secs))
+    if secs == 0 { return "0s" }
+    let days  = secs // 86400; secs = secs % 86400
+    let hours = secs // 3600;  secs = secs % 3600
+    let mins  = secs // 60;    secs = secs % 60
+    let out = ""
+    if days  > 0 { out = out + str(days)  + "d " }
+    if hours > 0 { out = out + str(hours) + "h " }
+    if mins  > 0 { out = out + str(mins)  + "m " }
+    if secs  > 0 { out = out + str(secs)  + "s" }
+    return trim(out)
+}
+
+/* ── Percent Formatting ───────────────────────────────────── */
+
+func fmtPercent(value, total, decimals) {
+    decimals = decimals ?? 1
+    if total == 0 { return "0%" }
+    let pct = float(value) / float(total) * 100.0
+    return fmtFloat(pct, decimals, "") + "%"
+}
+
+/* ── Ordinal & Plural ─────────────────────────────────────── */
+
+func fmtOrdinal(n) {
+    n = int(n)
+    let abs_n = n < 0 ? -n : n
+    let r10  = abs_n % 10
+    let r100 = abs_n % 100
+    let suffix = "th"
+    if r100 >= 11 and r100 <= 13 { suffix = "th" }
+    elif r10 == 1 { suffix = "st" }
+    elif r10 == 2 { suffix = "nd" }
+    elif r10 == 3 { suffix = "rd" }
+    return str(n) + suffix
+}
+
+func fmtPlural(n, singular, plural_form) {
+    plural_form = plural_form ?? (singular + "s")
+    if n == 1 { return str(n) + " " + singular }
+    return str(n) + " " + plural_form
+}
+
+/* ── Text Alignment ───────────────────────────────────────── */
+
+func fmtPadLeft(s, width, padCh) {
+    s = str(s); padCh = padCh ?? " "
+    while len(s) < width { s = padCh + s }
+    return s
+}
+
+func fmtPadRight(s, width, padCh) {
+    s = str(s); padCh = padCh ?? " "
+    while len(s) < width { s = s + padCh }
+    return s
+}
+
+func fmtPadCenter(s, width, padCh) {
+    s = str(s); padCh = padCh ?? " "
+    let total = width - len(s)
+    if total <= 0 { return s }
+    let left  = total // 2
+    let right = total - left
+    return _strRep(padCh, left) + s + _strRep(padCh, right)
+}
+
+func fmtTruncate(s, maxLen, ellipsis) {
+    ellipsis = ellipsis ?? "..."
+    if len(s) <= maxLen { return s }
+    let keep = maxLen - len(ellipsis)
+    if keep <= 0 { return slice(ellipsis, 0, maxLen) }
+    return slice(s, 0, keep) + ellipsis
+}
+
+func fmtRepeat(s, n) {
+    return _strRep(s, n)
+}
+
+/* ── Progress Bar ─────────────────────────────────────────── */
+
+func fmtProgressBar(value, max_val, width, fill, empty) {
+    width   = width   ?? 20
+    fill    = fill    ?? "#"
+    empty   = empty   ?? "-"
+    if max_val <= 0 { max_val = 1 }
+    let ratio = float(value) / float(max_val)
+    if ratio < 0.0 { ratio = 0.0 }
+    if ratio > 1.0 { ratio = 1.0 }
+    let filled = int(ratio * float(width) + 0.5)
+    let pct    = int(ratio * 100.0 + 0.5)
+    return "[" + _strRep(fill, filled) + _strRep(empty, width - filled) + "] " + str(pct) + "%"
+}
+
+/* ── ASCII Table ──────────────────────────────────────────── */
+
+func fmtTable(headers, rows) {
+    let nc = len(headers)
+    if nc == 0 { return "" }
+    let widths = []
+    let i = 0
+    while i < nc { push(widths, len(str(headers[i]))); i += 1 }
+    for row in rows {
+        let j = 0
+        while j < nc {
+            let cell = j < len(row) ? str(row[j]) : ""
+            if len(cell) > widths[j] { widths[j] = len(cell) }
+            j += 1
+        }
+    }
+    let sep = "+"
+    let k = 0
+    while k < nc { sep = sep + _strRep("-", widths[k] + 2) + "+"; k += 1 }
+    let hdr = "|"
+    let m = 0
+    while m < nc {
+        let h = str(headers[m])
+        hdr = hdr + " " + h + _strRep(" ", widths[m] - len(h)) + " |"
+        m += 1
+    }
+    let out = sep + "\n" + hdr + "\n" + sep
+    for row in rows {
+        let line = "|"
+        let ri = 0
+        while ri < nc {
+            let cell = ri < len(row) ? str(row[ri]) : ""
+            line = line + " " + cell + _strRep(" ", widths[ri] - len(cell)) + " |"
+            ri += 1
+        }
+        out = out + "\n" + line
+    }
+    return out + "\n" + sep
+}

@@ -271,4 +271,3 @@ func stats(rows, col) {
              "min": mn, "max": mx, "std": std }
 }
 
-func trim(s) { return s.trimStart().trimEnd() }

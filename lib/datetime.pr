@@ -271,8 +271,8 @@ func parseISO(s) {
         t = tp[0]
         let tz = split(tp[1], ":")
         tz_off = parseInt(tz[0]) * 60 + parseInt(tz[1])
-    } elif regexMatch(t, ".*-\\d{2}:\\d{2}$") {
-        let idx = lastIndex(t)
+    } elif len(t) >= 6 and slice(t, len(t)-3, len(t)-2) == ":" and slice(t, len(t)-6, len(t)-5) == "-" {
+        let idx = len(t) - 6
         let tz_str = slice(t, idx)
         t = slice(t, 0, idx)
         let tz = split(slice(tz_str, 1), ":")

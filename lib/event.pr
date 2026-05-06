@@ -1,82 +1,94 @@
 /* Prism Standard Library — event module
    EventEmitter pattern inspired by Node.js EventEmitter.
+   Closure-based OOP — compatible with the bytecode VM.
+
+   Usage:
+     import event
+     let em = makeEmitter()
+     em["on"]("click", fn(data) { output(data) })
+     em["emit"]("click", "hello")
 */
 
-class EventEmitter {
-    func init() {
-        self._listeners = {}
-        self._once_set  = {}
+func makeEmitter() {
+    let _listeners = {}
+    let _once_set  = {}
+
+    func _getList(event) {
+        if not has(_listeners, event) { return [] }
+        return _listeners[event]
     }
 
     func on(event, handler) {
-        if not has(self._listeners, event) {
-            self._listeners[event] = []
-        }
-        push(self._listeners[event], handler)
-        return self
+        if not has(_listeners, event) { _listeners[event] = [] }
+        push(_listeners[event], handler)
+        return null
     }
 
     func once(event, handler) {
-        self.on(event, handler)
-        if not has(self._once_set, event) {
-            self._once_set[event] = []
-        }
-        push(self._once_set[event], handler)
-        return self
+        on(event, handler)
+        if not has(_once_set, event) { _once_set[event] = [] }
+        push(_once_set[event], handler)
+        return null
     }
 
     func off(event, handler) {
-        if not has(self._listeners, event) { return self }
+        if not has(_listeners, event) { return null }
         let updated = []
-        for h in self._listeners[event] {
-            if str(h) != str(handler) {
-                push(updated, h)
-            }
+        for h in _listeners[event] {
+            if str(h) != str(handler) { push(updated, h) }
         }
-        self._listeners[event] = updated
-        return self
+        _listeners[event] = updated
+        return null
     }
 
-    func emit(event, ...args) {
-        if not has(self._listeners, event) { return self }
-        let to_remove = self._once_set[event] ?? []
+    func emit(event, data) {
+        if not has(_listeners, event) { return null }
+        let to_remove = has(_once_set, event) ? _once_set[event] : []
         let kept = []
-        for handler in self._listeners[event] {
-            handler(...args)
+        for handler in _listeners[event] {
+            handler(data)
             let is_once = false
             for r in to_remove {
                 if str(r) == str(handler) { is_once = true }
             }
             if not is_once { push(kept, handler) }
         }
-        self._listeners[event] = kept
-        if has(self._once_set, event) { self._once_set[event] = [] }
-        return self
+        _listeners[event] = kept
+        if has(_once_set, event) { _once_set[event] = [] }
+        return null
     }
 
     func listeners(event) {
-        return self._listeners[event] ?? []
+        return _getList(event)
     }
 
     func listenerCount(event) {
-        return len(self._listeners[event] ?? [])
+        return len(_getList(event))
     }
 
     func removeAll(event) {
         if event != null {
-            self._listeners[event] = []
+            _listeners[event] = []
+            if has(_once_set, event) { _once_set[event] = [] }
         } else {
-            self._listeners = {}
-            self._once_set  = {}
+            _listeners = {}
+            _once_set  = {}
         }
-        return self
+        return null
     }
 
     func eventNames() {
-        return keys(self._listeners)
+        return keys(_listeners)
     }
-}
 
-func makeEmitter() {
-    return new EventEmitter()
+    return {
+        "on":            on,
+        "once":          once,
+        "off":           off,
+        "emit":          emit,
+        "listeners":     listeners,
+        "listenerCount": listenerCount,
+        "removeAll":     removeAll,
+        "eventNames":    eventNames,
+    }
 }

@@ -1,0 +1,124 @@
+/* Edge case tests for lib/path module */
+
+import "lib/path"
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if str(got) == str(expected) {
+        pass += 1
+    } else {
+        print("FAIL:", label, "  got:", got, "expected:", expected)
+        fail += 1
+    }
+}
+
+/* ── pathIsAbsolute ────────────────────────────────────────── */
+assert("abs(/)",         pathIsAbsolute("/"),           true)
+assert("abs(/foo)",      pathIsAbsolute("/foo/bar"),    true)
+assert("abs(rel)",       pathIsAbsolute("foo/bar"),     false)
+assert("abs(empty)",     pathIsAbsolute(""),            false)
+assert("abs(dot)",       pathIsAbsolute("."),           false)
+assert("abs(..)",        pathIsAbsolute(".."),          false)
+
+/* ── pathBasename ──────────────────────────────────────────── */
+assert("basename(file)",      pathBasename("/foo/bar/baz.txt"),  "baz.txt")
+assert("basename(dir/)",      pathBasename("/foo/bar/"),         "bar")
+assert("basename(root)",      pathBasename("/"),                 "/")
+assert("basename(no dir)",    pathBasename("file.txt"),          "file.txt")
+assert("basename(dotfile)",   pathBasename("/etc/.profile"),     ".profile")
+assert("basename(empty)",     pathBasename(""),                  "")
+assert("basename(multi //)",  pathBasename("/foo//bar//"),       "bar")
+
+/* ── pathDirname ───────────────────────────────────────────── */
+assert("dirname(/a/b/c)",   pathDirname("/a/b/c"),         "/a/b")
+assert("dirname(/a/b/c/)",  pathDirname("/a/b/c/"),        "/a/b")
+assert("dirname(file)",     pathDirname("file.txt"),        ".")
+assert("dirname(/file)",    pathDirname("/file.txt"),       "/")
+assert("dirname(a/b)",      pathDirname("a/b"),             "a")
+assert("dirname(empty)",    pathDirname(""),                ".")
+assert("dirname(/)",        pathDirname("/"),               "/")
+
+/* ── pathExtname ───────────────────────────────────────────── */
+assert("ext(.txt)",       pathExtname("file.txt"),          ".txt")
+assert("ext(.tar.gz)",    pathExtname("archive.tar.gz"),    ".gz")
+assert("ext(none)",       pathExtname("noextension"),       "")
+assert("ext(.dotfile)",   pathExtname(".hidden"),           "")
+assert("ext(.bashrc)",    pathExtname("/home/.bashrc"),     "")
+assert("ext(path.txt)",   pathExtname("/foo/bar.txt"),      ".txt")
+assert("ext(empty)",      pathExtname(""),                  "")
+assert("ext(dot only)",   pathExtname("."),                 "")
+assert("ext(double dot)", pathExtname(".."),                "")
+
+/* ── pathStem ──────────────────────────────────────────────── */
+assert("stem(file.txt)",    pathStem("file.txt"),          "file")
+assert("stem(a.tar.gz)",    pathStem("a.tar.gz"),          "a.tar")
+assert("stem(no ext)",      pathStem("noext"),             "noext")
+assert("stem(.hidden)",     pathStem(".hidden"),           ".hidden")
+assert("stem(path/file.js)",pathStem("/path/to/file.js"), "file")
+
+/* ── pathNormalize ─────────────────────────────────────────── */
+assert("norm(basic)",       pathNormalize("/foo/bar"),         "/foo/bar")
+assert("norm(dot)",         pathNormalize("/foo/./bar"),       "/foo/bar")
+assert("norm(dotdot)",      pathNormalize("/foo/bar/../baz"),  "/foo/baz")
+assert("norm(multi ..)",    pathNormalize("/a/b/../../c"),     "/c")
+assert("norm(rel dotdot)",  pathNormalize("foo/bar/../../baz"),"baz")
+assert("norm(empty)",       pathNormalize(""),                 ".")
+assert("norm(.)",           pathNormalize("."),                ".")
+assert("norm(./foo)",       pathNormalize("./foo"),           "foo")
+assert("norm(root)",        pathNormalize("/"),               "/")
+assert("norm(// slashes)",  pathNormalize("/foo//bar"),       "/foo/bar")
+assert("norm(.. past root)",pathNormalize("/../../etc"),      "/etc")
+assert("norm(rel parent)",  pathNormalize("../foo"),          "../foo")
+assert("norm(many ..)",     pathNormalize("../../a/b"),       "../../a/b")
+
+/* ── pathJoin ──────────────────────────────────────────────── */
+assert("join(basic)",    pathJoin(["/usr", "local", "bin"]),  "/usr/local/bin")
+assert("join(rel)",      pathJoin(["foo", "bar", "baz"]),     "foo/bar/baz")
+assert("join(dotdot)",   pathJoin(["foo", "..", "bar"]),      "bar")
+assert("join(empty)",    pathJoin([]),                         ".")
+assert("join(one)",      pathJoin(["/foo"]),                  "/foo")
+assert("join(abs mid)",  pathJoin(["foo", "/bar", "baz"]),   "/bar/baz")
+assert("join(empty parts)",pathJoin(["", "foo", "", "bar"]), "foo/bar")
+assert("join(trailing/)",pathJoin(["/foo/", "bar"]),         "/foo/bar")
+
+/* ── pathRelative ──────────────────────────────────────────── */
+assert("rel(sibling)",   pathRelative("/foo/bar", "/foo/baz"),      "../baz")
+assert("rel(child)",     pathRelative("/foo", "/foo/bar"),          "bar")
+assert("rel(parent)",    pathRelative("/foo/bar", "/foo"),          "..")
+assert("rel(same)",      pathRelative("/foo/bar", "/foo/bar"),      ".")
+assert("rel(deep)",      pathRelative("/a/b/c", "/a/d/e"),         "../../d/e")
+assert("rel(root)",      pathRelative("/a", "/b"),                  "../b")
+
+/* ── pathCommonDir ─────────────────────────────────────────── */
+assert("common(same dir)",  pathCommonDir(["/a/b/x", "/a/b/y"]),    "/a/b")
+assert("common(different)", pathCommonDir(["/a/b", "/a/c"]),         "/a")
+assert("common(one)",       pathCommonDir(["/a/b/c"]),               "/a/b/c")
+assert("common(no common)", pathCommonDir(["/a", "/b"]),             "")
+
+/* ── pathWithExt ───────────────────────────────────────────── */
+assert("withExt(.md)",    pathWithExt("/foo/bar.txt", ".md"),   "/foo/bar.md")
+assert("withExt(no ext)", pathWithExt("/foo/bar", ".json"),     "/foo/bar.json")
+assert("withExt(replace)",pathWithExt("file.tar.gz", ".zip"),  "file.tar.zip")
+assert("withExt(no dir)", pathWithExt("notes.txt", ".md"),     "notes.md")
+
+/* ── pathDepth ─────────────────────────────────────────────── */
+assert("depth(.)",       pathDepth("."),           0)
+assert("depth(/)",       pathDepth("/"),           0)
+assert("depth(/a)",      pathDepth("/a"),          1)
+assert("depth(/a/b/c)",  pathDepth("/a/b/c"),      3)
+assert("depth(a/b)",     pathDepth("a/b"),         2)
+
+/* ── pathSplit ─────────────────────────────────────────────── */
+let sp1 = pathSplit("/foo/bar/baz.txt")
+assert("split dir",  sp1[0], "/foo/bar")
+assert("split base", sp1[1], "baz.txt")
+
+let sp2 = pathSplit("file.txt")
+assert("split no-dir dir",  sp2[0], ".")
+assert("split no-dir base", sp2[1], "file.txt")
+
+print("Results:", str(pass), "passed,", str(fail), "failed")
+if fail == 0 { print("[PASS] test_path") }
+else         { print("[FAIL] test_path") }

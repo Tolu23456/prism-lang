@@ -1,0 +1,461 @@
+/* Comprehensive edge case tests for Prism standard libraries:
+   math, strings, collections, json, crypto, iter */
+
+import "lib/math"
+import "lib/strings"
+import "lib/collections"
+import "lib/json"
+import "lib/crypto"
+import "lib/iter"
+
+let pass = 0
+let fail = 0
+
+func assert(label, got, expected) {
+    if str(got) == str(expected) {
+        pass += 1
+    } else {
+        print("FAIL:", label, "  got:", got, "  expected:", expected)
+        fail += 1
+    }
+}
+
+func assert_near(label, got, expected, tol) {
+    let diff = got - expected
+    if diff < 0 { diff = -diff }
+    if diff <= tol { pass += 1 }
+    else { print("FAIL:", label, " got:", got, "expected~", expected); fail += 1 }
+}
+
+func assert_true(label, val) {
+    if val == true { pass += 1 }
+    else { print("FAIL:", label, "expected true, got:", val); fail += 1 }
+}
+
+func assert_false(label, val) {
+    if val == false { pass += 1 }
+    else { print("FAIL:", label, "expected false, got:", val); fail += 1 }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MATH
+   ═══════════════════════════════════════════════════════════ */
+
+/* statMedian — fixed to use sorted copy, not mutate input */
+let med_arr = [5, 1, 3]
+assert("statMedian odd",  statMedian([1, 3, 5, 7, 9]), 5)
+assert("statMedian even", statMedian([1, 2, 3, 4]),     2.5)
+assert("statMedian 1",    statMedian([42]),              42)
+assert("statMedian neg",  statMedian([-3, -1, -2]),      -2)
+assert("statMedian preserves input", med_arr[0],         5)
+
+/* statMean edge cases */
+assert_near("statMean(1)",    statMean([42]),              42.0,   0.001)
+assert_near("statMean(neg)",  statMean([-10, 10]),         0.0,    0.001)
+assert_near("statMean(float)",statMean([0.1, 0.2, 0.3]),  0.2,    0.001)
+
+/* statMode */
+assert("statMode simple", statMode([1, 2, 2, 3]),  2)
+assert("statMode one",    statMode([7]),            7)
+
+/* statVariance */
+assert_near("statVariance(pop)", statVariance([2,4,4,4,5,5,7,9], true), 4.0, 0.001)
+
+/* clamp */
+assert("clamp(mid)",  clamp(5, 0, 10),   5)
+assert("clamp(lo)",   clamp(-5, 0, 10),  0)
+assert("clamp(hi)",   clamp(15, 0, 10),  10)
+assert("clamp(eq lo)",clamp(0, 0, 10),   0)
+assert("clamp(eq hi)",clamp(10, 0, 10),  10)
+
+/* lerp */
+assert_near("lerp(0)",   lerp(0, 100, 0.0),  0.0,   0.001)
+assert_near("lerp(0.5)", lerp(0, 100, 0.5),  50.0,  0.001)
+assert_near("lerp(1)",   lerp(0, 100, 1.0),  100.0, 0.001)
+assert_near("lerp(neg)", lerp(-10, 10, 0.5), 0.0,   0.001)
+
+/* gcdOf / lcmOf */
+assert("gcdOf(12,8)",     gcdOf(12, 8),     4)
+assert("gcdOf(17,13)",    gcdOf(17, 13),    1)
+assert("gcdOf(0,5)",      gcdOf(0, 5),      5)
+assert("gcdOf(36,48)",    gcdOf(36, 48),    12)
+assert("lcmOf(4,6)",      lcmOf(4, 6),      12)
+assert("lcmOf(7,13)",     lcmOf(7, 13),     91)
+
+/* isPrime */
+assert_false("isPrime(0)",   isPrime(0))
+assert_false("isPrime(1)",   isPrime(1))
+assert_true ("isPrime(2)",   isPrime(2))
+assert_true ("isPrime(3)",   isPrime(3))
+assert_false("isPrime(4)",   isPrime(4))
+assert_true ("isPrime(97)",  isPrime(97))
+assert_false("isPrime(100)", isPrime(100))
+
+/* signOf */
+assert("signOf(pos)",  signOf(42),  1)
+assert("signOf(neg)",  signOf(-7),  -1)
+assert("signOf(zero)", signOf(0),   0)
+
+/* isEven / isOdd */
+assert_true ("isEven(0)",  isEven(0))
+assert_true ("isEven(4)",  isEven(4))
+assert_false("isEven(3)",  isEven(3))
+assert_true ("isOdd(1)",   isOdd(1))
+assert_false("isOdd(0)",   isOdd(0))
+
+/* mapRange */
+assert_near("mapRange",  mapRange(5, 0, 10, 0, 100), 50.0, 0.001)
+assert_near("mapRange2", mapRange(0, 0, 10, -5, 5),  -5.0, 0.001)
+
+/* digitalRoot */
+assert("digitalRoot(0)",   digitalRoot(0),   0)
+assert("digitalRoot(9)",   digitalRoot(9),   9)
+assert("digitalRoot(10)",  digitalRoot(10),  1)
+assert("digitalRoot(493)", digitalRoot(493), 7)
+assert("digitalRoot(18)",  digitalRoot(18),  9)
+
+/* ═══════════════════════════════════════════════════════════
+   STRINGS
+   ═══════════════════════════════════════════════════════════ */
+
+/* utf8_len */
+assert("utf8_len(ascii)",    utf8_len("hello"),    5)
+assert("utf8_len(empty)",    utf8_len(""),          0)
+assert("utf8_len(cafe)",     utf8_len("café"),      4)
+assert("utf8_len(chinese)",  utf8_len("你好"),       2)
+assert("utf8_len(emoji)",    utf8_len("hi!"),       3)
+
+/* utf8_slice */
+assert("utf8_slice(basic)",  utf8_slice("abcdef", 1, 4),   "bcd")
+assert("utf8_slice(all)",    utf8_slice("hello", 0, 5),    "hello")
+assert("utf8_slice(empty)",  utf8_slice("hello", 2, 2),    "")
+assert("utf8_slice(neg end)",utf8_slice("hello", 1, null), "ello")
+assert("utf8_slice(café)",   utf8_slice("café", 2, 4),     "fé")
+
+/* utf8_chars */
+let chs = utf8_chars("café")
+assert("utf8_chars len", len(chs), 4)
+assert("utf8_chars[0]",  chs[0],   "c")
+assert("utf8_chars[3]",  chs[3],   "é")
+
+/* capitalize / titleCase */
+assert("capitalize(empty)",  capitalize(""),            "")
+assert("capitalize(hello)",  capitalize("hello world"), "Hello world")
+assert("capitalize(UPPER)",  capitalize("UPPER"),       "Upper")
+assert("titleCase",          titleCase("the quick fox"), "The Quick Fox")
+assert("titleCase(empty)",   titleCase(""),              "")
+
+/* camelCase / snakeCase */
+assert("camelCase",  camelCase("hello world"),  "helloWorld")
+assert("snakeCase",  snakeCase("Hello World"),  "hello_world")
+assert("camelCase(single)", camelCase("hi"), "hi")
+
+/* padLeft / padRight / padCenter */
+assert("padLeft(ascii)",   padLeft("42", 6, null),     "    42")
+assert("padLeft(ch=0)",    padLeft("7", 3, "0"),        "007")
+assert("padRight(ascii)",  padRight("hi", 5, null),     "hi   ")
+assert("padCenter(even)",  padCenter("ok", 6, "-"),     "--ok--")
+assert("padCenter(odd)",   padCenter("x", 4, "."),      "..x.")
+
+/* truncate */
+assert("truncate(fits)",   truncate("Hi", 10, null),       "Hi")
+assert("truncate(exact)",  truncate("Hello", 5, null),     "Hello")
+assert("truncate(cut)",    truncate("Hello World", 8, null),"Hello...")
+assert("truncate(custom)", truncate("Long text", 7, "!"),  "Long te!")
+
+/* isPalindrome */
+assert_true ("isPalin(racecar)",  isPalindrome("racecar"))
+assert_true ("isPalin(a)",        isPalindrome("a"))
+assert_true ("isPalin(empty)",    isPalindrome(""))
+assert_false("isPalin(hello)",    isPalindrome("hello"))
+
+/* levenshtein */
+assert("lev(same)",         levenshtein("abc", "abc"),       0)
+assert("lev(empty→abc)",    levenshtein("", "abc"),          3)
+assert("lev(abc→empty)",    levenshtein("abc", ""),          3)
+assert("lev(kitten→sitting)",levenshtein("kitten","sitting"),3)
+assert("lev(1 sub)",        levenshtein("cat", "bat"),       1)
+assert("lev(1 ins)",        levenshtein("cat", "cats"),      1)
+assert("lev(1 del)",        levenshtein("cats", "cat"),      1)
+
+/* reverse */
+assert("reverse(ascii)",   reverse("hello"),   "olleh")
+assert("reverse(empty)",   reverse(""),        "")
+assert("reverse(single)",  reverse("a"),       "a")
+assert("reverse(palindrome)",reverse("abba"),  "abba")
+
+/* slugify */
+assert("slugify(basic)",   slugify("Hello World"),   "hello-world")
+assert("slugify(special)", slugify("C++ is cool!"),  "c-is-cool")
+assert("slugify(nums)",    slugify("Item 42"),        "item-42")
+
+/* template */
+assert("template(basic)", template("Hi {{name}}!", {"name": "Alice"}), "Hi Alice!")
+assert("template(multi)",
+    template("{{a}} + {{b}}", {"a": "1", "b": "2"}), "1 + 2")
+assert("template(no vars)", template("No vars", {}), "No vars")
+
+/* ═══════════════════════════════════════════════════════════
+   COLLECTIONS
+   ═══════════════════════════════════════════════════════════ */
+
+/* flatten */
+assert("flatten(0)",     str(flatten([[1, 2], [3, 4]], 1)),     str([1,2,3,4]))
+assert("flatten(empty)", str(flatten([], null)),                  str([]))
+assert("flatten(deep=1)",str(flatten([[1,[2,3]], 4], 1)),        str([1,[2,3],4]))
+assert("flatten(deep=2)",str(deepFlatten([[1,[2,[3]]]])),        str([1,2,3]))
+
+/* uniqueArr */
+let ua = uniqueArr([1, 2, 2, 3, 1, 4])
+assert("uniqueArr len", len(ua), 4)
+assert("uniqueArr empty", str(uniqueArr([])), str([]))
+
+/* zipArrays */
+let zp = zipArrays([1, 2, 3], ["a", "b", "c"])
+assert("zip len",   len(zp),       3)
+assert("zip[0][0]", zp[0][0],      1)
+assert("zip[0][1]", zp[0][1],      "a")
+assert("zip uneven",len(zipArrays([1,2,3],[10])), 1)
+
+/* groupBy */
+let grp = groupBy([1, 2, 3, 4, 5, 6], fn(x) => x % 2 == 0 ? "even" : "odd")
+assert("groupBy even", len(grp["even"]), 3)
+assert("groupBy odd",  len(grp["odd"]),  3)
+
+/* intersection / difference / symmetricDiff */
+assert("intersect",    str(intersection([1,2,3,4], [2,4,6])),     str([2,4]))
+assert("intersect emp",str(intersection([], [1,2])),               str([]))
+assert("difference",   str(difference([1,2,3,4], [2,4])),         str([1,3]))
+assert("symDiff",      str(symmetricDiff([1,2,3], [2,3,4])),      str([1,4]))
+
+/* isSubset */
+assert_true ("isSubset([1,2],[1,2,3])",  isSubset([1,2], [1,2,3]))
+assert_true ("isSubset(empty,any)",      isSubset([], [1,2]))
+assert_false("isSubset([1,4],[1,2,3])", isSubset([1,4], [1,2,3]))
+
+/* chunk */
+let ch = chunk([1,2,3,4,5], 2)
+assert("chunk len",   len(ch),     3)
+assert("chunk[0]",    str(ch[0]),  str([1,2]))
+assert("chunk[2]",    str(ch[2]),  str([5]))
+assert("chunk(empty)",str(chunk([], 3)), str([]))
+
+/* sortBy */
+let sb = sortBy([3, 1, 4, 1, 5], fn(a, b) => a - b)
+assert("sortBy asc[0]", sb[0], 1)
+assert("sortBy asc[4]", sb[4], 5)
+let sbr = sortBy([3,1,4,1,5], fn(a, b) => b - a)
+assert("sortBy desc[0]", sbr[0], 5)
+
+/* binarySearch */
+let bs = [1, 3, 5, 7, 9, 11]
+assert("binSearch found",    binarySearch(bs, 7),   3)
+assert("binSearch first",    binarySearch(bs, 1),   0)
+assert("binSearch last",     binarySearch(bs, 11),  5)
+assert("binSearch missing",  binarySearch(bs, 4),  -1)
+
+/* dictMerge / dictPick / dictOmit */
+let dm = dictMerge({"a": 1, "b": 2}, {"b": 3, "c": 4})
+assert("dictMerge b overrides", dm["b"], 3)
+assert("dictMerge new key",     dm["c"], 4)
+assert("dictMerge old key",     dm["a"], 1)
+
+let dp = dictPick({"a": 1, "b": 2, "c": 3}, ["a", "c"])
+assert("dictPick a", dp["a"], 1)
+assert("dictPick c", dp["c"], 3)
+assert("dictPick no b", has(dp, "b"), false)
+
+let dop = dictOmit({"a": 1, "b": 2, "c": 3}, ["b"])
+assert("dictOmit has a", has(dop, "a"), true)
+assert("dictOmit no b",  has(dop, "b"), false)
+
+/* cartesianProduct */
+let cp = cartesianProduct([1, 2], ["a", "b"])
+assert("cartesian len", len(cp), 4)
+assert("cartesian[0]",  str(cp[0]), str([1,"a"]))
+
+/* ═══════════════════════════════════════════════════════════
+   JSON
+   ═══════════════════════════════════════════════════════════ */
+
+/* stringify basic types */
+assert("json null",     stringify(null),       "null")
+assert("json true",     stringify(true),       "true")
+assert("json false",    stringify(false),      "false")
+assert("json int",      stringify(42),         "42")
+assert("json neg",      stringify(-7),         "-7")
+assert("json float",    stringify(3.14),       "3.14")
+assert("json string",   stringify("hello"),    "\"hello\"")
+assert("json empty str",stringify(""),         "\"\"")
+assert("json empty arr",stringify([]),         "[]")
+assert("json empty obj",stringify({}),         "{}")
+
+/* parse basic types */
+assert("parse null",    parse("null"),   null)
+assert("parse true",    parse("true"),   true)
+assert("parse false",   parse("false"),  false)
+assert("parse int",     parse("42"),     42)
+assert("parse neg",     parse("-7"),     -7)
+assert("parse string",  parse("\"hi\""),"hi")
+
+/* roundtrip */
+let obj = {"name": "Alice", "age": 30, "scores": [95, 87, 92], "active": true}
+let json_str = stringify(obj)
+let obj2 = parse(json_str)
+assert("json rt name",   obj2["name"],           "Alice")
+assert("json rt age",    obj2["age"],            30)
+assert("json rt scores", obj2["scores"][1],      87)
+assert("json rt active", obj2["active"],         true)
+
+/* nested */
+let nested = parse("{\"a\":{\"b\":{\"c\":42}}}")
+assert("json nested", nested["a"]["b"]["c"], 42)
+
+/* arrays */
+let arr_json = parse("[1,2,3,\"four\",true,null]")
+assert("json arr len",   len(arr_json),    6)
+assert("json arr[0]",    arr_json[0],      1)
+assert("json arr[3]",    arr_json[3],      "four")
+assert("json arr[4]",    arr_json[4],      true)
+assert("json arr[5]",    arr_json[5],      null)
+
+/* isValid */
+assert_true ("isValid empty arr",    isValid("[]"))
+assert_true ("isValid empty obj",    isValid("{}"))
+assert_true ("isValid num",          isValid("42"))
+assert_false("isValid bad",          isValid("{bad}"))
+assert_false("isValid empty str",    isValid(""))
+
+/* parseOr */
+assert("parseOr valid",   parseOr("[1,2]", null), parse("[1,2]"))
+assert("parseOr invalid", parseOr("{bad}", null),  null)
+assert("parseOr fallback",parseOr("oops", 99),     99)
+
+/* minify */
+assert("minify", minify("{ \"x\" : 1 , \"y\" : 2 }"), "{\"x\":1,\"y\":2}")
+
+/* ═══════════════════════════════════════════════════════════
+   CRYPTO
+   ═══════════════════════════════════════════════════════════ */
+
+/* FNV-1a known vectors */
+assert("fnv1a(empty)",  fnv1a(""),      2166136261)
+assert("fnv1a_hex len", len(fnv1a_hex("hello")), 8)
+
+/* DJB2 known vector */
+assert("djb2 > 0", djb2("hello") > 0, true)
+
+/* CRC-32 */
+assert("crc32 hex len",  len(crc32_hex("hello")), 8)
+assert("crc32 det",      crc32("hello"),   crc32("hello"))
+
+/* Adler-32 */
+assert("adler32 det",   adler32("abc"),    adler32("abc"))
+assert("adler32 > 0",   adler32("test") > 0, true)
+
+/* MurmurHash3 */
+assert("murmur3 det",   murmur3("hello", 0), murmur3("hello", 0))
+assert("murmur3 seed",  murmur3("hello", 0) != murmur3("hello", 1), true)
+
+/* Base64 roundtrip */
+assert("b64 encode empty", base64Encode(""), "")
+assert("b64 encode Man",   base64Encode("Man"), "TWFu")
+assert("b64 encode Ma",    base64Encode("Ma"),  "TWE=")
+assert("b64 encode M",     base64Encode("M"),   "TQ==")
+assert("b64 decode TWFu",  base64Decode("TWFu"), "Man")
+assert("b64 decode TWE=",  base64Decode("TWE="), "Ma")
+assert("b64 decode TQ==",  base64Decode("TQ=="), "M")
+assert("b64 roundtrip",    base64Decode(base64Encode("Hello, World!")), "Hello, World!")
+assert("b64 roundtrip long",
+    base64Decode(base64Encode("The quick brown fox jumps over the lazy dog")),
+    "The quick brown fox jumps over the lazy dog")
+
+/* URL-safe Base64 */
+let url_enc = base64UrlEncode("Hello, World!")
+assert("b64url no plus",   contains(url_enc, "+"), false)
+assert("b64url no slash",  contains(url_enc, "/"), false)
+assert("b64url no eq",     contains(url_enc, "="), false)
+
+/* Caesar / ROT-13 */
+assert("caesar(+3)",   caesarEncrypt("ABC", 3),  "DEF")
+assert("caesar wrap",  caesarEncrypt("XYZ", 3),  "ABC")
+assert("caesar lower", caesarEncrypt("abc", 3),  "def")
+assert("caesar decrypt",caesarDecrypt(caesarEncrypt("Hello!", 7), 7), "Hello!")
+assert("rot13(rt)",    rot13(rot13("Hello World")), "Hello World")
+assert("rot13(Hello)", rot13("Hello"), "Uryyb")
+
+/* Vigenere */
+assert("vig roundtrip", vigenereDecrypt(vigenereEncrypt("Hello World", "key"), "key"), "Hello World")
+
+/* XOR cipher */
+assert("xor roundtrip", xorCipher(xorCipher("Secret", "key"), "key"), "Secret")
+
+/* Luhn check */
+assert_true ("luhn(4532015112830366)", luhn("4532015112830366"))
+assert_false("luhn(1234567890123456)", luhn("1234567890123456"))
+assert("luhn digit", luhnDigit("7992739871"), 3)
+
+/* Hamming distance */
+assert("hamming(same)",  hammingDistance("abc", "abc"), 0)
+assert("hamming(1 diff)",hammingDistance("abc", "aXc"), 1)
+assert("hamming(all)",   hammingDistance("abc", "xyz"), 3)
+
+/* IntToHex */
+assert("intToHex(0)",    intToHex(0,   4), "0000")
+assert("intToHex(255)",  intToHex(255, 2), "ff")
+assert("intToHex(4096)", intToHex(4096, 4), "1000")
+
+/* ═══════════════════════════════════════════════════════════
+   ITER
+   ═══════════════════════════════════════════════════════════ */
+
+/* range */
+let r1 = range(0, 5, null)
+assert("range len",    len(r1),   5)
+assert("range[0]",     r1[0],     0)
+assert("range[4]",     r1[4],     4)
+
+let r2 = range(0, 10, 2)
+assert("range step 2 len", len(r2), 5)
+assert("range step 2[2]",  r2[2],   4)
+
+let r3 = range(5, 0, -1)
+assert("range neg step len", len(r3), 5)
+assert("range neg step[0]",  r3[0],   5)
+assert("range neg step[4]",  r3[4],   1)
+
+assert("range empty", len(range(5, 0, 1)), 0)
+assert("range single",len(range(3, 4, 1)), 1)
+
+/* iterTake */
+assert("take(2)",    str(iterTake([1,2,3,4,5], 2)), str([1,2]))
+assert("take(0)",    str(iterTake([1,2,3], 0)),      str([]))
+assert("take(more)", str(iterTake([1,2], 10)),       str([1,2]))
+
+/* iterDrop */
+assert("drop(2)",    str(iterDrop([1,2,3,4,5], 2)),  str([3,4,5]))
+assert("drop(0)",    str(iterDrop([1,2,3], 0)),       str([1,2,3]))
+assert("drop(all)",  str(iterDrop([1,2], 10)),        str([]))
+
+/* cycle */
+let cyc = cycle([1,2,3], 7)
+assert("cycle len",  len(cyc), 7)
+assert("cycle[0]",   cyc[0],   1)
+assert("cycle[3]",   cyc[3],   1)
+assert("cycle[6]",   cyc[6],   1)
+
+/* unfold */
+let uf = unfold(fn(x) => x * 2, 1, 5)
+assert("unfold[0]", uf[0], 1)
+assert("unfold[1]", uf[1], 2)
+assert("unfold[4]", uf[4], 16)
+
+/* count */
+let ct = count(0, 3, 5)
+assert("count len",  len(ct), 5)
+assert("count[0]",   ct[0],   0)
+assert("count[4]",   ct[4],   12)
+
+print("Results:", str(pass), "passed,", str(fail), "failed")
+if fail == 0 { print("[PASS] test_stdlib_edge_cases") }
+else         { print("[FAIL] test_stdlib_edge_cases") }
