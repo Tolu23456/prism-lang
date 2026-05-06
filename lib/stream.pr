@@ -1,0 +1,109 @@
+/* Prism Standard Library — stream module
+   Stream processing and pipeline utilities.
+*/
+
+/* Stream class */
+class Stream {
+    func init(data) {
+        this.data = type(data) == "array" ? data : [data]
+        this.operations = []
+    }
+    
+    func map(fn) {
+        push(this.operations, {type: "map", fn: fn})
+        return this
+    }
+    
+    func filter(fn) {
+        push(this.operations, {type: "filter", fn: fn})
+        return this
+    }
+    
+    func reduce(fn, initial) {
+        push(this.operations, {type: "reduce", fn: fn, initial: initial})
+        return this
+    }
+    
+    func flat_map(fn) {
+        push(this.operations, {type: "flat_map", fn: fn})
+        return this
+    }
+    
+    func distinct() {
+        push(this.operations, {type: "distinct"})
+        return this
+    }
+    
+    func take(n) {
+        push(this.operations, {type: "take", count: n})
+        return this
+    }
+    
+    func skip(n) {
+        push(this.operations, {type: "skip", count: n})
+        return this
+    }
+    
+    func collect() {
+        let result = this.data
+        
+        for op in this.operations {
+            if op.type == "map" {
+                let mapped = []
+                for item in result {
+                    push(mapped, op.fn(item))
+                }
+                result = mapped
+            }
+            elif op.type == "filter" {
+                let filtered = []
+                for item in result {
+                    if op.fn(item) {
+                        push(filtered, item)
+                    }
+                }
+                result = filtered
+            }
+            elif op.type == "distinct" {
+                let seen = {}
+                let distinct = []
+                for item in result {
+                    let key = str(item)
+                    if not has(seen, key) {
+                        seen[key] = true
+                        push(distinct, item)
+                    }
+                }
+                result = distinct
+            }
+            elif op.type == "take" {
+                let taken = []
+                for i in range(min(op.count, len(result))) {
+                    push(taken, result[i])
+                }
+                result = taken
+            }
+            elif op.type == "skip" {
+                let skipped = []
+                for i in range(op.count, len(result)) {
+                    push(skipped, result[i])
+                }
+                result = skipped
+            }
+        }
+        
+        return result
+    }
+    
+    func for_each(fn) {
+        let collected = this.collect()
+        for item in collected {
+            fn(item)
+        }
+    }
+}
+
+/* Create stream from data */
+func create(data) {
+    return Stream(data)
+}

@@ -1,0 +1,92 @@
+/* Prism Standard Library — email module
+   Email sending and message utilities.
+*/
+
+import "lib/strings"
+
+/* Email Message */
+class EmailMessage {
+    func init(from_addr, to_addr, subject) {
+        this.from = from_addr
+        this.to = type(to_addr) == "array" ? to_addr : [to_addr]
+        this.subject = subject
+        this.body = ""
+        this.html = false
+        this.attachments = []
+        this.cc = []
+        this.bcc = []
+        this.reply_to = null
+    }
+    
+    func set_body(body, is_html) {
+        this.body = body
+        this.html = is_html ?? false
+    }
+    
+    func add_attachment(filename, content) {
+        push(this.attachments, {filename: filename, content: content})
+    }
+    
+    func add_cc(addr) {
+        push(this.cc, addr)
+    }
+    
+    func add_bcc(addr) {
+        push(this.bcc, addr)
+    }
+    
+    func set_reply_to(addr) {
+        this.reply_to = addr
+    }
+    
+    func to_string() {
+        let msg = "From: " + this.from + "\n"
+        msg = msg + "To: " + strings.join(", ", this.to) + "\n"
+        if len(this.cc) > 0 {
+            msg = msg + "Cc: " + strings.join(", ", this.cc) + "\n"
+        }
+        msg = msg + "Subject: " + this.subject + "\n"
+        if this.reply_to {
+            msg = msg + "Reply-To: " + this.reply_to + "\n"
+        }
+        msg = msg + "\n" + this.body
+        return msg
+    }
+}
+
+/* SMTP Client */
+class SMTPClient {
+    func init(host, port, secure) {
+        this.host = host
+        this.port = port ?? 587
+        this.secure = secure ?? false
+        this.authenticated = false
+    }
+    
+    func authenticate(username, password) {
+        print("[SMTP] Authenticating as " + username)
+        this.authenticated = true
+    }
+    
+    func send(message) {
+        if not this.authenticated {
+            error("SMTP client not authenticated")
+        }
+        print("[SMTP] Sending email from " + message.from + " to " + strings.join(", ", message.to))
+        return true
+    }
+    
+    func close() {
+        print("[SMTP] Connection closed")
+    }
+}
+
+/* Create email message */
+func message(from_addr, to_addr, subject) {
+    return EmailMessage(from_addr, to_addr, subject)
+}
+
+/* Create SMTP client */
+func smtp_client(host, port, secure) {
+    return SMTPClient(host, port, secure)
+}

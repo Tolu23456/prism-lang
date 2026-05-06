@@ -1,0 +1,113 @@
+/* Prism Standard Library — config module
+   Configuration file parsing and management.
+*/
+
+import "lib/json"
+import "lib/strings"
+
+/* Config store */
+let config_data = {}
+let config_path = ""
+
+/* Load configuration from JSON file */
+func load_json(path) {
+    config_path = path
+    let content = read_file(path)
+    config_data = json.parse(content)
+    return config_data
+}
+
+/* Load configuration from properties file */
+func load_properties(path) {
+    config_path = path
+    let content = read_file(path)
+    let lines = strings.split(content, "\n")
+    
+    config_data = {}
+    for line in lines {
+        let trimmed = strings.trim(line)
+        if len(trimmed) == 0 or starts_with(trimmed, "#") {
+            continue
+        }
+        
+        let parts = strings.split(trimmed, "=")
+        if len(parts) == 2 {
+            let key = strings.trim(parts[0])
+            let value = strings.trim(parts[1])
+            config_data[key] = value
+        }
+    }
+    
+    return config_data
+}
+
+/* Get config value with dot notation */
+func get(key, default_val) {
+    let keys = strings.split(key, ".")
+    let current = config_data
+    
+    for k in keys {
+        if type(current) == "dict" and has(current, k) {
+            current = current[k]
+        } else {
+            return default_val
+        }
+    }
+    
+    return current
+}
+
+/* Set config value */
+func set(key, value) {
+    let keys = strings.split(key, ".")
+    let current = config_data
+    
+    for i in range(len(keys) - 1) {
+        let k = keys[i]
+        if not has(current, k) {
+            current[k] = {}
+        }
+        current = current[k]
+    }
+    
+    let last_key = keys[len(keys) - 1]
+    current[last_key] = value
+}
+
+/* Check if key exists */
+func has(key) {
+    return get(key) != null
+}
+
+/* Get all config */
+func get_all() {
+    return config_data
+}
+
+/* Merge configs */
+func merge(other_config) {
+    let merged = {}
+    for key in keys(config_data) {
+        merged[key] = config_data[key]
+    }
+    for key in keys(other_config) {
+        merged[key] = other_config[key]
+    }
+    config_data = merged
+}
+
+/* Save config to file */
+func save_json(path) {
+    let json_str = json.stringify(config_data)
+    write_file(path, json_str)
+}
+
+/* Validate required keys */
+func validate_required(required_keys) {
+    for key in required_keys {
+        if not has(key) {
+            error("Required config key missing: " + key)
+        }
+    }
+    return true
+}

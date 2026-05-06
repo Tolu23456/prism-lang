@@ -1,0 +1,88 @@
+/* Prism Standard Library — batch module
+   Batch processing and job queue utilities.
+*/
+
+import "lib/concurrency"
+
+/* Batch job */
+class BatchJob {
+    func init(id, fn, data) {
+        this.id = id
+        this.fn = fn
+        this.data = data
+        this.status = "pending"
+        this.result = null
+        this.error = null
+    }
+    
+    func execute() {
+        this.status = "running"
+        try {
+            this.result = this.fn(this.data)
+            this.status = "completed"
+        } catch e {
+            this.error = e
+            this.status = "failed"
+        }
+    }
+}
+
+/* Batch queue */
+class BatchQueue {
+    func init(max_workers) {
+        this.max_workers = max_workers ?? 4
+        this.jobs = []
+        this.completed = []
+        this.running = 0
+    }
+    
+    func add(fn, data) {
+        let job_id = len(this.jobs) + len(this.completed)
+        let job = BatchJob(job_id, fn, data)
+        push(this.jobs, job)
+        return job_id
+    }
+    
+    func process() {
+        while len(this.jobs) > 0 and this.running < this.max_workers {
+            let job = remove_at(this.jobs, 0)
+            this.running = this.running + 1
+            
+            job.execute()
+            push(this.completed, job)
+            this.running = this.running - 1
+        }
+    }
+    
+    func process_all() {
+        while len(this.jobs) > 0 {
+            this.process()
+        }
+    }
+    
+    func get_result(job_id) {
+        for job in this.completed {
+            if job.id == job_id {
+                if job.status == "completed" {
+                    return job.result
+                } elif job.status == "failed" {
+                    error("Job " + str(job_id) + " failed: " + str(job.error))
+                }
+            }
+        }
+        return null
+    }
+    
+    func status() {
+        return {
+            pending: len(this.jobs),
+            running: this.running,
+            completed: len(this.completed)
+        }
+    }
+}
+
+/* Create batch queue */
+func create_queue(max_workers) {
+    return BatchQueue(max_workers)
+}

@@ -1,0 +1,77 @@
+/* Prism Standard Library — uuid module
+   UUID v4 generation and validation utilities.
+*/
+
+import "lib/random"
+import "lib/strings"
+
+/* Generate UUID v4 (random) */
+func v4() {
+    let chars = "0123456789abcdef"
+    let uuid = ""
+    
+    /* Time low (8 chars) */
+    for i in range(8) { uuid = uuid + chars[random.int(0, 15)] }
+    uuid = uuid + "-"
+    
+    /* Time mid (4 chars) */
+    for i in range(4) { uuid = uuid + chars[random.int(0, 15)] }
+    uuid = uuid + "-"
+    
+    /* Time high (4 chars, version 4 prefix) */
+    uuid = uuid + "4"
+    for i in range(3) { uuid = uuid + chars[random.int(0, 15)] }
+    uuid = uuid + "-"
+    
+    /* Clock seq (4 chars, variant bits) */
+    let variant = ["8", "9", "a", "b"][random.int(0, 3)]
+    uuid = uuid + variant
+    for i in range(3) { uuid = uuid + chars[random.int(0, 15)] }
+    uuid = uuid + "-"
+    
+    /* Node (12 chars) */
+    for i in range(12) { uuid = uuid + chars[random.int(0, 15)] }
+    
+    return uuid
+}
+
+/* Validate UUID v4 format */
+func is_valid(uuid_str) {
+    let uuid = lower(uuid_str)
+    if len(uuid) != 36 { return false }
+    if uuid[8] != "-" or uuid[13] != "-" or uuid[18] != "-" or uuid[23] != "-" {
+        return false
+    }
+    
+    let pattern = "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    return matches_regex(uuid, pattern)
+}
+
+/* Parse UUID string to components */
+func parse(uuid_str) {
+    let uuid = lower(uuid_str)
+    if not is_valid(uuid) { error("Invalid UUID format") }
+    
+    return {
+        time_low: slice(uuid, 0, 8),
+        time_mid: slice(uuid, 9, 4),
+        time_hi_version: slice(uuid, 14, 4),
+        clock_seq: slice(uuid, 19, 4),
+        node: slice(uuid, 24, 12),
+        version: 4,
+        full: uuid
+    }
+}
+
+/* Compare two UUIDs */
+func equal(uuid1, uuid2) {
+    return lower(uuid1) == lower(uuid2)
+}
+
+/* Get nil UUID (all zeros) */
+func nil() {
+    return "00000000-0000-0000-0000-000000000000"
+}
+
+/* Nil UUID constant */
+let NIL = nil()

@@ -1,0 +1,129 @@
+/* Prism Standard Library — i18n module
+   Internationalization and localization support.
+*/
+
+import "lib/strings"
+import "lib/json"
+
+/* I18n context */
+let current_locale = "en"
+let messages = {}
+let pluralization_rules = {}
+
+/* Set current locale */
+func set_locale(locale) {
+    current_locale = locale
+}
+
+/* Get current locale */
+func get_locale() {
+    return current_locale
+}
+
+/* Load translations from JSON */
+func load_translations(locale, translation_dict) {
+    messages[locale] = translation_dict
+}
+
+/* Get translated string */
+func t(key, options) {
+    options = options ?? {}
+    let locale_messages = messages[current_locale] ?? {}
+    let text = locale_messages[key] ?? key
+    
+    /* Simple variable substitution */
+    for var_name in keys(options) {
+        let pattern = "{{" + var_name + "}}"
+        text = strings.replace(text, pattern, str(options[var_name]))
+    }
+    
+    return text
+}
+
+/* Format number for locale */
+func format_number(num, locale_code) {
+    locale_code = locale_code ?? current_locale
+    
+    let num_str = str(num)
+    if contains(num_str, ".") {
+        let parts = strings.split(num_str, ".")
+        let integer_part = parts[0]
+        let decimal_part = parts[1]
+        
+        /* Add thousand separators */
+        let thousands_sep = locale_code == "en" ? "," : "."
+        let decimal_sep = locale_code == "en" ? "." : ","
+        
+        let formatted = ""
+        let count = 0
+        for i in range(len(integer_part) - 1, -1, -1) {
+            if count > 0 and count % 3 == 0 {
+                formatted = thousands_sep + formatted
+            }
+            formatted = integer_part[i] + formatted
+            count += 1
+        }
+        
+        return formatted + decimal_sep + decimal_part
+    }
+    
+    return num_str
+}
+
+/* Format currency for locale */
+func format_currency(amount, currency, locale_code) {
+    locale_code = locale_code ?? current_locale
+    let formatted = format_number(amount, locale_code)
+    
+    if locale_code == "en" {
+        return "$" + formatted
+    }
+    if locale_code == "de" {
+        return formatted + " EUR"
+    }
+    if locale_code == "fr" {
+        return formatted + " EUR"
+    }
+    
+    return currency + " " + formatted
+}
+
+/* Format date for locale */
+func format_date(date_str, locale_code) {
+    locale_code = locale_code ?? current_locale
+    
+    if locale_code == "en" {
+        return date_str
+    }
+    if locale_code == "de" {
+        return strings.replace(date_str, "-", ".")
+    }
+    if locale_code == "fr" {
+        let parts = strings.split(date_str, "-")
+        return parts[2] + "/" + parts[1] + "/" + parts[0]
+    }
+    
+    return date_str
+}
+
+/* Pluralize word based on count */
+func pluralize(word, count) {
+    if count == 1 {
+        return word
+    }
+    
+    /* Simple English pluralization */
+    if ends_with(word, "y") {
+        return slice(word, 0, len(word) - 1) + "ies"
+    }
+    if ends_with(word, "s") or ends_with(word, "ss") or ends_with(word, "x") or ends_with(word, "z") {
+        return word + "es"
+    }
+    
+    return word + "s"
+}
+
+/* Choose plural form */
+func choose_plural(singular, plural, count) {
+    return count == 1 ? singular : plural
+}

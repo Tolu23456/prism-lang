@@ -1,0 +1,78 @@
+/* Prism Standard Library — plugin module
+   Plugin system and extensibility framework.
+*/
+
+/* Plugin registry */
+let _plugins = {}
+let _hooks = {}
+
+/* Register plugin */
+func register(name, plugin) {
+    _plugins[name] = plugin
+    print("[Plugin] Registered: " + name)
+    
+    if has(plugin, "hooks") {
+        for hook_name in keys(plugin.hooks) {
+            if not has(_hooks, hook_name) {
+                _hooks[hook_name] = []
+            }
+            push(_hooks[hook_name], {plugin: name, handler: plugin.hooks[hook_name]})
+        }
+    }
+}
+
+/* Get plugin */
+func get(name) {
+    return _plugins[name]
+}
+
+/* Check if plugin exists */
+func exists(name) {
+    return has(_plugins, name)
+}
+
+/* List all plugins */
+func list_plugins() {
+    return keys(_plugins)
+}
+
+/* Unregister plugin */
+func unregister(name) {
+    if has(_plugins, name) {
+        remove_key(_plugins, name)
+        print("[Plugin] Unregistered: " + name)
+    }
+}
+
+/* Execute hook */
+func execute_hook(hook_name, context) {
+    context = context ?? {}
+    let results = []
+    
+    if has(_hooks, hook_name) {
+        for hook in _hooks[hook_name] {
+            try {
+                let result = hook.handler(context)
+                push(results, {plugin: hook.plugin, result: result})
+            } catch e {
+                print("[Plugin] Error in hook " + hook_name + " from " + hook.plugin + ": " + str(e))
+            }
+        }
+    }
+    
+    return results
+}
+
+/* Register hook handler */
+func on_hook(hook_name, handler) {
+    if not has(_hooks, hook_name) {
+        _hooks[hook_name] = []
+    }
+    push(_hooks[hook_name], {plugin: "builtin", handler: handler})
+}
+
+/* Clear all plugins */
+func clear() {
+    _plugins = {}
+    _hooks = {}
+}

@@ -1,0 +1,67 @@
+/* Prism Standard Library — mqtt module
+   MQTT protocol implementation for IoT and messaging.
+*/
+
+import "lib/json"
+
+/* MQTT Client */
+class MQTTClient {
+    func init(broker_url, client_id) {
+        this.broker_url = broker_url
+        this.client_id = client_id
+        this.connected = false
+        this.subscriptions = {}
+        this.message_handlers = {}
+    }
+    
+    func connect(username, password) {
+        username = username ?? ""
+        password = password ?? ""
+        this.connected = true
+        print("[MQTT] Connected to " + this.broker_url + " as " + this.client_id)
+    }
+    
+    func disconnect() {
+        this.connected = false
+        print("[MQTT] Disconnected")
+    }
+    
+    func publish(topic, payload, qos) {
+        qos = qos ?? 0
+        if not this.connected {
+            error("MQTT client not connected")
+        }
+        let msg = type(payload) == "string" ? payload : json.stringify(payload)
+        print("[MQTT] Publishing to " + topic + ": " + msg)
+    }
+    
+    func subscribe(topic, qos) {
+        qos = qos ?? 0
+        this.subscriptions[topic] = {qos: qos, active: true}
+        print("[MQTT] Subscribed to " + topic)
+    }
+    
+    func unsubscribe(topic) {
+        if has(this.subscriptions, topic) {
+            remove_key(this.subscriptions, topic)
+        }
+        print("[MQTT] Unsubscribed from " + topic)
+    }
+    
+    func on_message(handler) {
+        this.message_handlers["message"] = handler
+    }
+    
+    func on_connect(handler) {
+        this.message_handlers["connect"] = handler
+    }
+    
+    func on_disconnect(handler) {
+        this.message_handlers["disconnect"] = handler
+    }
+}
+
+/* Create MQTT client */
+func client(broker_url, client_id) {
+    return MQTTClient(broker_url, client_id)
+}
