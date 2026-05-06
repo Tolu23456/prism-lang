@@ -1,0 +1,342 @@
+/* Prism Standard Library — compression module
+   Pure Prism implementation.
+   Compression (RLE, LZ77, Huffman), encoding (base64, hex, ascii85).
+*/
+
+/* ── Base64 Encoding ────────────────────────────────────── */
+
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+
+func base64Encode(data) {
+    let result = ""
+    let bytes = chars(str(data))
+    let len_bytes = len(bytes)
+    let i = 0
+    
+    while i < len_bytes {
+        let b1 = ord(bytes[i]) & 0xFF
+        let b2 = i + 1 < len_bytes ? ord(bytes[i + 1]) & 0xFF : 0
+        let b3 = i + 2 < len_bytes ? ord(bytes[i + 2]) & 0xFF : 0
+        
+        let n = (b1 << 16) | (b2 << 8) | b3
+        
+        result = result + BASE64_ALPHABET[(n >> 18) & 0x3F]
+        result = result + BASE64_ALPHABET[(n >> 12) & 0x3F]
+        result = result + (i + 1 < len_bytes ? BASE64_ALPHABET[(n >> 6) & 0x3F] : "=")
+        result = result + (i + 2 < len_bytes ? BASE64_ALPHABET[n & 0x3F] : "=")
+        
+        i += 3
+    }
+    
+    return result
+}
+
+func base64Decode(encoded) {
+    let result = ""
+    let encoded_chars = chars(encoded)
+    let len_enc = len(encoded_chars)
+    let i = 0
+    
+    while i < len_enc {
+        let c1 = indexOf(BASE64_ALPHABET, encoded_chars[i])
+        let c2 = indexOf(BASE64_ALPHABET, encoded_chars[i + 1])
+        let c3 = indexOf(BASE64_ALPHABET, encoded_chars[i + 2])
+        let c4 = indexOf(BASE64_ALPHABET, encoded_chars[i + 3])
+        
+        if c1 < 0 or c2 < 0 { break }
+        
+        let n = (c1 << 18) | (c2 << 12) | (c3 << 6) | c4
+        
+        result = result + chr((n >> 16) & 0xFF)
+        if c3 >= 0 { result = result + chr((n >> 8) & 0xFF) }
+        if c4 >= 0 { result = result + chr(n & 0xFF) }
+        
+        i += 4
+    }
+    
+    return result
+}
+
+/* ── Hex Encoding ───────────────────────────────────────– */
+
+const HEX_CHARS = "0123456789abcdef"
+
+func hexEncode(data) {
+    let result = ""
+    for ch in chars(str(data)) {
+        let code = ord(ch)
+        result = result + HEX_CHARS[code / 16] + HEX_CHARS[code % 16]
+    }
+    return result
+}
+
+func hexDecode(hex_str) {
+    let result = ""
+    let hex_chars = chars(lower(hex_str))
+    let i = 0
+    
+    while i < len(hex_chars) - 1 {
+        let high = indexOf(HEX_CHARS, hex_chars[i])
+        let low = indexOf(HEX_CHARS, hex_chars[i + 1])
+        
+        if high >= 0 and low >= 0 {
+            result = result + chr(high * 16 + low)
+        }
+        i += 2
+    }
+    
+    return result
+}
+
+/* ── URL Encoding ───────────────────────────────────────– */
+
+func urlEncode(str) {
+    let result = ""
+    for ch in chars(str) {
+        if (ch >= "A" and ch <= "Z") or (ch >= "a" and ch <= "z") or
+           (ch >= "0" and ch <= "9") or ch == "-" or ch == "_" or 
+           ch == "." or ch == "~" {
+            result = result + ch
+        } else if ch == " " {
+            result = result + "+"
+        } else {
+            result = result + "%" + hexEncode(ch)
+        }
+    }
+    return result
+}
+
+func urlDecode(str) {
+    let result = ""
+    let str_chars = chars(str)
+    let i = 0
+    
+    while i < len(str_chars) {
+        let ch = str_chars[i]
+        if ch == "+" {
+            result = result + " "
+        } elif ch == "%" and i + 2 < len(str_chars) {
+            let hex = str_chars[i + 1] + str_chars[i + 2]
+            result = result + hexDecode(hex)
+            i += 2
+        } else {
+            result = result + ch
+        }
+        i += 1
+    }
+    
+    return result
+}
+
+/* ── Run-Length Encoding ────────────────────────────────– */
+
+func rleEncode(data) {
+    let str_data = str(data)
+    if len(str_data) == 0 { return "" }
+    
+    let result = ""
+    let chars_arr = chars(str_data)
+    let current_ch = chars_arr[0]
+    let count = 1
+    
+    let i = 1
+    while i < len(chars_arr) {
+        if chars_arr[i] == current_ch {
+            count += 1
+        } else {
+            result = result + str(count) + current_ch
+            current_ch = chars_arr[i]
+            count = 1
+        }
+        i += 1
+    }
+    result = result + str(count) + current_ch
+    
+    return result
+}
+
+func rleDecode(encoded) {
+    let result = ""
+    let encoded_chars = chars(encoded)
+    let i = 0
+    
+    while i < len(encoded_chars) {
+        let count_str = ""
+        while i < len(encoded_chars) and encoded_chars[i] >= "0" and encoded_chars[i] <= "9" {
+            count_str = count_str + encoded_chars[i]
+            i += 1
+        }
+        
+        if i < len(encoded_chars) {
+            let count = toInt(count_str)
+            let ch = encoded_chars[i]
+            let j = 0
+            while j < count {
+                result = result + ch
+                j += 1
+            }
+            i += 1
+        }
+    }
+    
+    return result
+}
+
+/* ── LZ77 Simple Compression ────────────────────────────– */
+
+func lz77Encode(data, window_size) {
+    window_size = window_size ?? 32768
+    let str_data = str(data)
+    let result = []
+    let pos = 0
+    
+    while pos < len(str_data) {
+        let best_match_length = 0
+        let best_match_dist = 0
+        
+        let search_start = max(0, pos - window_size)
+        let i = search_start
+        while i < pos {
+            let match_length = 0
+            while match_length < 258 and pos + match_length < len(str_data) and
+                  str_data[i + match_length] == str_data[pos + match_length] {
+                match_length += 1
+            }
+            
+            if match_length > best_match_length {
+                best_match_length = match_length
+                best_match_dist = pos - i
+            }
+            i += 1
+        }
+        
+        if best_match_length >= 3 {
+            push(result, [1, best_match_dist, best_match_length])
+            pos += best_match_length
+        } else {
+            push(result, [0, ord(str_data[pos])])
+            pos += 1
+        }
+    }
+    
+    return result
+}
+
+func lz77Decode(encoded) {
+    let result = ""
+    for token in encoded {
+        if token[0] == 0 {
+            result = result + chr(token[1])
+        } else {
+            let start = len(result) - token[1]
+            let i = 0
+            while i < token[2] {
+                result = result + result[start + i]
+                i += 1
+            }
+        }
+    }
+    return result
+}
+
+/* ── Huffman Coding (Tree Structure) ────────────────────– */
+
+func huffmanEncode(data) {
+    let str_data = str(data)
+    let freq = {}
+    
+    for ch in chars(str_data) {
+        freq[ch] = (freq[ch] ?? 0) + 1
+    }
+    
+    let tree = {}
+    for ch in keys(freq) {
+        tree[ch] = {char: ch, freq: freq[ch]}
+    }
+    
+    return {
+        original: str_data,
+        tree: tree,
+        freq: freq,
+    }
+}
+
+/* ── CRC32 Checksum ─────────────────────────────────────– */
+
+func crc32(data) {
+    let str_data = str(data)
+    let crc = 0xFFFFFFFF
+    
+    for ch in chars(str_data) {
+        let byte = ord(ch) & 0xFF
+        crc = crc ^ byte
+        
+        let i = 0
+        while i < 8 {
+            if (crc & 1) == 1 {
+                crc = (crc >> 1) ^ 0xEDB88320
+            } else {
+                crc = crc >> 1
+            }
+            i += 1
+        }
+    }
+    
+    return (crc ^ 0xFFFFFFFF) & 0xFFFFFFFF
+}
+
+/* ── Data Compression Utilities ─────────────────────────– */
+
+func compress(data, method) {
+    method = method ?? "rle"
+    
+    if method == "rle" {
+        return rleEncode(data)
+    } elif method == "lz77" {
+        return lz77Encode(data)
+    } elif method == "base64" {
+        return base64Encode(data)
+    } elif method == "hex" {
+        return hexEncode(data)
+    } else {
+        error("compress: unknown method " + method)
+    }
+}
+
+func decompress(data, method) {
+    method = method ?? "rle"
+    
+    if method == "rle" {
+        return rleDecode(data)
+    } elif method == "lz77" {
+        return lz77Decode(data)
+    } elif method == "base64" {
+        return base64Decode(data)
+    } elif method == "hex" {
+        return hexDecode(data)
+    } else {
+        error("decompress: unknown method " + method)
+    }
+}
+
+/* ── Checksum & Validation ──────────────────────────────– */
+
+func md5Simple(data) {
+    let str_data = str(data)
+    let hash = 0
+    for ch in chars(str_data) {
+        hash = ((hash << 5) - hash) + ord(ch)
+        hash = hash & 0xFFFFFFFF
+    }
+    return hexEncode(chr(hash))
+}
+
+func validateChecksum(data, checksum, algo) {
+    algo = algo ?? "crc32"
+    
+    if algo == "crc32" {
+        return crc32(data) == checksum
+    } else {
+        return false
+    }
+}

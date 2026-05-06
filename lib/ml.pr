@@ -1,0 +1,514 @@
+/* Prism Standard Library — ml module
+   Pure Prism implementation.
+   Machine learning, statistics, linear regression, clustering,
+   neural networks, and data analysis utilities.
+*/
+
+import "lib/math"
+
+/* ── Statistical Measures ───────────────────────────────– */
+
+func mean(data) {
+    if len(data) == 0 { return 0 }
+    let sum = 0
+    for x in data { sum += x }
+    return sum / len(data)
+}
+
+func median(data) {
+    if len(data) == 0 { return 0 }
+    let sorted = sort(copy(data))
+    let n = len(sorted)
+    if n % 2 == 0 {
+        return (sorted[n/2 - 1] + sorted[n/2]) / 2
+    } else {
+        return sorted[n/2]
+    }
+}
+
+func mode(data) {
+    if len(data) == 0 { return nil }
+    let freq = {}
+    for x in data {
+        let key = str(x)
+        freq[key] = (freq[key] ?? 0) + 1
+    }
+    
+    let max_freq = 0
+    let mode_val = nil
+    for k in keys(freq) {
+        if freq[k] > max_freq {
+            max_freq = freq[k]
+            mode_val = k
+        }
+    }
+    return mode_val
+}
+
+func variance(data) {
+    if len(data) == 0 { return 0 }
+    let m = mean(data)
+    let sum_sq = 0
+    for x in data {
+        sum_sq += pow(x - m, 2)
+    }
+    return sum_sq / len(data)
+}
+
+func stdDev(data) {
+    return sqrt(variance(data))
+}
+
+func range(data) {
+    if len(data) == 0 { return 0 }
+    return max(data) - min(data)
+}
+
+func quantile(data, q) {
+    if len(data) == 0 or q < 0 or q > 1 { return 0 }
+    let sorted = sort(copy(data))
+    let idx = floor(q * (len(sorted) - 1))
+    return sorted[idx]
+}
+
+func iqr(data) {
+    return quantile(data, 0.75) - quantile(data, 0.25)
+}
+
+/* ── Correlation & Covariance ───────────────────────────– */
+
+func covariance(x, y) {
+    if len(x) != len(y) or len(x) == 0 { return 0 }
+    let mean_x = mean(x)
+    let mean_y = mean(y)
+    let sum = 0
+    let i = 0
+    while i < len(x) {
+        sum += (x[i] - mean_x) * (y[i] - mean_y)
+        i += 1
+    }
+    return sum / len(x)
+}
+
+func pearsonCorr(x, y) {
+    if len(x) != len(y) { return 0 }
+    let cov = covariance(x, y)
+    let std_x = stdDev(x)
+    let std_y = stdDev(y)
+    if std_x == 0 or std_y == 0 { return 0 }
+    return cov / (std_x * std_y)
+}
+
+/* ── Linear Regression ──────────────────────────────────– */
+
+func LinearRegression() {
+    let model = {
+        slope: 0,
+        intercept: 0,
+        r_squared: 0,
+        trained: false,
+    }
+    
+    model.fit = fn(x, y) {
+        if len(x) != len(y) or len(x) == 0 {
+            error("LinearRegression: x and y must have same non-zero length")
+        }
+        
+        let mean_x = mean(x)
+        let mean_y = mean(y)
+        
+        let numerator = 0
+        let denominator = 0
+        let sum_sq_residuals = 0
+        let sum_sq_total = 0
+        
+        let i = 0
+        while i < len(x) {
+            numerator += (x[i] - mean_x) * (y[i] - mean_y)
+            denominator += pow(x[i] - mean_x, 2)
+            i += 1
+        }
+        
+        if denominator == 0 {
+            model.slope = 0
+        } else {
+            model.slope = numerator / denominator
+        }
+        
+        model.intercept = mean_y - model.slope * mean_x
+        
+        let i = 0
+        while i < len(y) {
+            let pred = model.slope * x[i] + model.intercept
+            sum_sq_residuals += pow(y[i] - pred, 2)
+            sum_sq_total += pow(y[i] - mean_y, 2)
+            i += 1
+        }
+        
+        if sum_sq_total == 0 {
+            model.r_squared = 0
+        } else {
+            model.r_squared = 1 - (sum_sq_residuals / sum_sq_total)
+        }
+        
+        model.trained = true
+    }
+    
+    model.predict = fn(x) {
+        if not model.trained {
+            error("LinearRegression: model not trained")
+        }
+        if type(x) == "array" {
+            let result = []
+            for val in x {
+                push(result, model.slope * val + model.intercept)
+            }
+            return result
+        } else {
+            return model.slope * x + model.intercept
+        }
+    }
+    
+    model.getParams = fn() {
+        return {slope: model.slope, intercept: model.intercept}
+    }
+    
+    return model
+}
+
+/* ── K-Means Clustering ─────────────────────────────────– */
+
+func KMeans(k, max_iterations) {
+    max_iterations = max_iterations ?? 100
+    let kmeans = {
+        k: k,
+        centroids: [],
+        assignments: [],
+        iterations: 0,
+    }
+    
+    kmeans.fit = fn(data) {
+        let n = len(data)
+        let d = len(data[0])
+        
+        let i = 0
+        while i < k {
+            push(kmeans.centroids, data[i % n])
+            i += 1
+        }
+        
+        let iter = 0
+        while iter < max_iterations {
+            kmeans.assignments = []
+            let i = 0
+            while i < n {
+                push(kmeans.assignments, 0)
+                i += 1
+            }
+            
+            let i = 0
+            while i < n {
+                let min_dist = 999999999
+                let closest = 0
+                let j = 0
+                while j < k {
+                    let dist = euclidean_dist(data[i], kmeans.centroids[j])
+                    if dist < min_dist {
+                        min_dist = dist
+                        closest = j
+                    }
+                    j += 1
+                }
+                kmeans.assignments[i] = closest
+                i += 1
+            }
+            
+            let new_centroids = []
+            let j = 0
+            while j < k {
+                let cluster_points = []
+                let i = 0
+                while i < n {
+                    if kmeans.assignments[i] == j {
+                        push(cluster_points, data[i])
+                    }
+                    i += 1
+                }
+                
+                if len(cluster_points) > 0 {
+                    let centroid = []
+                    let d_idx = 0
+                    while d_idx < d {
+                        let sum = 0
+                        for point in cluster_points {
+                            sum += point[d_idx]
+                        }
+                        push(centroid, sum / len(cluster_points))
+                        d_idx += 1
+                    }
+                    push(new_centroids, centroid)
+                } else {
+                    push(new_centroids, kmeans.centroids[j])
+                }
+                j += 1
+            }
+            
+            kmeans.centroids = new_centroids
+            iter += 1
+        }
+        
+        kmeans.iterations = iter
+    }
+    
+    kmeans.predict = fn(point) {
+        let min_dist = 999999999
+        let closest = 0
+        let j = 0
+        while j < k {
+            let dist = euclidean_dist(point, kmeans.centroids[j])
+            if dist < min_dist {
+                min_dist = dist
+                closest = j
+            }
+            j += 1
+        }
+        return closest
+    }
+    
+    return kmeans
+}
+
+func euclidean_dist(p1, p2) {
+    let sum = 0
+    let i = 0
+    while i < len(p1) {
+        sum += pow(p1[i] - p2[i], 2)
+        i += 1
+    }
+    return sqrt(sum)
+}
+
+/* ── Naive Bayes Classifier ────────────────────────────– */
+
+func NaiveBayes() {
+    let nb = {
+        classes: [],
+        class_priors: {},
+        feature_probs: {},
+    }
+    
+    nb.fit = fn(X, y) {
+        let n_samples = len(X)
+        let n_features = len(X[0])
+        
+        let unique_classes = []
+        for label in y {
+            if not has(unique_classes, label) {
+                push(unique_classes, label)
+            }
+        }
+        nb.classes = unique_classes
+        
+        for c in nb.classes {
+            nb.class_priors[c] = 0
+            nb.feature_probs[c] = []
+            let i = 0
+            while i < n_features {
+                push(nb.feature_probs[c], {mean: 0, var: 0})
+                i += 1
+            }
+        }
+        
+        for c in nb.classes {
+            let X_c = []
+            let i = 0
+            while i < n_samples {
+                if y[i] == c {
+                    push(X_c, X[i])
+                }
+                i += 1
+            }
+            
+            nb.class_priors[c] = len(X_c) / n_samples
+            
+            let j = 0
+            while j < n_features {
+                let feature_vals = []
+                for sample in X_c {
+                    push(feature_vals, sample[j])
+                }
+                nb.feature_probs[c][j].mean = mean(feature_vals)
+                nb.feature_probs[c][j].var = variance(feature_vals)
+                j += 1
+            }
+        }
+    }
+    
+    nb.predict = fn(x) {
+        let probs = {}
+        for c in nb.classes {
+            probs[c] = log(nb.class_priors[c])
+            let j = 0
+            while j < len(x) {
+                let mean = nb.feature_probs[c][j].mean
+                let var = nb.feature_probs[c][j].var
+                if var > 0 {
+                    let numerator = pow(x[j] - mean, 2)
+                    let denominator = 2 * var
+                    let prob = (1 / sqrt(2 * PI * var)) * exp(-numerator / denominator)
+                    probs[c] += log(prob)
+                }
+                j += 1
+            }
+        }
+        
+        let max_prob = -999999999
+        let prediction = nil
+        for c in nb.classes {
+            if probs[c] > max_prob {
+                max_prob = probs[c]
+                prediction = c
+            }
+        }
+        return prediction
+    }
+    
+    return nb
+}
+
+/* ── Confusion Matrix ───────────────────────────────────– */
+
+func confusionMatrix(y_true, y_pred) {
+    let classes = []
+    for val in y_true {
+        if not has(classes, val) {
+            push(classes, val)
+        }
+    }
+    for val in y_pred {
+        if not has(classes, val) {
+            push(classes, val)
+        }
+    }
+    
+    let matrix = {}
+    for c in classes {
+        matrix[c] = {}
+        for c2 in classes {
+            matrix[c][c2] = 0
+        }
+    }
+    
+    let i = 0
+    while i < len(y_true) {
+        matrix[y_true[i]][y_pred[i]] += 1
+        i += 1
+    }
+    
+    return matrix
+}
+
+/* ── Model Evaluation Metrics ───────────────────────────– */
+
+func accuracy(y_true, y_pred) {
+    if len(y_true) != len(y_pred) { return 0 }
+    let correct = 0
+    let i = 0
+    while i < len(y_true) {
+        if y_true[i] == y_pred[i] {
+            correct += 1
+        }
+        i += 1
+    }
+    return correct / len(y_true)
+}
+
+func precision(y_true, y_pred, positive_class) {
+    let tp = 0
+    let fp = 0
+    let i = 0
+    while i < len(y_pred) {
+        if y_pred[i] == positive_class {
+            if y_true[i] == positive_class {
+                tp += 1
+            } else {
+                fp += 1
+            }
+        }
+        i += 1
+    }
+    if tp + fp == 0 { return 0 }
+    return tp / (tp + fp)
+}
+
+func recall(y_true, y_pred, positive_class) {
+    let tp = 0
+    let fn = 0
+    let i = 0
+    while i < len(y_true) {
+        if y_true[i] == positive_class {
+            if y_pred[i] == positive_class {
+                tp += 1
+            } else {
+                fn += 1
+            }
+        }
+        i += 1
+    }
+    if tp + fn == 0 { return 0 }
+    return tp / (tp + fn)
+}
+
+func f1Score(y_true, y_pred, positive_class) {
+    let p = precision(y_true, y_pred, positive_class)
+    let r = recall(y_true, y_pred, positive_class)
+    if p + r == 0 { return 0 }
+    return 2 * (p * r) / (p + r)
+}
+
+/* ── Feature Scaling ────────────────────────────────────– */
+
+func standardize(data) {
+    let m = mean(data)
+    let s = stdDev(data)
+    let result = []
+    for x in data {
+        if s == 0 {
+            push(result, 0)
+        } else {
+            push(result, (x - m) / s)
+        }
+    }
+    return result
+}
+
+func normalize(data) {
+    let min_val = min(data)
+    let max_val = max(data)
+    let range = max_val - min_val
+    let result = []
+    for x in data {
+        if range == 0 {
+            push(result, 0)
+        } else {
+            push(result, (x - min_val) / range)
+        }
+    }
+    return result
+}
+
+/* ── Cross Validation ───────────────────────────────────– */
+
+func kFoldSplit(data, k) {
+    let fold_size = len(data) / k
+    let folds = []
+    let i = 0
+    while i < k {
+        let start = i * fold_size
+        let end = (i + 1) * fold_size
+        if i == k - 1 { end = len(data) }
+        push(folds, slice(data, start, end))
+        i += 1
+    }
+    return folds
+}
