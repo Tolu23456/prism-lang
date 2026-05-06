@@ -2,63 +2,30 @@
    Pure Prism implementation — no Python imports.
    Arrays, dicts, Stack, Queue, PriorityQueue,
    LinkedList, Set, Trie, Deque, and more.
+   
+   Note: flatten, deepFlatten, uniqueBy, unzip, groupBy are in iter module
+   for cleaner organization. Use iter.flatten, iter.groupBy, etc.
 */
+
+import "lib/iter"
 
 /* ── Array Utilities ────────────────────────────────────── */
 
-func flatten(arr, depth) {
-    depth = depth ?? 1
-    let result = []
-    for item in arr {
-        if type(item) == "array" and depth > 0 {
-            let inner = flatten(item, depth - 1)
-            for x in inner { push(result, x) }
-        } else {
-            push(result, item)
-        }
-    }
-    return result
-}
+/* Alias iter.flatten for compatibility */
+func flatten(arr, depth) { return iter.flatten(arr, depth) }
 
-func deepFlatten(arr) {
-    let result = []
-    for item in arr {
-        if type(item) == "array" {
-            let inner = deepFlatten(item)
-            for x in inner { push(result, x) }
-        } else {
-            push(result, item)
-        }
-    }
-    return result
-}
+/* Alias iter.deepFlatten for compatibility */
+func deepFlatten(arr) { return iter.deepFlatten(arr) }
 
-func uniqueBy(arr, key_fn) {
-    let seen = {}
-    let result = []
-    for item in arr {
-        let k = str(key_fn(item))
-        if not has(seen, k) {
-            seen[k] = true
-            push(result, item)
-        }
-    }
-    return result
-}
+/* Alias iter.uniqueBy for compatibility */
+func uniqueBy(arr, key_fn) { return iter.uniqueBy(arr, key_fn) }
 
 func uniqueArr(arr) {
     return uniqueBy(arr, fn(x) => x)
 }
 
 func zipArrays(a, b) {
-    let result = []
-    let limit  = min(len(a), len(b))
-    let i = 0
-    while i < limit {
-        push(result, [a[i], b[i]])
-        i += 1
-    }
-    return result
+    return iter.zip(a, b)
 }
 
 func zipWith(f, a, b) {
@@ -72,25 +39,11 @@ func zipWith(f, a, b) {
     return result
 }
 
-func unzip(pairs) {
-    let a = []
-    let b = []
-    for pair in pairs {
-        push(a, pair[0])
-        push(b, pair[1])
-    }
-    return [a, b]
-}
+/* Alias iter.unzip for compatibility */
+func unzip(pairs) { return iter.unzip(pairs) }
 
-func groupBy(arr, key_fn) {
-    let groups = {}
-    for item in arr {
-        let k = str(key_fn(item))
-        if not has(groups, k) { groups[k] = [] }
-        push(groups[k], item)
-    }
-    return groups
-}
+/* Alias iter.groupBy for compatibility */
+func groupBy(arr, key_fn) { return iter.groupBy(arr, key_fn) }
 
 func chunk(arr, size) {
     if size <= 0 { error("chunk: size must be > 0") }
@@ -331,27 +284,12 @@ func windowSlide(arr, size) {
     return result
 }
 
-func accumulate(arr) {
-    let result = []
-    let total = 0
-    for x in arr {
-        total += x
-        push(result, total)
-    }
-    return result
-}
-
+/* Use iter.accumulate for general scan operations */
 func scan(arr, f, init) {
-    let acc = init
-    let result = [acc]
-    for x in arr {
-        acc = f(acc, x)
-        push(result, acc)
-    }
-    return result
+    return iter.accumulate(arr, f, init)
 }
 
-/* ── Dict Utilities ─────────────────────────────────────── */
+/* ── Dict Utilities ──────────────────────────────��──────── */
 
 func dictMerge(a, b) {
     let result = {}

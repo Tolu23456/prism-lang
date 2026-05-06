@@ -107,7 +107,7 @@ func utf8_slice(s, start, end) {
 func capitalize(s) {
     if len(s) == 0 { return s }
     let first_char = chars(s)[0]
-    return upper(first_char) + slice(s, len(first_char))
+    return upper(first_char) + lower(slice(s, len(first_char)))
 }
 
 func titleCase(s) {
@@ -182,12 +182,12 @@ func padCenter(s, width, ch) {
     let out       = str(s)
     let total_pad = width - utf8_len(out)
     if total_pad <= 0 { return out }
-    let left_pad  = total_pad / 2
+    let left_pad  = (total_pad + 1) / 2
     let right_pad = total_pad - left_pad
-    return repeat(ch, left_pad) + out + repeat(ch, right_pad)
+    return _repeat_string(ch, left_pad) + out + _repeat_string(ch, right_pad)
 }
 
-func repeat(s, n) {
+func _repeat_string(s, n) {
     let result = ""
     let i      = 0
     while i < n { result = result + s; i += 1 }
@@ -390,7 +390,7 @@ func toWords(s) { return split(trim(s), " ") }
 
 func indent(s, spaces) {
     spaces = spaces ?? 4
-    let pad   = repeat(" ", spaces)
+    let pad   = _repeat_string(" ", spaces)
     let lines = toLines(s)
     let result = []
     for line in lines { push(result, pad + line) }
