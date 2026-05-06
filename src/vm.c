@@ -804,14 +804,45 @@ static Value vm_builtin_repeat_str(Value *args, int argc) {
 }
 static Value vm_builtin_chr(Value *args, int argc) {
     if (argc < 1) return value_string("");
-    int code = (VAL_TYPE(args[0]) == VAL_INT) ? (int)AS_INT(args[0]) : (int)AS_FLOAT(args[0]);
-    char buf[4] = {0};
-    buf[0] = (char)(code & 0x7f);
+    long long code = (VAL_TYPE(args[0]) == VAL_INT) ? AS_INT(args[0]) : (long long)AS_FLOAT(args[0]);
+    if (code < 0) code = 0;
+    char buf[5] = {0, 0, 0, 0, 0};
+    if (code <= 0x7F) {
+        buf[0] = (char)code;
+    } else if (code <= 0x7FF) {
+        buf[0] = (char)(0xC0 | (code >> 6));
+        buf[1] = (char)(0x80 | (code & 0x3F));
+    } else if (code <= 0xFFFF) {
+        buf[0] = (char)(0xE0 | (code >> 12));
+        buf[1] = (char)(0x80 | ((code >> 6) & 0x3F));
+        buf[2] = (char)(0x80 | (code & 0x3F));
+    } else if (code <= 0x10FFFF) {
+        buf[0] = (char)(0xF0 | (code >> 18));
+        buf[1] = (char)(0x80 | ((code >> 12) & 0x3F));
+        buf[2] = (char)(0x80 | ((code >> 6) & 0x3F));
+        buf[3] = (char)(0x80 | (code & 0x3F));
+    } else {
+        buf[0] = '?';
+    }
     return value_string(buf);
 }
 static Value vm_builtin_ord(Value *args, int argc) {
-    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING || !AS_STR(args[0])[0]) return value_int(0);
-    return value_int((long long)(unsigned char)AS_STR(args[0])[0]);
+    if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_int(0);
+    const unsigned char *s = (const unsigned char *)AS_STR(args[0]);
+    if (!s[0]) return value_int(0);
+    long long cp;
+    if ((s[0] & 0x80) == 0) {
+        cp = s[0];
+    } else if ((s[0] & 0xE0) == 0xC0 && (s[1] & 0xC0) == 0x80) {
+        cp = ((long long)(s[0] & 0x1F) << 6) | (s[1] & 0x3F);
+    } else if ((s[0] & 0xF0) == 0xE0 && (s[1] & 0xC0) == 0x80 && (s[2] & 0xC0) == 0x80) {
+        cp = ((long long)(s[0] & 0x0F) << 12) | ((long long)(s[1] & 0x3F) << 6) | (s[2] & 0x3F);
+    } else if ((s[0] & 0xF8) == 0xF0 && (s[1] & 0xC0) == 0x80 && (s[2] & 0xC0) == 0x80 && (s[3] & 0xC0) == 0x80) {
+        cp = ((long long)(s[0] & 0x07) << 18) | ((long long)(s[1] & 0x3F) << 12) | ((long long)(s[2] & 0x3F) << 6) | (s[3] & 0x3F);
+    } else {
+        cp = s[0];  /* invalid UTF-8: return raw byte value */
+    }
+    return value_int(cp);
 }
 static Value vm_builtin_hex(Value *args, int argc) {
     if (argc < 1) return value_string("0x0");

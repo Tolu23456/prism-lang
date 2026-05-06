@@ -160,8 +160,8 @@ parseOr("bad!", null)       # → null (no throw)
 minify("{ \"x\" : 1 }")    # → {"x":1}
 ```
 
-NOTE: `\uXXXX` escapes decode correctly for ASCII range (U+0000–U+007F).
-Code points > 127 are subject to Prism's `chr()` 7-bit truncation limit.
+NOTE: `\uXXXX` escapes decode correctly for the full Unicode range (U+0000–U+10FFFF).
+`chr()` and `ord()` encode/decode proper UTF-8 in both VM and tree-walker modes.
 
 ## Gotchas
 - **`"{"` is an empty string** — Prism's lexer treats `{` inside double-quoted
@@ -170,5 +170,3 @@ Code points > 127 are subject to Prism's `chr()` 7-bit truncation limit.
   `"}"`, `"["`, `"]"`, `"("`, or `")"`.
 - `import X as alias` (dict-namespacing) only works in `--tree` mode; use
   plain `import X` (star-import) when targeting the default bytecode VM.
-- **`chr()` is 7-bit**: `chr(n)` yields the character at `n mod 128`, so
-  non-ASCII Unicode (code points > 127) cannot be produced via `chr()`.

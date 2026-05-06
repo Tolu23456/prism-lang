@@ -130,17 +130,23 @@ output("")
 
 /* ── 9. Unicode escape sequences ─────────────────────────────── */
 output("-- Unicode escapes --")
-/* \uXXXX within ASCII range (0x00-0x7F) decodes correctly.
-   Code points > 127 are constrained by Prism's chr() — it produces
-   the character at (codepoint mod 128), a known VM limitation. */
-let uni_A   = parse("\"\\u0041\"")   /* \u0041 = 'A' */
-check("\\u0041 = A", uni_A, "A")
-let uni_sp  = parse("\"\\u0020\"")   /* \u0020 = space */
-check("\\u0020 = space", uni_sp, " ")
-let uni_tilde = parse("\"\\u007E\"") /* \u007E = '~' */
-check("\\u007E = ~", uni_tilde, "~")
-let uni_tab = parse("\"a\\u0009b\"") /* \u0009 = tab */
-check("\\u0009 = tab", uni_tab, "a\tb")
+/* chr() and ord() now encode/decode full UTF-8 (U+0000 – U+10FFFF) */
+let uni_A     = parse("\"\\u0041\"")    /* 'A' */
+check("\\u0041 = A",        uni_A,            "A")
+let uni_eacute = parse("\"\\u00e9\"")   /* é  (U+00E9, 2-byte UTF-8) */
+check("\\u00e9 = é",       uni_eacute,        "é")
+check("ord(é) = 233",      ord(uni_eacute),   233)
+let snowman = parse("\"\\u2603\"")      /* ☃  (U+2603, 3-byte UTF-8) */
+check("\\u2603 = ☃",       snowman,           "☃")
+check("ord(☃) = 9731",     ord(snowman),      9731)
+let emoji = parse("\"\\uD83D\\uDE00\"") /* 😀 surrogate pair → kept as-is by parser */
+output("  emoji decoded len: " + str(len(emoji)))
+/* Direct chr() round-trips */
+check("chr(233) = é",      chr(233),          "é")
+check("chr(9731) = ☃",     chr(9731),         "☃")
+check("ord(chr(9731))",    ord(chr(9731)),     9731)
+check("chr(128512) = 😀",  chr(128512),        "😀")
+check("ord(chr(128512))",  ord(chr(128512)),   128512)
 output("")
 
 /* ── 10. Pretty printing ─────────────────────────────────────── */
