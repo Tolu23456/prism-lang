@@ -2,7 +2,7 @@
    Run:  ./prism examples/onion_demo.pr
 */
 
-import onion
+%onion
 
 output("=== onion v" + version() + " ===")
 output("")
