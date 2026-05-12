@@ -7,14 +7,14 @@ func assert(label, got, expected) {
     if got == expected {
         pass += 1
     } else {
-        print("FAIL:", label, "| got:", got, "expected:", expected)
+        output("FAIL:", label, "| got:", got, "expected:", expected)
         fail += 1
     }
 }
 
 func assert_true(label, cond) {
     if cond { pass += 1 }
-    else { print("FAIL:", label); fail += 1 }
+    else { output("FAIL:", label); fail += 1 }
 }
 
 /* ── Counter factory (mutable closure state) ─────────────── */
@@ -177,6 +177,6 @@ assert("once first call",  get_value(), 42)
 assert("once second call", get_value(), 42)
 assert("once side effect called once", expensive_count, 1)
 
-print("\nResults:", pass, "passed,", fail, "failed")
-if fail == 0 { print("[PASS] test_closures_advanced") }
-else { print("[FAIL] test_closures_advanced") }
+output("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { output("[PASS] test_closures_advanced") }
+else { output("[FAIL] test_closures_advanced") }

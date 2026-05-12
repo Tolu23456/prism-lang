@@ -5,10 +5,10 @@ let fail = 0
 
 func assert(label, got, expected) {
     if got == expected {
-        print("PASS:", label)
+        output("PASS:", label)
         pass += 1
     } else {
-        print("FAIL:", label, "  got:", got, "expected:", expected)
+        output("FAIL:", label, "  got:", got, "expected:", expected)
         fail += 1
     }
 }
@@ -29,4 +29,4 @@ assert("chain with float", 1.0 < 2.5 < 10.0, true)
 assert("tight chain false", 1 < 2 < 2, false)
 assert("equality boundary", 0 <= 0 <= 0, true)
 
-print("\nResults:", pass, "passed,", fail, "failed")
+output("\nResults:", pass, "passed,", fail, "failed")

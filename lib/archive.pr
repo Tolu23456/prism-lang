@@ -44,7 +44,7 @@ class ZipArchive {
         for path in keys(this.files) {
             manifest[path] = this.files[path].size
         }
-        print("[Archive] Saving " + this.filename + " with " + str(len(this.files)) + " files")
+        output("[Archive] Saving " + this.filename + " with " + str(len(this.files)) + " files")
         return true
     }
     
@@ -80,7 +80,7 @@ class TarArchive {
     }
     
     func save() {
-        print("[Archive] Saving " + this.filename + " with " + str(len(this.files)) + " files")
+        output("[Archive] Saving " + this.filename + " with " + str(len(this.files)) + " files")
         return true
     }
 }

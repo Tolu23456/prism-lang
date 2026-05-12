@@ -9,8 +9,8 @@ func bar_chart(data, width, title) {
     width = width ?? 40
     title = title ?? "Bar Chart"
     
-    print("\n" + title)
-    print("=" * len(title))
+    output("\n" + title)
+    output("=" * len(title))
     
     let max_val = 0
     for item in data {
@@ -22,9 +22,9 @@ func bar_chart(data, width, title) {
     for item in data {
         let bar_len = (item.value / max_val) * width
         let bar = "#" * int(bar_len)
-        print(strings.pad_right(item.label, 20) + " | " + bar + " " + str(item.value))
+        output(strings.pad_right(item.label, 20) + " | " + bar + " " + str(item.value))
     }
-    print("")
+    output("")
 }
 
 /* ASCII line chart */
@@ -33,8 +33,8 @@ func line_chart(data, height, width, title) {
     width = width ?? 40
     title = title ?? "Line Chart"
     
-    print("\n" + title)
-    print("=" * len(title))
+    output("\n" + title)
+    output("=" * len(title))
     
     let max_val = 0
     let min_val = 0
@@ -60,16 +60,16 @@ func line_chart(data, height, width, title) {
         for i in range(len(normalized)) {
             if normalized[i] == row {
                 line = line + "*"
-            } else if normalized[i] > row {
+            } elif normalized[i] > row {
                 line = line + "|"
             } else {
                 line = line + " "
             }
         }
-        print(line)
+        output(line)
     }
-    print("-" * len(data))
-    print("")
+    output("-" * len(data))
+    output("")
 }
 
 /* ASCII histogram */
@@ -77,8 +77,8 @@ func histogram(data, bins, title) {
     bins = bins ?? 10
     title = title ?? "Histogram"
     
-    print("\n" + title)
-    print("=" * len(title))
+    output("\n" + title)
+    output("=" * len(title))
     
     let min_val = data[0]
     let max_val = data[0]
@@ -105,9 +105,9 @@ func histogram(data, bins, title) {
         let bin_start = min_val + (i * bin_width)
         let bin_end = bin_start + bin_width
         let bar = "#" * bin_counts[i]
-        print(strings.format("{} - {} | {}", bin_start, bin_end, bar))
+        output(strings.format("{} - {} | {}", bin_start, bin_end, bar))
     }
-    print("")
+    output("")
 }
 
 /* HTML chart generation */

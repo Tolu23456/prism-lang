@@ -7,14 +7,14 @@ func assert(label, got, expected) {
     if got == expected {
         pass += 1
     } else {
-        print("FAIL:", label, "| got:", got, "expected:", expected)
+        output("FAIL:", label, "| got:", got, "expected:", expected)
         fail += 1
     }
 }
 
 func assert_true(label, cond) {
     if cond { pass += 1 }
-    else { print("FAIL:", label); fail += 1 }
+    else { output("FAIL:", label); fail += 1 }
 }
 
 /* ── Basic range iteration ─────────────────────────────────── */
@@ -191,6 +191,6 @@ assert("zip[0][0]",   zipped[0][0], 1)
 assert("zip[0][1]",   zipped[0][1], "a")
 assert("zip[2][0]",   zipped[2][0], 3)
 
-print("\nResults:", pass, "passed,", fail, "failed")
-if fail == 0 { print("[PASS] test_iterators") }
-else { print("[FAIL] test_iterators") }
+output("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { output("[PASS] test_iterators") }
+else { output("[FAIL] test_iterators") }

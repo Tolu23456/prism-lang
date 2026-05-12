@@ -37,16 +37,16 @@ while iter < 1000000 {
 }
 let elapsed3 = clock() - start3
 
-print("=== Fibonacci Benchmark ===")
-print("fib(30) =", r1, "  time:", elapsed1, "ms")
-print("fib(35) =", r2, "  time:", elapsed2, "ms")
-print("fib_iter(20) x 1M iterations:", elapsed3, "ms")
-print("")
-print("fib(30) expected: 832040")
-print("fib(35) expected: 9227465")
+output("=== Fibonacci Benchmark ===")
+output("fib(30) =", r1, "  time:", elapsed1, "ms")
+output("fib(35) =", r2, "  time:", elapsed2, "ms")
+output("fib_iter(20) x 1M iterations:", elapsed3, "ms")
+output("")
+output("fib(30) expected: 832040")
+output("fib(35) expected: 9227465")
 
 if r1 == 832040 and r2 == 9227465 {
-    print("[PASS] fibonacci correctness")
+    output("[PASS] fibonacci correctness")
 } else {
-    print("[FAIL] fibonacci correctness: got", r1, r2)
+    output("[FAIL] fibonacci correctness: got", r1, r2)
 }

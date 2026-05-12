@@ -35,7 +35,7 @@ describe("Base64 encoding", fn() {
         let text = "Hello 世界 🌍"
         let encoded = base64Encode(text)
         let decoded = base64Decode(encoded)
-        assertTrue(true)  // Just verify no crash
+        assertTrue(true)  # Just verify no crash
     })
 })
 
@@ -55,12 +55,12 @@ describe("Hex encoding", fn() {
     
     test("numbers to hex", fn() {
         let hex = toHex("123")
-        assertTrue(contains(hex, "31") or contains(hex, "1"))  // Check format
+        assertTrue(contains(hex, "31") or contains(hex, "1"))  # Check format
     })
     
     test("hex uppercase", fn() {
         let hex = toHex("F")
-        // Hex should be valid (might be uppercase or lowercase)
+        # Hex should be valid (might be uppercase or lowercase)
         assertTrue(len(hex) > 0)
     })
 })
@@ -243,4 +243,4 @@ describe("Edge cases", fn() {
     })
 })
 
-print("Compression test suite completed")
+output("Compression test suite completed")

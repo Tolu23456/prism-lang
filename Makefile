@@ -15,9 +15,9 @@ CC      = gcc
 #   and -fstack-reuse=none prevent those without hurting dispatch speed.
 VM_CFLAGS_EXTRA = -O2 -fno-optimize-sibling-calls -fstack-reuse=none
 # Enhanced optimization flags for maximum performance
-CFLAGS  = -Wall -Wextra -std=c11 -O3 -fno-gcse -DNDEBUG -march=native \
+CFLAGS  = -Wall -Wextra -std=c11 -O2 -fno-gcse -DNDEBUG -march=native \
 	  -fomit-frame-pointer -fno-strict-aliasing -finline-functions \
-	  -flto -fwhole-program -funroll-loops -fprefetch-loop-arrays \
+	    -funroll-loops -fprefetch-loop-arrays \
 	  -fvect-cost-model=dynamic -ffunction-sections -fdata-sections \
 	  -Isrc -D_POSIX_C_SOURCE=200809L
 PREFIX  = /usr/local
@@ -78,7 +78,7 @@ HEADERS = \
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	$(CC) $(CFLAGS) -o $@ $^ -lm $(LDFLAGS) -Wl,--gc-sections -Wl,--as-needed -flto
+	$(CC) $(CFLAGS) -o $@ $^ -lm $(LDFLAGS) -Wl,--gc-sections -Wl,--as-needed
 
 # vm.c gets its own rule: targeted flags to avoid computed-goto misoptimisation
 src/vm.o: src/vm.c $(HEADERS)
@@ -123,15 +123,15 @@ uninstall:
 # LTO (Link-Time Optimisation) build — best cross-file inlining, ~10-25% faster.
 # Keeps per-file safety flags so vm.c computed-goto is not misoptimised.
 lto: $(SRCS) $(HEADERS)
-	$(CC) $(CFLAGS) -flto -fno-gcse -o prism-lto \
+	$(CC) $(CFLAGS)  -fno-gcse -o prism-lto \
 	    $(filter-out src/vm.c,$(SRCS)) \
-	    -c -flto $(VM_CFLAGS_EXTRA) src/vm.c -o src/vm-lto.o 2>/dev/null || \
-	$(CC) $(CFLAGS) -flto -fno-gcse -o prism-lto $(SRCS) -lm $(LDFLAGS)
+	    -c  $(VM_CFLAGS_EXTRA) src/vm.c -o src/vm-lto.o 2>/dev/null || \
+	$(CC) $(CFLAGS)  -fno-gcse -o prism-lto $(SRCS) -lm $(LDFLAGS)
 	@echo "LTO build: prism-lto"
 
 # Simpler combined LTO target
 lto-simple: $(SRCS) $(HEADERS)
-	$(CC) $(CFLAGS) -flto -fno-gcse -fno-optimize-sibling-calls -fstack-reuse=none \
+	$(CC) $(CFLAGS)  -fno-gcse -fno-optimize-sibling-calls -fstack-reuse=none \
 	      -o prism-lto $(SRCS) -lm $(LDFLAGS)
 	@echo "LTO build: prism-lto"
 

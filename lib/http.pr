@@ -283,7 +283,7 @@ func authMiddleware(secret) {
 func loggingMiddleware() {
     return fn(req, res, next) {
         let timestamp = str(now())
-        print("[" + timestamp + "] " + req.method + " " + req.path)
+        output("[" + timestamp + "] " + req.method + " " + req.path)
         next()
     }
 }

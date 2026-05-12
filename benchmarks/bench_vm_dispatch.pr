@@ -6,8 +6,8 @@
  * Compare before/after adding computed-goto dispatch.
  */
 
-print("=== VM Dispatch Throughput Benchmarks ===")
-print("")
+output("=== VM Dispatch Throughput Benchmarks ===")
+output("")
 
 func bench(name, f, iters) {
     let t0 = clock()
@@ -15,7 +15,7 @@ func bench(name, f, iters) {
     while i < iters { f(); i = i + 1 }
     let elapsed = clock() - t0
     let ops_per_sec = int(iters / elapsed)
-    print(name + ": " + str(elapsed * 1000.0) + " ms (" + str(ops_per_sec) + " calls/sec)")
+    output(name + ": " + str(elapsed * 1000.0) + " ms (" + str(ops_per_sec) + " calls/sec)")
 }
 
 /* ── Integer arithmetic tight loop ─────────────────────────── */
@@ -122,8 +122,8 @@ func bitwise_loop() {
     return x
 }
 
-print("Running benchmarks (each iteration = 1000 outer calls)...")
-print("")
+output("Running benchmarks (each iteration = 1000 outer calls)...")
+output("")
 
 bench("arith_loop (1000 iters/call)",   arith_loop,   1000)
 bench("branch_loop (1000 iters/call)",  branch_loop,  1000)
@@ -135,7 +135,7 @@ bench("fib(20)     (recursive)",        fib_bench,    100)
 bench("closure_loop (200 calls/call)",  closure_loop, 1000)
 bench("bitwise_loop (1000 iters/call)", bitwise_loop, 1000)
 
-print("")
-print("=== Benchmark complete ===")
-print("Higher ops/sec = better. Compare with baseline to measure")
-print("computed-goto dispatch improvement (typically 15-30% speedup).")
+output("")
+output("=== Benchmark complete ===")
+output("Higher ops/sec = better. Compare with baseline to measure")
+output("computed-goto dispatch improvement (typically 15-30% speedup).")

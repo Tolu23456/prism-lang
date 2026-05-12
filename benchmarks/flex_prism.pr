@@ -2,8 +2,8 @@
 # Tests: closures, higher-order functions, match, f-strings,
 #        first-class functions, functional pipeline, sets, dicts
 
-print("=== Prism Flexibility Benchmark ===")
-print("")
+output("=== Prism Flexibility Benchmark ===")
+output("")
 
 # ── 1. Closures & captured state ─────────────────────────────
 func make_counter(start) {
@@ -13,14 +13,14 @@ func make_counter(start) {
 }
 let ctr = make_counter(0)
 ctr(1); ctr(2); ctr(3)
-print("1. Closures:            ctr after +1+2+3 =", ctr(0))
+output("1. Closures:            ctr after +1+2+3 =", ctr(0))
 
 # ── 2. First-class functions / higher-order ───────────────────
 func compose(f, g) { return func(x) { return f(g(x)) } }
 let double = func(x) { return x * 2 }
 let inc    = func(x) { return x + 1 }
 let dbl_then_inc = compose(inc, double)
-print("2. compose(inc,double)(5) =", dbl_then_inc(5))
+output("2. compose(inc,double)(5) =", dbl_then_inc(5))
 
 # ── 3. Recursion + accumulator ────────────────────────────────
 func flatten(lst, acc) {
@@ -35,7 +35,7 @@ func flatten(lst, acc) {
 }
 let nested = [1, [2, [3, 4]], [5, 6]]
 let flat = flatten(nested, [])
-print("3. Flatten nested array:", flat)
+output("3. Flatten nested array:", flat)
 
 # ── 4. OOP via closures (Prism idiomatic style) ───────────────
 func make_animal(name, sound) {
@@ -49,8 +49,8 @@ func make_dog(name) {
     return {"speak": base["speak"], "name": base["name"], "fetch": fetch}
 }
 let d = make_dog("Rex")
-print("4a. Closure OOP speak():", d["speak"]())
-print("4b. Method:             ", d["fetch"]("ball"))
+output("4a. Closure OOP speak():", d["speak"]())
+output("4b. Method:             ", d["fetch"]("ball"))
 
 # ── 5. Pattern matching ───────────────────────────────────────
 func classify(n) {
@@ -64,7 +64,7 @@ func classify(n) {
         }
     }
 }
-print("5. Pattern match 0:", classify(0), "| 7:", classify(7), "| 99:", classify(99))
+output("5. Pattern match 0:", classify(0), "| 7:", classify(7), "| 99:", classify(99))
 
 # ── 6. Dict + dynamic dispatch ───────────────────────────────
 let ops = {
@@ -72,7 +72,7 @@ let ops = {
     "mul": func(a, b) { return a * b },
     "pow": func(a, b) { return a ** b }
 }
-print("6. Dict dispatch add(3,4)=", ops["add"](3, 4), " pow(2,8)=", ops["pow"](2, 8))
+output("6. Dict dispatch add(3,4)=", ops["add"](3, 4), " pow(2,8)=", ops["pow"](2, 8))
 
 # ── 7. F-strings & string interpolation ──────────────────────
 let fwords = ["apple", "banana", "cherry"]
@@ -82,7 +82,7 @@ for w in fwords {
     report = report + f"[{idx}]={w} "
     idx += 1
 }
-print("7. F-string loop:", report.strip())
+output("7. F-string loop:", report.strip())
 
 # ── 8. Map / filter / reduce (manual) ────────────────────────
 func map_f(lst, f)    { let r = []; for x in lst { r.add(f(x)) } return r }
@@ -93,7 +93,7 @@ let nums = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
 let evens   = filter_f(nums, func(x) { return x % 2 == 0 })
 let doubled = map_f(evens, func(x) { return x * 2 })
 let total   = reduce_f(doubled, func(a, b) { return a + b }, 0)
-print("8. map/filter/reduce sum of doubled evens:", total)
+output("8. map/filter/reduce sum of doubled evens:", total)
 
 # ── 9. Tuple + index access ───────────────────────────────────
 func stats(lst) {
@@ -103,12 +103,12 @@ func stats(lst) {
 }
 let res = stats([3, 1, 4, 1, 5, 9, 2, 6])
 let lo = res[0]; let hi = res[1]; let avg = res[2]
-print(f"9. Tuple stats: min={lo} max={hi} avg={avg}")
+output(f"9. Tuple stats: min={lo} max={hi} avg={avg}")
 
 # ── 10. Sets & membership ─────────────────────────────────────
 let sa = {1, 2, 3, 4, 5}
 let sb = {4, 5, 6, 7, 8}
-print("10. Set ops: union len=", len(sa | sb), " intersect=", sa & sb, " diff=", sa - sb)
+output("10. Set ops: union len=", len(sa | sb), " intersect=", sa & sb, " diff=", sa - sb)
 
-print("")
-print("=== Flexibility benchmark complete ===")
+output("")
+output("=== Flexibility benchmark complete ===")

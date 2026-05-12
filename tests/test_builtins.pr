@@ -5,10 +5,10 @@ let fail = 0
 
 func assert(label, got, expected) {
     if got == expected {
-        print("PASS:", label)
+        output("PASS:", label)
         pass += 1
     } else {
-        print("FAIL:", label, "  got:", got, "expected:", expected)
+        output("FAIL:", label, "  got:", got, "expected:", expected)
         fail += 1
     }
 }
@@ -82,4 +82,4 @@ assert("all false", all([true, false, true]), false)
 assert("any true",  any([false, true, false]), true)
 assert("any false", any([false, false]), false)
 
-print("\nResults:", pass, "passed,", fail, "failed")
+output("\nResults:", pass, "passed,", fail, "failed")

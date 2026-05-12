@@ -97,7 +97,7 @@ func urlEncode(str) {
            (ch >= "0" and ch <= "9") or ch == "-" or ch == "_" or 
            ch == "." or ch == "~" {
             result = result + ch
-        } else if ch == " " {
+        } elif ch == " " {
             result = result + "+"
         } else {
             result = result + "%" + hexEncode(ch)
@@ -168,7 +168,7 @@ func rleDecode(encoded) {
         }
         
         if i < len(encoded_chars) {
-            let count = toInt(count_str)
+            let count = int(count_str)
             let ch = encoded_chars[i]
             let j = 0
             while j < count {

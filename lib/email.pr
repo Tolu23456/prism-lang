@@ -64,7 +64,7 @@ class SMTPClient {
     }
     
     func authenticate(username, password) {
-        print("[SMTP] Authenticating as " + username)
+        output("[SMTP] Authenticating as " + username)
         this.authenticated = true
     }
     
@@ -72,12 +72,12 @@ class SMTPClient {
         if not this.authenticated {
             error("SMTP client not authenticated")
         }
-        print("[SMTP] Sending email from " + message.from + " to " + strings.join(", ", message.to))
+        output("[SMTP] Sending email from " + message.from + " to " + strings.join(", ", message.to))
         return true
     }
     
     func close() {
-        print("[SMTP] Connection closed")
+        output("[SMTP] Connection closed")
     }
 }
 

@@ -24,26 +24,48 @@ Value value_retain_ptr(Value v) {
 static void vs_free_internal(ValueStruct *vs) {
     if (!vs || vs->gc_immortal) return;
     switch (vs->type) {
-        case VAL_STRING: if(vs->str_val) free(vs->str_val); break;
-        case VAL_ARRAY: case VAL_SET: case VAL_TUPLE:
-            if(vs->array.items) { for (int i = 0; i < vs->array.len; i++) value_release(vs->array.items[i]); free(vs->array.items); }
+        case VAL_STRING:
+            if (vs->str_val) free(vs->str_val);
+            break;
+        case VAL_ARRAY:
+        case VAL_SET:
+        case VAL_TUPLE:
+            if (vs->array.items) {
+                for (int i = 0; i < vs->array.len; i++) value_release(vs->array.items[i]);
+                free(vs->array.items);
+            }
             break;
         case VAL_DICT:
-            if(vs->dict.entries) {
-                for (int i = 0; i < vs->dict.cap; i++) if (vs->dict.entries[i].key) { value_release(vs->dict.entries[i].key); value_release(vs->dict.entries[i].val); }
+            if (vs->dict.entries) {
+                for (int i = 0; i < vs->dict.cap; i++) {
+                    if (vs->dict.entries[i].key) {
+                        value_release(vs->dict.entries[i].key);
+                        value_release(vs->dict.entries[i].val);
+                    }
+                }
                 free(vs->dict.entries);
             }
             break;
         case VAL_FUNCTION:
-            if (vs->func.owns_chunk && vs->func.chunk) { chunk_free(vs->func.chunk); free(vs->func.chunk); }
-            if (vs->func.name) free(vs->func.name); if (vs->func.closure) env_free(vs->func.closure);
+            if (vs->func.owns_chunk && vs->func.chunk) {
+                chunk_free(vs->func.chunk);
+                free(vs->func.chunk);
+            }
+            if (vs->func.name) free(vs->func.name);
+    if (vs->func.closure) env_free(vs->func.closure);
             if (vs->func.owns_params && vs->func.params) {
-                for (int i = 0; i < vs->func.param_count; i++) { free(vs->func.params[i].name); if(vs->func.params[i].type_hint) free(vs->func.params[i].type_hint); }
+                for (int i = 0; i < vs->func.param_count; i++) {
+                    free(vs->func.params[i].name);
+                    if (vs->func.params[i].type_hint) free(vs->func.params[i].type_hint);
+                }
                 free(vs->func.params);
             }
             break;
-        case VAL_BUILTIN: if (vs->builtin.name) free(vs->builtin.name); break;
-        default: break;
+        case VAL_BUILTIN:
+            if (vs->builtin.name) free(vs->builtin.name);
+            break;
+        default:
+            break;
     }
     free(vs);
 }
@@ -75,11 +97,14 @@ Value value_array_get(Value arr, long long idx) {
     return (idx < 0 || idx >= vs->array.len) ? 0 : vs->array.items[idx];
 }
 Value value_array_pop(Value arr, long long idx) {
-    ValueStruct *vs = AS_PTR(arr); if (vs->array.len == 0) return 0;
-    if (idx < 0) idx += vs->array.len; if (idx < 0 || idx >= vs->array.len) return 0;
+    ValueStruct *vs = AS_PTR(arr);
+    if (vs->array.len == 0) return 0;
+    if (idx < 0) idx += vs->array.len;
+    if (idx < 0 || idx >= vs->array.len) return 0;
     Value res = vs->array.items[idx];
-    memmove(&vs->array.items[idx], &vs->array.items[idx+1], (vs->array.len - idx - 1) * sizeof(Value));
-    vs->array.len--; return res;
+    memmove(&vs->array.items[idx], &vs->array.items[idx + 1], (vs->array.len - idx - 1) * sizeof(Value));
+    vs->array.len--;
+    return res;
 }
 void value_array_extend(Value arr, Value other) {
     if (VAL_TYPE(other) != VAL_ARRAY) return;
@@ -96,7 +121,9 @@ void value_array_sort(Value arr) {
 }
 void value_array_insert(Value arr, long long idx, Value item) {
     ValueStruct *vs = AS_PTR(arr);
-    if (idx < 0) idx += vs->array.len; if (idx < 0) idx = 0; if (idx > vs->array.len) idx = vs->array.len;
+    if (idx < 0) idx += vs->array.len;
+    if (idx < 0) idx = 0;
+    if (idx > vs->array.len) idx = vs->array.len;
     if (vs->array.len >= vs->array.cap) {
         int new_cap = vs->array.cap < 8 ? 8 : vs->array.cap * 2;
         vs->array.items = realloc(vs->array.items, new_cap * sizeof(Value)); vs->array.cap = new_cap;
@@ -123,11 +150,19 @@ void value_dict_set(Value dict, Value key, Value val) {
         value_release(vs->dict.entries[i].val); vs->dict.entries[i].val = value_retain(val); vs->dict.version++; return;
     }
     if (vs->dict.cap == 0 || vs->dict.len >= vs->dict.cap * 0.75) {
-        int old_cap = vs->dict.cap; DictEntry *old_entries = vs->dict.entries;
+        int old_cap = vs->dict.cap;
+        DictEntry *old_entries = vs->dict.entries;
         int new_cap = (old_cap < 8) ? 8 : old_cap * 2;
-        vs->dict.entries = calloc(new_cap, sizeof(DictEntry)); vs->dict.cap = new_cap;
-        int old_len = vs->dict.len; vs->dict.len = 0;
-        for (int i = 0; i < old_cap; i++) if (old_entries && old_entries[i].key) { value_dict_set(dict, old_entries[i].key, old_entries[i].val); value_release(old_entries[i].key); value_release(old_entries[i].val); }
+        vs->dict.entries = calloc(new_cap, sizeof(DictEntry));
+        vs->dict.cap = new_cap;
+        vs->dict.len = 0;
+        for (int i = 0; i < old_cap; i++) {
+            if (old_entries && old_entries[i].key) {
+                value_dict_set(dict, old_entries[i].key, old_entries[i].val);
+                value_release(old_entries[i].key);
+                value_release(old_entries[i].val);
+            }
+        }
         if (old_entries) free(old_entries);
         vs = AS_PTR(dict);
     }
@@ -143,7 +178,8 @@ Value value_dict_get(Value dict, Value key) {
 }
 
 Value value_set_new(void) { Value v = alloc_v(VAL_SET); AS_SET(v).cap = 8; AS_SET(v).items = calloc(8, sizeof(Value)); return v; }
-bool value_set_has(Value set, Value item) { ValueStruct *vs = AS_PTR(set); for (int i = 0; i < vs->set.len; i++) if (value_equals(vs->set.items[i], item)) return true; return false; }
+bool value_set_has(Value set, Value item) { ValueStruct *vs = AS_PTR(set); for (int i = 0; i < vs->set.len; i++) if (value_equals(vs->set.items[i], item)) return true;
+    return false; }
 void value_set_add(Value set, Value item) {
     if (!value_set_has(set, item)) {
         ValueStruct *vs = AS_PTR(set);
@@ -165,7 +201,8 @@ bool value_set_remove(Value set, Value item) {
 Value value_tuple_new(Value *items, int count) {
     Value v = alloc_v(VAL_TUPLE); AS_TUPLE(v).len = count; AS_TUPLE(v).cap = count;
     AS_TUPLE(v).items = malloc((count > 0 ? count : 1) * sizeof(Value));
-    for (int i = 0; i < count; i++) AS_TUPLE(v).items[i] = value_retain(items[i]); return v;
+    for (int i = 0; i < count; i++) AS_TUPLE(v).items[i] = value_retain(items[i]);
+    return v;
 }
 
 Value value_function(const char *name, Param *params, int param_count, ASTNode *body, Env *closure) {
@@ -222,26 +259,27 @@ bool value_equals(Value a, Value b) {
             if (AS_ARRAY(a).len != AS_ARRAY(b).len) return false;
             for (int i = 0; i < AS_ARRAY(a).len; i++)
                 if (!value_equals(AS_ARRAY(a).items[i], AS_ARRAY(b).items[i])) return false;
-            return true;
+    return true;
         }
         case VAL_TUPLE: {
             if (AS_TUPLE(a).len != AS_TUPLE(b).len) return false;
             for (int i = 0; i < AS_TUPLE(a).len; i++)
                 if (!value_equals(AS_TUPLE(a).items[i], AS_TUPLE(b).items[i])) return false;
-            return true;
+    return true;
         }
         case VAL_SET: {
             if (AS_SET(a).len != AS_SET(b).len) return false;
             for (int i = 0; i < AS_SET(a).len; i++)
                 if (!value_set_has(b, AS_SET(a).items[i])) return false;
-            return true;
+    return true;
         }
         default: return false;
     }
 }
 int value_compare(Value a, Value b) {
     ValueType ta = VAL_TYPE(a), tb = VAL_TYPE(b);
-    if (ta == VAL_INT && tb == VAL_INT) { long long va = AS_INT(a), vb = AS_INT(b); return (va < vb) ? -1 : (va > vb); }
+    if (ta == VAL_INT && tb == VAL_INT) { long long va = AS_INT(a), vb = AS_INT(b);
+    return (va < vb) ? -1 : (va > vb); }
     if ((ta == VAL_INT || ta == VAL_FLOAT) && (tb == VAL_INT || tb == VAL_FLOAT)) {
         double va = (ta == VAL_INT) ? (double)AS_INT(a) : AS_FLOAT(a); double vb = (tb == VAL_INT) ? (double)AS_INT(b) : AS_FLOAT(b); return (va < vb) ? -1 : (va > vb);
     }
@@ -249,8 +287,14 @@ int value_compare(Value a, Value b) {
     return 0;
 }
 bool value_truthy(Value v) {
-    ValueType t = VAL_TYPE(v); if (t == VAL_NULL) return false; if (t == VAL_BOOL) return AS_BOOL(v) > 0; if (t == VAL_INT) return AS_INT(v) != 0;
-    if (t == VAL_FLOAT) return AS_FLOAT(v) != 0.0; if (t == VAL_STRING) return AS_STR(v)[0] != '\0'; if (t == VAL_ARRAY || t == VAL_SET || t == VAL_TUPLE) return AS_ARRAY(v).len > 0; return true;
+    ValueType t = VAL_TYPE(v);
+    if (t == VAL_NULL) return false;
+    if (t == VAL_BOOL) return AS_BOOL(v) > 0;
+    if (t == VAL_INT) return AS_INT(v) != 0;
+    if (t == VAL_FLOAT) return AS_FLOAT(v) != 0.0;
+    if (t == VAL_STRING) return AS_STR(v)[0] != '\0';
+    if (t == VAL_ARRAY || t == VAL_SET || t == VAL_TUPLE) return AS_ARRAY(v).len > 0;
+    return true;
 }
 char *value_to_string(Value v) {
     char buf[512];
@@ -295,7 +339,7 @@ Value value_add(Value a, Value b) {
         rv->array.len = 0;
         for (int i = 0; i < la; i++) rv->array.items[rv->array.len++] = value_retain(AS_ARRAY(a).items[i]);
         for (int i = 0; i < lb; i++) rv->array.items[rv->array.len++] = value_retain(AS_ARRAY(b).items[i]);
-        return r;
+    return r;
     }
     return 0;
 }
@@ -310,7 +354,7 @@ Value value_sub(Value a, Value b) {
         Value r = value_set_new();
         for (int i = 0; i < AS_SET(a).len; i++)
             if (!value_set_has(b, AS_SET(a).items[i])) value_set_add(r, AS_SET(a).items[i]);
-        return r;
+    return r;
     }
     return 0;
 }
@@ -335,7 +379,8 @@ Value value_mul(Value a, Value b) {
     return 0;
 }
 Value value_div(Value a, Value b) { double va = (VAL_TYPE(a) == VAL_INT) ? (double)AS_INT(a) : AS_FLOAT(a); double vb = (VAL_TYPE(b) == VAL_INT) ? (double)AS_INT(b) : AS_FLOAT(b); return (vb == 0) ? 0 : value_float(va / vb); }
-Value value_mod(Value a, Value b) { if (IS_INT(a) && IS_INT(b)) return (AS_INT(b) == 0) ? 0 : value_int(AS_INT(a) % AS_INT(b)); return 0; }
+Value value_mod(Value a, Value b) { if (IS_INT(a) && IS_INT(b)) return (AS_INT(b) == 0) ? 0 : value_int(AS_INT(a) % AS_INT(b));
+    return 0; }
 Value value_pow(Value a, Value b) {
     /* Integer ** non-negative integer => return integer result */
     if (VAL_TYPE(a) == VAL_INT && VAL_TYPE(b) == VAL_INT) {
@@ -352,7 +397,9 @@ Value value_pow(Value a, Value b) {
     double vb = (VAL_TYPE(b) == VAL_INT) ? (double)AS_INT(b) : AS_FLOAT(b);
     return value_float(pow(va, vb));
 }
-Value value_neg(Value v) { if (IS_INT(v)) return value_int(-AS_INT(v)); if (VAL_TYPE(v) == VAL_FLOAT) return value_float(-AS_FLOAT(v)); return 0; }
+Value value_neg(Value v) { if (IS_INT(v)) return value_int(-AS_INT(v));
+    if (VAL_TYPE(v) == VAL_FLOAT) return value_float(-AS_FLOAT(v));
+    return 0; }
 void value_immortals_init(void) {}
 void value_immortals_free(void) {}
 void value_dict_clear(Value dict) {
@@ -364,7 +411,8 @@ Value value_dict_get_cached(Value dict, Value key, int *index, unsigned int *ver
     ValueStruct *vs = AS_PTR(dict); if (*version == vs->dict.version && *index >= 0 && *index < vs->dict.cap) { if (vs->dict.entries[*index].key && value_equals(vs->dict.entries[*index].key, key)) return vs->dict.entries[*index].val; }
     *index = value_dict_find_index(dict, key); *version = vs->dict.version; return (*index >= 0) ? vs->dict.entries[*index].val : 0;
 }
-int value_dict_find_index(Value dict, Value key) { ValueStruct *vs = AS_PTR(dict); for (int i = 0; i < vs->dict.cap; i++) if (vs->dict.entries[i].key && value_equals(vs->dict.entries[i].key, key)) return i; return -1; }
+int value_dict_find_index(Value dict, Value key) { ValueStruct *vs = AS_PTR(dict); for (int i = 0; i < vs->dict.cap; i++) if (vs->dict.entries[i].key && value_equals(vs->dict.entries[i].key, key)) return i;
+    return -1; }
 bool value_dict_remove(Value dict, Value key) {
     ValueStruct *vs = AS_PTR(dict); int idx = value_dict_find_index(dict, key);
     if (idx >= 0) { value_release(vs->dict.entries[idx].key); value_release(vs->dict.entries[idx].val); vs->dict.entries[idx].key = 0; vs->dict.entries[idx].val = 0; vs->dict.len--; vs->dict.version++; return true; }

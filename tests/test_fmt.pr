@@ -9,7 +9,7 @@ func assert(label, got, expected) {
     if str(got) == str(expected) {
         pass += 1
     } else {
-        print("FAIL:", label, "  got:", got, "expected:", expected)
+        output("FAIL:", label, "  got:", got, "expected:", expected)
         fail += 1
     }
 }
@@ -18,7 +18,7 @@ func assert_near(label, got, expected, tol) {
     let diff = got - expected
     if diff < 0 { diff = -diff }
     if diff <= tol { pass += 1 }
-    else { print("FAIL:", label, " got:", got, "expected~", expected); fail += 1 }
+    else { output("FAIL:", label, " got:", got, "expected~", expected); fail += 1 }
 }
 
 /* ── fmtInt ────────────────────────────────────────────────── */
@@ -141,6 +141,6 @@ assert("fmtTable empty rows", fmtTable(["X"], []),
        "+---+\n| X |\n+---+\n+---+")
 assert("fmtTable no headers", fmtTable([], [["a"]]), "")
 
-print("Results:", str(pass), "passed,", str(fail), "failed")
-if fail == 0 { print("[PASS] test_fmt") }
-else         { print("[FAIL] test_fmt") }
+output("Results:", str(pass), "passed,", str(fail), "failed")
+if fail == 0 { output("[PASS] test_fmt") }
+else         { output("[FAIL] test_fmt") }

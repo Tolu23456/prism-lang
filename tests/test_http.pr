@@ -208,4 +208,4 @@ describe("Cookies", fn() {
     })
 })
 
-print("HTTP test suite completed")
+output("HTTP test suite completed")

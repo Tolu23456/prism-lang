@@ -9,7 +9,7 @@ func assert(label, got, expected) {
     if str(got) == str(expected) {
         pass += 1
     } else {
-        print("FAIL:", label, "  got:", got, "expected:", expected)
+        output("FAIL:", label, "  got:", got, "expected:", expected)
         fail += 1
     }
 }
@@ -119,6 +119,6 @@ let sp2 = pathSplit("file.txt")
 assert("split no-dir dir",  sp2[0], ".")
 assert("split no-dir base", sp2[1], "file.txt")
 
-print("Results:", str(pass), "passed,", str(fail), "failed")
-if fail == 0 { print("[PASS] test_path") }
-else         { print("[FAIL] test_path") }
+output("Results:", str(pass), "passed,", str(fail), "failed")
+if fail == 0 { output("[PASS] test_path") }
+else         { output("[FAIL] test_path") }

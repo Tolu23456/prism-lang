@@ -136,6 +136,7 @@ typedef enum {
 
     /* ── module system ──────────────────────────────────────── */
     OP_IMPORT,              /* operand = module path const index     */
+    OP_IMPORT_SYMBOLS,
     OP_LINK_STYLE,          /* operand = PSS path const index        */
 
     /* ── type checking ──────────────────────────────────────── */
@@ -176,7 +177,7 @@ static inline int opcode_has_operand(Opcode op) {
         case OP_GET_ATTR:      case OP_SET_ATTR:     case OP_SAFE_GET_ATTR:
         case OP_POP_N:         case OP_CALL:         case OP_MAKE_FUNCTION:
         case OP_FOR_ITER:      case OP_BUILD_FSTRING:
-        case OP_IMPORT:        case OP_LINK_STYLE:
+        case OP_IMPORT:        case OP_IMPORT_SYMBOLS: case OP_LINK_STYLE:
         case OP_IS_TYPE:       case OP_MATCH_TYPE:
         case OP_EXPECT:        case OP_TAIL_CALL:
         case OP_TRY_BEGIN:
@@ -275,6 +276,7 @@ static inline const char *opcode_name(Opcode op) {
         case OP_FOR_ITER:            return "FOR_ITER";
         case OP_BUILD_FSTRING:       return "BUILD_FSTRING";
         case OP_IMPORT:              return "IMPORT";
+        case OP_IMPORT_SYMBOLS:      return "IMPORT_SYMBOLS";
         case OP_LINK_STYLE:          return "LINK_STYLE";
         case OP_IS_TYPE:             return "IS_TYPE";
         case OP_MATCH_TYPE:          return "MATCH_TYPE";
