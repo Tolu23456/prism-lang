@@ -18,12 +18,12 @@ class MQTTClient {
         username = username ?? ""
         password = password ?? ""
         this.connected = true
-        print("[MQTT] Connected to " + this.broker_url + " as " + this.client_id)
+        output("[MQTT] Connected to " + this.broker_url + " as " + this.client_id)
     }
     
     func disconnect() {
         this.connected = false
-        print("[MQTT] Disconnected")
+        output("[MQTT] Disconnected")
     }
     
     func publish(topic, payload, qos) {
@@ -32,20 +32,20 @@ class MQTTClient {
             error("MQTT client not connected")
         }
         let msg = type(payload) == "string" ? payload : json.stringify(payload)
-        print("[MQTT] Publishing to " + topic + ": " + msg)
+        output("[MQTT] Publishing to " + topic + ": " + msg)
     }
     
     func subscribe(topic, qos) {
         qos = qos ?? 0
         this.subscriptions[topic] = {qos: qos, active: true}
-        print("[MQTT] Subscribed to " + topic)
+        output("[MQTT] Subscribed to " + topic)
     }
     
     func unsubscribe(topic) {
         if has(this.subscriptions, topic) {
             remove_key(this.subscriptions, topic)
         }
-        print("[MQTT] Unsubscribed from " + topic)
+        output("[MQTT] Unsubscribed from " + topic)
     }
     
     func on_message(handler) {

@@ -7,7 +7,7 @@ func assert(label, got, expected) {
     if got == expected {
         pass += 1
     } else {
-        print("FAIL:", label, "| got:", got, "expected:", expected)
+        output("FAIL:", label, "| got:", got, "expected:", expected)
         fail += 1
     }
 }
@@ -153,6 +153,6 @@ func tco_sum(n, acc) {
 assert("tco_sum(100)", tco_sum(100, 0), 5050)
 assert("tco_sum(500)", tco_sum(500, 0), 125250)
 
-print("\nResults:", pass, "passed,", fail, "failed")
-if fail == 0 { print("[PASS] test_recursion_advanced") }
-else { print("[FAIL] test_recursion_advanced") }
+output("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { output("[PASS] test_recursion_advanced") }
+else { output("[FAIL] test_recursion_advanced") }

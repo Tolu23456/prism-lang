@@ -123,3 +123,27 @@ func reset() {
     _errors = []
     _suites = []
 }
+
+func assertEqual(got, expected) {
+    if got == expected {
+        # pass
+    } else {
+        error(f"expected {str(expected)} but got {str(got)}")
+    }
+}
+
+func assertTrue(cond) {
+    if cond {
+        # pass
+    } else {
+        error("expected true")
+    }
+}
+
+func assertFalse(cond) {
+    if not cond {
+        # pass
+    } else {
+        error("expected false")
+    }
+}

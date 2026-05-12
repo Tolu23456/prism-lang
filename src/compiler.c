@@ -105,11 +105,11 @@ static int resolve_local(Compiler *c, const char *name) {
         if (strcmp(c->locals[i].name, name) == 0) return i;
     return -1;
 }
-static int add_local(Compiler *c, const char *name, bool is_const) {
+__attribute__((unused)) static int add_local(Compiler *c, const char *name, bool is_const) {
     if (c->local_count >= MAX_LOCALS) return -1;
     for (int i = c->local_count - 1; i >= 0; i--) {
         if (c->locals[i].depth != -1 && c->locals[i].depth < c->scope_depth) break;
-        if (strcmp(c->locals[i].name, name) == 0) return -1;
+    if (strcmp(c->locals[i].name, name) == 0) return -1;
     }
     Local *l = &c->locals[c->local_count++];
     l->name = name;
@@ -168,33 +168,32 @@ static Value try_constant_fold(ASTNode *node) {
     if ((strcmp(op, "/") == 0 || strcmp(op, "%") == 0 || strcmp(op, "//") == 0) &&
         ((R_int && R->int_lit.value == 0) || (R_float && R->float_lit.value == 0.0)))
         return (Value)0;
-
     if (L_int && R_int) {
         long long a = L->int_lit.value;
         long long b = R->int_lit.value;
         if      (strcmp(op, "+")  == 0) return value_int(a + b);
-        if      (strcmp(op, "-")  == 0) return value_int(a - b);
+    if      (strcmp(op, "-")  == 0) return value_int(a - b);
         if      (strcmp(op, "*")  == 0) return value_int(a * b);
-        if      (strcmp(op, "/")  == 0) return value_float((double)a / (double)b);
+    if      (strcmp(op, "/")  == 0) return value_float((double)a / (double)b);
         if      (strcmp(op, "//") == 0) {
             long long q = a / b;
             if ((a ^ b) < 0 && q * b != a) q--;
-            return value_int(q);
+    return value_int(q);
         }
         if      (strcmp(op, "%")  == 0) return value_int(a % b);
-        if      (strcmp(op, "**") == 0) { if (b >= 0) { long long r=1,bb=a,ee=b; while(ee>0){if(ee&1)r*=bb;bb*=bb;ee>>=1;} return value_int(r); } return value_float(pow((double)a,(double)b)); }
+    if      (strcmp(op, "**") == 0) { if (b >= 0) { long long r=1,bb=a,ee=b; while(ee>0){if(ee&1)r*=bb;bb*=bb;ee>>=1;} return value_int(r); } return value_float(pow((double)a,(double)b)); }
         if      (strcmp(op, "==") == 0) return value_bool(a == b ? 1 : 0);
-        if      (strcmp(op, "!=") == 0) return value_bool(a != b ? 1 : 0);
+    if      (strcmp(op, "!=") == 0) return value_bool(a != b ? 1 : 0);
         if      (strcmp(op, "<")  == 0) return value_bool(a <  b ? 1 : 0);
-        if      (strcmp(op, "<=") == 0) return value_bool(a <= b ? 1 : 0);
+    if      (strcmp(op, "<=") == 0) return value_bool(a <= b ? 1 : 0);
         if      (strcmp(op, ">")  == 0) return value_bool(a >  b ? 1 : 0);
-        if      (strcmp(op, ">=") == 0) return value_bool(a >= b ? 1 : 0);
+    if      (strcmp(op, ">=") == 0) return value_bool(a >= b ? 1 : 0);
         if      (strcmp(op, "&")  == 0) return value_int(a & b);
-        if      (strcmp(op, "|")  == 0) return value_int(a | b);
+    if      (strcmp(op, "|")  == 0) return value_int(a | b);
         if      (strcmp(op, "^")  == 0) return value_int(a ^ b);
-        if      (strcmp(op, "<<") == 0) return (b >= 0 && b < 64) ? value_int(a << b) : value_int(0);
+    if      (strcmp(op, "<<") == 0) return (b >= 0 && b < 64) ? value_int(a << b) : value_int(0);
         if      (strcmp(op, ">>") == 0) return (b >= 0 && b < 64) ? value_int(a >> b) : value_int(0);
-        return (Value)0;
+    return (Value)0;
     }
 
     /* Mixed int/float */
@@ -302,11 +301,11 @@ static void compile_node(Compiler *c, ASTNode *node) {
          * skip OP_PUSH_SCOPE/OP_POP_SCOPE, eliminating a malloc/free per call. */
         bool push_scope = block_has_any_decl(node);
         if (push_scope) emit1(c, OP_PUSH_SCOPE, ln);
-        if (c->scope_depth > 0) c->block_depth++;
+    if (c->scope_depth > 0) c->block_depth++;
         for (int i = 0; i < node->block.count; i++)
             compile_node(c, node->block.stmts[i]);
         if (c->scope_depth > 0) c->block_depth--;
-        if (push_scope) emit1(c, OP_POP_SCOPE, ln);
+    if (push_scope) emit1(c, OP_POP_SCOPE, ln);
         break;
     }
 
@@ -1177,6 +1176,7 @@ static void compile_expr(Compiler *c, ASTNode *node) {
 
 int compile(ASTNode *program, Chunk *out, char *error_buf, int error_buf_len) {
     Compiler c;
+    memset(&c, 0, sizeof(c));
     c.chunk      = out;
     c.had_error  = 0;
     c.error_msg[0] = '\0';
@@ -1188,7 +1188,6 @@ int compile(ASTNode *program, Chunk *out, char *error_buf, int error_buf_len) {
 
     if (c.had_error && error_buf)
         snprintf(error_buf, error_buf_len, "%s", c.error_msg);
-
     return c.had_error ? 1 : 0;
 }
 
@@ -1208,6 +1207,5 @@ int compile_module(ASTNode *program, Chunk *out, char *error_buf, int error_buf_
 
     if (c.had_error && error_buf)
         snprintf(error_buf, error_buf_len, "%s", c.error_msg);
-
     return c.had_error ? 1 : 0;
 }

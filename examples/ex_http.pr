@@ -3,7 +3,7 @@
 import "lib/http"
 
 func exampleBasicRouting() {
-    print("\n=== Basic HTTP Routing ===")
+    output("\n=== Basic HTTP Routing ===")
     
     let router = Router()
     
@@ -25,11 +25,11 @@ func exampleBasicRouting() {
         return res.status(201).json({message: "Created", data: body})
     })
     
-    print("Router configured with 3 routes")
+    output("Router configured with 3 routes")
 }
 
 func exampleRequestBuilding() {
-    print("\n=== HTTP Request Building ===")
+    output("\n=== HTTP Request Building ===")
     
     let req = HttpRequest("GET", "https://api.example.com/data")
         .header("Authorization", "Bearer token123")
@@ -37,56 +37,56 @@ func exampleRequestBuilding() {
         .timeout(5000)
         .build()
     
-    print("Request built:")
-    print("  Method: " + req.method)
-    print("  URL: " + req.url)
-    print("  Timeout: 5000ms")
-    // print("  Headers: " + str(req.headers))
+    output("Request built:")
+    output("  Method: " + req.method)
+    output("  URL: " + req.url)
+    output("  Timeout: 5000ms")
+    // output("  Headers: " + str(req.headers))
 }
 
 func exampleResponseBuilding() {
-    print("\n=== HTTP Response Building ===")
+    output("\n=== HTTP Response Building ===")
     
     let res = HttpResponse()
         .status(200)
         .header("Content-Type", "application/json")
         .json({success: true, data: [1, 2, 3]})
     
-    print("Response built:")
-    print("  Status: 200")
-    print("  Type: application/json")
+    output("Response built:")
+    output("  Status: 200")
+    output("  Type: application/json")
 }
 
 func exampleURLParsing() {
-    print("\n=== URL Parsing ===")
+    output("\n=== URL Parsing ===")
     
     let url = "https://user:pass@example.com:8080/path/to/resource?key=value&foo=bar#section"
     let parsed = parseUrl(url)
     
-    print("Parsed URL:")
-    print("  Protocol: " + parsed.protocol)
-    print("  Host: " + parsed.host)
-    print("  Port: " + str(parsed.port))
-    print("  Path: " + parsed.pathname)
-    print("  Query: " + parsed.search)
-    print("  Hash: " + parsed.hash)
+    output("Parsed URL:")
+    output("  Protocol: " + parsed.protocol)
+    output("  Host: " + parsed.host)
+    output("  Port: " + str(parsed.port))
+    output("  Path: " + parsed.pathname)
+    output("  Query: " + parsed.search)
+    output("  Hash: " + parsed.hash)
 }
 
 func exampleURLEncoding() {
-    print("\n=== URL Encoding/Decoding ===")
+    output("\n=== URL Encoding/Decoding ===")
     
     let original = "hello world & special chars!"
     let encoded = encodeUrl(original)
     let decoded = decodeUrl(encoded)
     
-    print("Original: " + original)
-    print("Encoded: " + encoded)
-    print("Decoded: " + decoded)
-    print("Match: " + str(original == decoded))
+    output("Original: " + original)
+    output("Encoded: " + encoded)
+    output("Decoded: " + decoded)
+    output("Match: " + str(original == decoded))
 }
 
 func exampleMimeTypes() {
-    print("\n=== MIME Type Detection ===")
+    output("\n=== MIME Type Detection ===")
     
     let mimeExamples = [
         {file: "index.html", expected: "text/html"},
@@ -97,16 +97,16 @@ func exampleMimeTypes() {
         {file: "video.mp4", expected: "video/mp4"}
     ]
     
-    print("MIME type detection:")
+    output("MIME type detection:")
     for example in mimeExamples {
         let mime = getMimeType(example.file)
         let match = mime == example.expected ? "✓" : "✗"
-        print("  " + match + " " + example.file + " -> " + mime)
+        output("  " + match + " " + example.file + " -> " + mime)
     }
 }
 
 func exampleCookies() {
-    print("\n=== Cookie Management ===")
+    output("\n=== Cookie Management ===")
     
     let res = HttpResponse()
     
@@ -125,13 +125,13 @@ func exampleCookies() {
         maxAge: 86400
     })
     
-    print("Cookies set:")
-    print("  sessionId (1 hour, httpOnly)")
-    print("  preferences (24 hours)")
+    output("Cookies set:")
+    output("  sessionId (1 hour, httpOnly)")
+    output("  preferences (24 hours)")
 }
 
 func exampleRESTAPI() {
-    print("\n=== Complete REST API Example ===")
+    output("\n=== Complete REST API Example ===")
     
     // Simple in-memory data store
     let users = [
@@ -197,16 +197,16 @@ func exampleRESTAPI() {
         return res.status(404).json({error: "User not found"})
     })
     
-    print("REST API configured:")
-    print("  GET /users")
-    print("  GET /users/:id")
-    print("  POST /users")
-    print("  PUT /users/:id")
-    print("  DELETE /users/:id")
+    output("REST API configured:")
+    output("  GET /users")
+    output("  GET /users/:id")
+    output("  POST /users")
+    output("  PUT /users/:id")
+    output("  DELETE /users/:id")
 }
 
 func exampleErrorHandling() {
-    print("\n=== Error Handling ===")
+    output("\n=== Error Handling ===")
     
     let router = Router()
     
@@ -228,7 +228,7 @@ func exampleErrorHandling() {
         })
     })
     
-    print("Error handling configured")
+    output("Error handling configured")
 }
 
 // Run all examples
@@ -242,4 +242,4 @@ exampleCookies()
 exampleRESTAPI()
 exampleErrorHandling()
 
-print("\n=== All HTTP examples completed ===")
+output("\n=== All HTTP examples completed ===")

@@ -7,15 +7,15 @@
  * - Large object churn
  */
 
-print("=== GC Benchmark Suite ===")
-print("")
+output("=== GC Benchmark Suite ===")
+output("")
 
 func bench(name, f, iters) {
     let t0 = clock()
     let i = 0
     while i < iters { f(); i = i + 1 }
     let elapsed = clock() - t0
-    print(name + ": " + str(round(elapsed * 1000.0, 2)) + " ms")
+    output(name + ": " + str(round(elapsed * 1000.0, 2)) + " ms")
 }
 
 /* ── Short-lived allocation (tests young-gen throughput) ─────── */
@@ -99,7 +99,7 @@ func gc_stress() {
     return total
 }
 
-print("--- Allocation benchmarks ---")
+output("--- Allocation benchmarks ---")
 bench("short-lived arrays (1000 iters)", alloc_pressure, 100)
 bench("dict churn (200 dicts/iter)",     dict_churn,     100)
 bench("survivor promotion (100 objs)",   survivors,      100)
@@ -108,10 +108,10 @@ bench("recursive tree depth=10",         tree_bench,     20)
 bench("array growth to 10000",           array_growth,   100)
 bench("gc stress (5000 tiny/iter)",      gc_stress,      10)
 
-print("")
-print("--- GC Statistics ---")
-print("(Run with --mem-report for full GC stats from the runtime)")
-print("  Example: ./prism --mem-report benchmarks/bench_gc.pr")
+output("")
+output("--- GC Statistics ---")
+output("(Run with --mem-report for full GC stats from the runtime)")
+output("  Example: ./prism --mem-report benchmarks/bench_gc.pr")
 
-print("")
-print("=== GC benchmark complete ===")
+output("")
+output("=== GC benchmark complete ===")

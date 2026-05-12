@@ -60,38 +60,38 @@ func next_prime(n) {
 
 /* ── Demo ───────────────────────────────────────────── */
 let primes = sieve(100)
-print("Primes up to 100 (" + str(len(primes)) + " total):")
-print(primes)
+output("Primes up to 100 (" + str(len(primes)) + " total):")
+output(primes)
 
-print("\nFirst 10 primes:", primes[:10])
-print("Primes between 50-100:", filter(primes, p => p >= 50))
+output("\nFirst 10 primes:", primes[:10])
+output("Primes between 50-100:", filter(primes, p => p >= 50))
 
-print("\nPrime factorizations:")
+output("\nPrime factorizations:")
 for n in [12, 30, 100, 360, 1024, 9973] {
-    print(" ", n, "=", prime_factors(n))
+    output(" ", n, "=", prime_factors(n))
 }
 
-print("\nPrimality checks:")
+output("\nPrimality checks:")
 for n in [1, 2, 3, 4, 17, 97, 100, 101, 1009] {
-    print(" ", n, "->", is_prime(n) ? "prime" : "composite")
+    output(" ", n, "->", is_prime(n) ? "prime" : "composite")
 }
 
-print("\nTwin primes up to 100:")
+output("\nTwin primes up to 100:")
 let twins = []
 for i in 0..len(primes)-1 {
     if i + 1 < len(primes) and primes[i+1] - primes[i] == 2 {
         push(twins, [primes[i], primes[i+1]])
     }
 }
-for pair in twins { print(" ", pair[0], "and", pair[1]) }
+for pair in twins { output(" ", pair[0], "and", pair[1]) }
 
-print("\nGoldbach conjecture check (even numbers 4..30):")
+output("\nGoldbach conjecture check (even numbers 4..30):")
 for n in 4..31 step 2 {
     let found = false
     for p in primes {
         if p > n { break }
         if is_prime(n - p) {
-            print(" ", n, "=", p, "+", n - p)
+            output(" ", n, "=", p, "+", n - p)
             found = true
             break
         }

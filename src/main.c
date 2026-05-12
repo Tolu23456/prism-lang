@@ -206,7 +206,6 @@ static int run_source_tree(const char *source, const char *filename) {
     interp->filename = filename;
     Value result = interpreter_eval(interp, program, interp->globals);
     if (result) value_release(result);
-    value_release(result);
 
     int exit_code = 0;
     if (interp->had_error) {

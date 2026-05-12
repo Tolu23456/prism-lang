@@ -254,9 +254,10 @@ struct ASTNode {
 
         /* NODE_IMPORT */
         struct {
-            char *path;
-            char *alias;    /* 'as' alias; NULL if none */
-            char *symbol;   /* from X import Y: symbol name; NULL for plain import */
+            char  *path;
+            char  *alias;    /* 'as' alias; NULL if none */
+            char **symbols;  /* array of symbol names; NULL for plain import */
+            int    symbol_count;
         } import_stmt;
 
         /* NODE_CLASS_DECL */

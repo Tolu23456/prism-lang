@@ -5,10 +5,10 @@ let fail = 0
 
 func assert(label, got, expected) {
     if got == expected {
-        print("PASS:", label)
+        output("PASS:", label)
         pass += 1
     } else {
-        print("FAIL:", label, "  got:", got, "expected:", expected)
+        output("FAIL:", label, "  got:", got, "expected:", expected)
         fail += 1
     }
 }
@@ -61,4 +61,4 @@ let d = delete_file(tmp)
 assert("delete_file", d, true)
 assert("file gone after delete", file_exists(tmp), false)
 
-print("\nResults:", pass, "passed,", fail, "failed")
+output("\nResults:", pass, "passed,", fail, "failed")

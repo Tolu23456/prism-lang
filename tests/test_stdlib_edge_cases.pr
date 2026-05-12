@@ -1,3 +1,11 @@
+func assert_eq(got, expected, label) {
+    if got == expected {
+        # pass
+    } else {
+        output(f"[FAIL] {label}: expected {str(expected)} but got {str(got)}")
+        exit(1)
+    }
+}
 /* Comprehensive edge case tests for Prism standard libraries:
    math, strings, collections, json, crypto, iter */
 
@@ -15,7 +23,7 @@ func assert(label, got, expected) {
     if str(got) == str(expected) {
         pass += 1
     } else {
-        print("FAIL:", label, "  got:", got, "  expected:", expected)
+        output("FAIL:", label, "  got:", got, "  expected:", expected)
         fail += 1
     }
 }
@@ -24,17 +32,17 @@ func assert_near(label, got, expected, tol) {
     let diff = got - expected
     if diff < 0 { diff = -diff }
     if diff <= tol { pass += 1 }
-    else { print("FAIL:", label, " got:", got, "expected~", expected); fail += 1 }
+    else { output("FAIL:", label, " got:", got, "expected~", expected); fail += 1 }
 }
 
 func assert_true(label, val) {
     if val == true { pass += 1 }
-    else { print("FAIL:", label, "expected true, got:", val); fail += 1 }
+    else { output("FAIL:", label, "expected true, got:", val); fail += 1 }
 }
 
 func assert_false(label, val) {
     if val == false { pass += 1 }
-    else { print("FAIL:", label, "expected false, got:", val); fail += 1 }
+    else { output("FAIL:", label, "expected false, got:", val); fail += 1 }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -456,6 +464,6 @@ assert("count len",  len(ct), 5)
 assert("count[0]",   ct[0],   0)
 assert("count[4]",   ct[4],   12)
 
-print("Results:", str(pass), "passed,", str(fail), "failed")
-if fail == 0 { print("[PASS] test_stdlib_edge_cases") }
-else         { print("[FAIL] test_stdlib_edge_cases") }
+output("Results:", str(pass), "passed,", str(fail), "failed")
+if fail == 0 { output("[PASS] test_stdlib_edge_cases") }
+else         { output("[FAIL] test_stdlib_edge_cases") }

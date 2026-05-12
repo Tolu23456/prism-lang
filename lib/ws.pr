@@ -16,7 +16,7 @@ class WebSocketServer {
     
     func start() {
         this.connected = true
-        print("[WebSocket] Server listening on port " + str(this.port))
+        output("[WebSocket] Server listening on port " + str(this.port))
     }
     
     func on_message(client_id, data) {
@@ -46,12 +46,12 @@ class WebSocketServer {
     
     func send(client_id, data) {
         let msg = type(data) == "string" ? data : json.stringify(data)
-        print("[WebSocket] Sending to " + str(client_id) + ": " + msg)
+        output("[WebSocket] Sending to " + str(client_id) + ": " + msg)
     }
     
     func close() {
         this.connected = false
-        print("[WebSocket] Server closed")
+        output("[WebSocket] Server closed")
     }
 }
 
@@ -65,7 +65,7 @@ class WebSocketClient {
     
     func connect() {
         this.connected = true
-        print("[WebSocket] Connected to " + this.url)
+        output("[WebSocket] Connected to " + this.url)
     }
     
     func send(data) {
@@ -73,7 +73,7 @@ class WebSocketClient {
             error("WebSocket not connected")
         }
         let msg = type(data) == "string" ? data : json.stringify(data)
-        print("[WebSocket] Sent: " + msg)
+        output("[WebSocket] Sent: " + msg)
     }
     
     func on(event, handler) {
@@ -88,7 +88,7 @@ class WebSocketClient {
     
     func close() {
         this.connected = false
-        print("[WebSocket] Disconnected")
+        output("[WebSocket] Disconnected")
     }
 }
 

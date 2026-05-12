@@ -59,15 +59,17 @@ static void gui_body_append(const char *html) {
 #define ENV_INITIAL_CAP 16
 
 
-/* OPTIMIZED: Use pointer-based hashing for interned strings.
- * Since all identifier strings are interned through gc_intern_cstr(),
- * the pointer value itself provides excellent distribution.
- * This reduces hash computation from O(n) to O(1).
- */
+/* Use a content-based hash (FNV-1a) for environment keys.
+ * While identifier strings are often interned, lookups from the parser
+ * or f-string processor may use newly-allocated strings. */
 static inline unsigned env_hash(const char *s) {
     if (!s) return 0;
-    /* Mix pointer bits with FNV-1a multiplicative constant for distribution */
-    return ((uintptr_t)s ^ 0x517cc1b727220a95ull) * 0xda942042e4dd58b5ull;
+    unsigned h = 2166136261u;
+    while (*s) {
+        h ^= (unsigned char)*s++;
+        h *= 16777619u;
+    }
+    return h;
 }
 
 /* Intern the name through the global GC so we always have a canonical ptr. */
@@ -86,7 +88,7 @@ static void nameset_add(NameSet *s, const char *n) {
     s->names[s->count++] = n;
 }
 
-static void collect_used_names(ASTNode *n, NameSet *set, const char *alias) {
+__attribute__((unused)) static void collect_used_names(ASTNode *n, NameSet *set, const char *alias) {
     if (!n) return;
     switch (n->type) {
         case NODE_IDENT:
@@ -295,8 +297,8 @@ Value env_get_cached(Env *env, const char *name, Env **out_env, int *out_slot) {
             if (e->slots[curr].key == name ||
                 strcmp(e->slots[curr].key, name) == 0) {
                 if (out_env)  *out_env  = e;
-                if (out_slot) *out_slot = (int)curr;
-                return value_retain(e->slots[curr].val);
+    if (out_slot) *out_slot = (int)curr;
+    return value_retain(e->slots[curr].val);
             }
         }
     }
@@ -343,7 +345,7 @@ bool env_is_const(Env *env, const char *name) {
         for (int i = 0; i < e->cap; i++) {
             unsigned curr = (idx + (unsigned)i) & mask;
             if (!e->slots[curr].key) break;
-            if (e->slots[curr].key == name || strcmp(e->slots[curr].key, name) == 0)
+    if (e->slots[curr].key == name || strcmp(e->slots[curr].key, name) == 0)
                 return e->slots[curr].is_const;
         }
     }
@@ -374,7 +376,7 @@ static void builtin_throw(const char *msg) {
 static Value builtin_output(Value *args, int argc) {
     for (int i = 0; i < argc; i++) {
         if (i > 0) printf(" ");
-        if (VAL_TYPE(args[i]) == VAL_STRING)
+    if (VAL_TYPE(args[i]) == VAL_STRING)
             printf("%s", AS_STR(args[i]));
         else
             value_print(args[i]);
@@ -414,7 +416,7 @@ static Value builtin_bool_fn(Value *args, int argc) {
     if (VAL_TYPE(v) == VAL_INT)  return value_bool(AS_INT(v) == 0 ? 0 : (AS_INT(v) < 0 ? -1 : 1));
     if (VAL_TYPE(v) == VAL_STRING) {
         if (strcmp(AS_STR(v), "true")    == 0) return value_bool(1);
-        if (strcmp(AS_STR(v), "false")   == 0) return value_bool(0);
+    if (strcmp(AS_STR(v), "false")   == 0) return value_bool(0);
         if (strcmp(AS_STR(v), "unknown") == 0) return value_bool(-1);
     }
     return value_bool(value_truthy(v) ? 1 : 0);
@@ -432,9 +434,9 @@ static Value builtin_int_fn(Value *args, int argc) {
         const char *s = AS_STR(v);
         if (s[0] == '0' && (s[1] == 'b' || s[1] == 'B'))
             return value_int(strtoll(s + 2, NULL, 2));
-        if (s[0] == '0' && (s[1] == 'o' || s[1] == 'O'))
+    if (s[0] == '0' && (s[1] == 'o' || s[1] == 'O'))
             return value_int(strtoll(s + 2, NULL, 8));
-        return value_int(strtoll(s, NULL, 0));
+    return value_int(strtoll(s, NULL, 0));
     }
     return value_int(0);
 }
@@ -546,7 +548,7 @@ static Value builtin_complex_fn(Value *args, int argc) {
     if (argc >= 1) {
         Value v = args[0];
         if (VAL_TYPE(v) == VAL_COMPLEX)  return value_retain(v);
-        if (VAL_TYPE(v) == VAL_INT)      real = (double)AS_INT(v);
+    if (VAL_TYPE(v) == VAL_INT)      real = (double)AS_INT(v);
         else if (VAL_TYPE(v) == VAL_FLOAT) real = AS_FLOAT(v);
         else if (VAL_TYPE(v) == VAL_STRING) {
             char *end;
@@ -636,12 +638,18 @@ static Value builtin_pow(Value *a, int n) {
         return value_int((long long)r);
     return value_float(r);
 }
-static Value builtin_sin(Value *a, int n) { if (n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(sin(v)); }
-static Value builtin_cos(Value *a, int n) { if (n<1) return value_float(1.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(cos(v)); }
-static Value builtin_tan(Value *a, int n) { if (n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(tan(v)); }
-static Value builtin_asin(Value *a, int n) { if (n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(asin(v)); }
-static Value builtin_acos(Value *a, int n) { if (n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(acos(v)); }
-static Value builtin_atan(Value *a, int n) { if (n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(atan(v)); }
+static Value builtin_sin(Value *a, int n) { if (n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
+    return value_float(sin(v)); }
+static Value builtin_cos(Value *a, int n) { if (n<1) return value_float(1.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
+    return value_float(cos(v)); }
+static Value builtin_tan(Value *a, int n) { if (n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
+    return value_float(tan(v)); }
+static Value builtin_asin(Value *a, int n) { if (n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
+    return value_float(asin(v)); }
+static Value builtin_acos(Value *a, int n) { if (n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
+    return value_float(acos(v)); }
+static Value builtin_atan(Value *a, int n) { if (n<1) return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
+    return value_float(atan(v)); }
 static Value builtin_atan2(Value *a, int n) {
     if (n<2) return value_float(0.0);
     double y=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
@@ -653,13 +661,16 @@ static Value builtin_log(Value *a, int n) {
     double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
     if (n>=2) { /* log(x, base) */
         double base=(VAL_TYPE(a[1])==VAL_INT)?(double)AS_INT(a[1]):AS_FLOAT(a[1]);
-        return value_float(log(v)/log(base));
+    return value_float(log(v)/log(base));
     }
     return value_float(log(v));
 }
-static Value builtin_log2(Value *a, int n)  { if(n<1)return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(log2(v)); }
-static Value builtin_log10(Value *a, int n) { if(n<1)return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(log10(v)); }
-static Value builtin_exp(Value *a, int n)   { if(n<1)return value_float(1.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]); return value_float(exp(v)); }
+static Value builtin_log2(Value *a, int n)  { if(n<1)return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
+    return value_float(log2(v)); }
+static Value builtin_log10(Value *a, int n) { if(n<1)return value_float(0.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
+    return value_float(log10(v)); }
+static Value builtin_exp(Value *a, int n)   { if(n<1)return value_float(1.0); double v=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
+    return value_float(exp(v)); }
 static Value builtin_hypot(Value *a, int n) {
     if(n<2) return value_float(0.0);
     double x=(VAL_TYPE(a[0])==VAL_INT)?(double)AS_INT(a[0]):AS_FLOAT(a[0]);
@@ -675,7 +686,7 @@ static Value builtin_min(Value *a, int n) {
         Value m = AS_ARRAY(a[0]).items[0];
         for (int i = 1; i < AS_ARRAY(a[0]).len; i++)
             if (value_compare(AS_ARRAY(a[0]).items[i], m) < 0) m = AS_ARRAY(a[0]).items[i];
-        return value_retain(m);
+    return value_retain(m);
     }
     Value m = a[0];
     for (int i = 1; i < n; i++) if (value_compare(a[i], m) < 0) m = a[i];
@@ -688,7 +699,7 @@ static Value builtin_max(Value *a, int n) {
         Value m = AS_ARRAY(a[0]).items[0];
         for (int i = 1; i < AS_ARRAY(a[0]).len; i++)
             if (value_compare(AS_ARRAY(a[0]).items[i], m) > 0) m = AS_ARRAY(a[0]).items[i];
-        return value_retain(m);
+    return value_retain(m);
     }
     Value m = a[0];
     for (int i = 1; i < n; i++) if (value_compare(a[i], m) > 0) m = a[i];
@@ -769,7 +780,7 @@ static Value builtin_contains(Value *a, int n) {
     if (VAL_TYPE(a[0]) == VAL_ARRAY) {
         for (int i = 0; i < AS_ARRAY(a[0]).len; i++)
             if (value_equals(AS_ARRAY(a[0]).items[i], a[1])) return value_bool(1);
-        return value_bool(0);
+    return value_bool(0);
     }
     if (VAL_TYPE(a[0]) == VAL_DICT) {
         Value found = value_dict_get(a[0], a[1]);
@@ -960,22 +971,22 @@ static Value builtin_slice(Value *a, int n) {
         long long slen = (long long)strlen(s);
         long long end  = (n >= 3 && VAL_TYPE(a[2]) == VAL_INT) ? AS_INT(a[2]) : slen;
         if (start < 0) start = slen + start;
-        if (end   < 0) end   = slen + end;
+    if (end   < 0) end   = slen + end;
         if (start < 0) start = 0;
-        if (end > slen) end = slen;
+    if (end > slen) end = slen;
         if (start >= end) return value_string("");
-        return value_string(strndup(s + start, (size_t)(end - start)));
+    return value_string(strndup(s + start, (size_t)(end - start)));
     }
     if (VAL_TYPE(a[0]) == VAL_ARRAY) {
         long long alen = AS_ARRAY(a[0]).len;
         long long end  = (n >= 3 && VAL_TYPE(a[2]) == VAL_INT) ? AS_INT(a[2]) : alen;
         if (start < 0) start = alen + start;
-        if (end   < 0) end   = alen + end;
+    if (end   < 0) end   = alen + end;
         if (start < 0) start = 0;
-        if (end > alen) end = alen;
+    if (end > alen) end = alen;
         Value arr = value_array_new();
         for (long long i = start; i < end; i++) value_array_push(arr, AS_ARRAY(a[0]).items[i]);
-        return arr;
+    return arr;
     }
     return value_retain(a[0]);
 }
@@ -1063,7 +1074,7 @@ static Value builtin_has(Value *a, int n) {
     if (VAL_TYPE(a[0]) == VAL_ARRAY) {
         for (int i = 0; i < AS_ARRAY(a[0]).len; i++)
             if (value_equals(AS_ARRAY(a[0]).items[i], a[1])) return value_bool(1);
-        return value_bool(0);
+    return value_bool(0);
     }
     if (VAL_TYPE(a[0]) == VAL_SET) return value_bool(value_set_has(a[0], a[1]) ? 1 : 0);
     return value_bool(0);
@@ -1119,7 +1130,7 @@ static Value builtin_zip(Value *a, int n) {
     int minlen = -1;
     for (int i = 0; i < n; i++) {
         if (VAL_TYPE(a[i]) != VAL_ARRAY) return value_array_new();
-        if (minlen < 0 || AS_ARRAY(a[i]).len < minlen) minlen = AS_ARRAY(a[i]).len;
+    if (minlen < 0 || AS_ARRAY(a[i]).len < minlen) minlen = AS_ARRAY(a[i]).len;
     }
     if (minlen < 0) minlen = 0;
     Value result = value_array_new();
@@ -1195,7 +1206,7 @@ static Value builtin_indexOf(Value *a, int n) {
     if (VAL_TYPE(a[0]) == VAL_ARRAY) {
         for (int i = 0; i < AS_ARRAY(a[0]).len; i++)
             if (value_equals(AS_ARRAY(a[0]).items[i], a[1])) return value_int(i);
-        return value_int(-1);
+    return value_int(-1);
     }
     return value_int(-1);
 }
@@ -1859,8 +1870,7 @@ static void register_builtins(Interpreter *interp) {
     struct { const char *name; BuiltinFn fn; } builtins[] = {
         /* core I/O */
         {"output",      builtin_output},
-        {"print",       builtin_print},
-        {"input",       builtin_input},
+                {"input",       builtin_input},
         /* type functions */
         {"len",         builtin_len},
         {"bool",        builtin_bool_fn},
@@ -2139,8 +2149,11 @@ static char *process_fstring(Interpreter *interp, const char *tmpl, Env *env) {
             char *val_str = NULL;
             if (!ep->had_error) {
                 Value result = eval_node(interp, ea, env);
-                if (result) {
+                if (result && !IS_NULL(result)) {
                     val_str = value_to_string(result);
+                    value_release(result);
+                } else if (result && IS_NULL(result)) {
+                    val_str = strdup("null");
                     value_release(result);
                 }
             }
@@ -2176,18 +2189,18 @@ static Value string_method(Interpreter *interp, Value obj, const char *method,
     if (strcmp(method, "upper") == 0) {
         char *r = strdup(s);
         for (char *p = r; *p; p++) *p = toupper(*p);
-        return value_string_take(r);
+    return value_string_take(r);
     }
     if (strcmp(method, "lower") == 0) {
         char *r = strdup(s);
         for (char *p = r; *p; p++) *p = tolower(*p);
-        return value_string_take(r);
+    return value_string_take(r);
     }
     if (strcmp(method, "capitalize") == 0) {
         char *r = strdup(s);
         if (r[0]) r[0] = toupper(r[0]);
         for (char *p = r+1; *p; p++) *p = tolower(*p);
-        return value_string_take(r);
+    return value_string_take(r);
     }
     if (strcmp(method, "title") == 0) {
         char *r = strdup(s);
@@ -2306,7 +2319,7 @@ static Value string_method(Interpreter *interp, Value obj, const char *method,
     }
     if (strcmp(method, "startswith") == 0) {
         if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_bool(0);
-        return value_bool(strncmp(s, AS_STR(args[0]), strlen(AS_STR(args[0]))) == 0 ? 1 : 0);
+    return value_bool(strncmp(s, AS_STR(args[0]), strlen(AS_STR(args[0]))) == 0 ? 1 : 0);
     }
     if (strcmp(method, "endswith") == 0) {
         if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_bool(0);
@@ -2315,19 +2328,19 @@ static Value string_method(Interpreter *interp, Value obj, const char *method,
     }
     if (strcmp(method, "contains") == 0) {
         if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_bool(0);
-        return value_bool(strstr(s, AS_STR(args[0])) != NULL ? 1 : 0);
+    return value_bool(strstr(s, AS_STR(args[0])) != NULL ? 1 : 0);
     }
     if (strcmp(method, "before") == 0) {
         if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_string(s);
         const char *found = strstr(s, AS_STR(args[0]));
         if (!found) return value_string(s);
-        return value_string(strndup(s, found - s));
+    return value_string(strndup(s, found - s));
     }
     if (strcmp(method, "after") == 0) {
         if (argc < 1 || VAL_TYPE(args[0]) != VAL_STRING) return value_string("");
         const char *found = strstr(s, AS_STR(args[0]));
         if (!found) return value_string("");
-        return value_string(found + strlen(AS_STR(args[0])));
+    return value_string(found + strlen(AS_STR(args[0])));
     }
     if (strcmp(method, "reverse") == 0) {
         size_t len = strlen(s);
@@ -2432,18 +2445,21 @@ static Value string_method(Interpreter *interp, Value obj, const char *method,
 static Value array_method(Interpreter *interp, Value obj, const char *method,
                             Value *args, int argc, int line) {
     if (strcmp(method, "add") == 0) {
-        if (argc < 1) { runtime_error(interp, "add() requires 1 argument", line); return value_null(); }
+        if (argc < 1) { runtime_error(interp, "add() requires 1 argument", line);
+    return value_null(); }
         value_array_push(obj, args[0]);
         return value_null();
     }
     if (strcmp(method, "insert") == 0) {
-        if (argc < 2) { runtime_error(interp, "insert() requires 2 arguments", line); return value_null(); }
+        if (argc < 2) { runtime_error(interp, "insert() requires 2 arguments", line);
+    return value_null(); }
         long long idx = (VAL_TYPE(args[0]) == VAL_INT) ? AS_INT(args[0]) : 0;
         value_array_insert(obj, idx, args[1]);
         return value_null();
     }
     if (strcmp(method, "remove") == 0) {
-        if (argc < 1) { runtime_error(interp, "remove() requires 1 argument", line); return value_null(); }
+        if (argc < 1) { runtime_error(interp, "remove() requires 1 argument", line);
+    return value_null(); }
         value_array_remove(obj, args[0]);
         return value_null();
     }
@@ -2457,7 +2473,7 @@ static Value array_method(Interpreter *interp, Value obj, const char *method,
     }
     if (strcmp(method, "extend") == 0) {
         if (argc >= 1) value_array_extend(obj, args[0]);
-        return value_null();
+    return value_null();
     }
     if (strcmp(method, "len") == 0 || strcmp(method, "length") == 0) {
         return value_int(AS_ARRAY(obj).len);
@@ -2467,13 +2483,13 @@ static Value array_method(Interpreter *interp, Value obj, const char *method,
         long long cnt = 0;
         for (int i = 0; i < AS_ARRAY(obj).len; i++)
             if (value_equals(AS_ARRAY(obj).items[i], args[0])) cnt++;
-        return value_int(cnt);
+    return value_int(cnt);
     }
     if (strcmp(method, "index") == 0) {
         if (argc < 1) return value_int(-1);
         for (int i = 0; i < AS_ARRAY(obj).len; i++)
             if (value_equals(AS_ARRAY(obj).items[i], args[0])) return value_int(i);
-        return value_int(-1);
+    return value_int(-1);
     }
     if (strcmp(method, "clear") == 0) {
         for (int i = 0; i < AS_ARRAY(obj).len; i++) value_release(AS_ARRAY(obj).items[i]);
@@ -2484,7 +2500,7 @@ static Value array_method(Interpreter *interp, Value obj, const char *method,
         if (argc < 1) return value_bool(0);
         for (int i = 0; i < AS_ARRAY(obj).len; i++)
             if (value_equals(AS_ARRAY(obj).items[i], args[0])) return value_bool(1);
-        return value_bool(0);
+    return value_bool(0);
     }
     if (strcmp(method, "reverse") == 0) {
         int n = AS_ARRAY(obj).len;
@@ -2497,11 +2513,11 @@ static Value array_method(Interpreter *interp, Value obj, const char *method,
     }
     if (strcmp(method, "first") == 0) {
         if (AS_ARRAY(obj).len == 0) return value_null();
-        return value_retain(AS_ARRAY(obj).items[0]);
+    return value_retain(AS_ARRAY(obj).items[0]);
     }
     if (strcmp(method, "last") == 0) {
         if (AS_ARRAY(obj).len == 0) return value_null();
-        return value_retain(AS_ARRAY(obj).items[AS_ARRAY(obj).len - 1]);
+    return value_retain(AS_ARRAY(obj).items[AS_ARRAY(obj).len - 1]);
     }
     if (strcmp(method, "join") == 0) {
         const char *sep = (argc >= 1 && VAL_TYPE(args[0]) == VAL_STRING) ? AS_STR(args[0]) : "";
@@ -2534,12 +2550,12 @@ static Value dict_method(Interpreter *interp, Value obj, const char *method,
     if (strcmp(method, "keys") == 0) {
         Value arr = value_array_new();
         for (int i = 0; i < AS_DICT(obj).len; i++) value_array_push(arr, AS_DICT(obj).entries[i].key);
-        return arr;
+    return arr;
     }
     if (strcmp(method, "values") == 0) {
         Value arr = value_array_new();
         for (int i = 0; i < AS_DICT(obj).len; i++) value_array_push(arr, AS_DICT(obj).entries[i].val);
-        return arr;
+    return arr;
     }
     if (strcmp(method, "items") == 0) {
         Value arr = value_array_new();
@@ -2563,7 +2579,7 @@ static Value dict_method(Interpreter *interp, Value obj, const char *method,
         if (argc < 1) return value_null();
         Value found = value_dict_get(obj, args[0]);
         if (!found) return (argc >= 2) ? value_retain(args[1]) : value_null();
-        return value_retain(found);
+    return value_retain(found);
     }
     if (strcmp(method, "has") == 0 || strcmp(method, "contains") == 0) {
         if (argc < 1) return value_bool(0);
@@ -2598,7 +2614,8 @@ static Value dict_method(Interpreter *interp, Value obj, const char *method,
         return value_int(AS_DICT(obj).len);
     }
     if (strcmp(method, "set") == 0) {
-        if (argc < 2) { runtime_error(interp, "dict.set() requires 2 arguments", line); return value_null(); }
+        if (argc < 2) { runtime_error(interp, "dict.set() requires 2 arguments", line);
+    return value_null(); }
         value_dict_set(obj, args[0], args[1]);
         return value_null();
     }
@@ -2613,7 +2630,8 @@ static Value dict_method(Interpreter *interp, Value obj, const char *method,
 static Value set_method(Interpreter *interp, Value obj, const char *method,
                           Value *args, int argc, int line) {
     if (strcmp(method, "add") == 0) {
-        if (argc < 1) { runtime_error(interp, "add() requires 1 argument", line); return value_null(); }
+        if (argc < 1) { runtime_error(interp, "add() requires 1 argument", line);
+    return value_null(); }
         value_set_add(obj, args[0]);
         return value_null();
     }
@@ -2626,13 +2644,14 @@ static Value set_method(Interpreter *interp, Value obj, const char *method,
         return value_null();
     }
     if (strcmp(method, "remove") == 0) {
-        if (argc < 1) { runtime_error(interp, "remove() requires 1 argument", line); return value_null(); }
+        if (argc < 1) { runtime_error(interp, "remove() requires 1 argument", line);
+    return value_null(); }
         value_set_remove(obj, args[0]);
         return value_null();
     }
     if (strcmp(method, "discard") == 0) {
         if (argc >= 1) value_set_remove(obj, args[0]);
-        return value_null();
+    return value_null();
     }
     if (strcmp(method, "pop") == 0) {
         if (AS_SET(obj).len == 0) return value_null();
@@ -2657,13 +2676,13 @@ static Value tuple_method(Interpreter *interp, Value obj, const char *method,
         long long cnt = 0;
         for (int i = 0; i < AS_TUPLE(obj).len; i++)
             if (value_equals(AS_TUPLE(obj).items[i], args[0])) cnt++;
-        return value_int(cnt);
+    return value_int(cnt);
     }
     if (strcmp(method, "index") == 0) {
         if (argc < 1) return value_int(-1);
         for (int i = 0; i < AS_TUPLE(obj).len; i++)
             if (value_equals(AS_TUPLE(obj).items[i], args[0])) return value_int(i);
-        return value_int(-1);
+    return value_int(-1);
     }
     char emsg[128];
     snprintf(emsg, sizeof(emsg), "tuple has no method '%s'", method);
@@ -2699,7 +2718,7 @@ static Value do_slice(Interpreter *interp, Value obj, Value vstart, Value vstop,
         buf[0] = '\0';
         for (long long i = start; step > 0 ? i < stop : i > stop; i += step) {
             if (i < 0 || i >= len) continue;
-            if (sz + 1 >= cap) { cap *= 2; buf = realloc(buf, cap); }
+    if (sz + 1 >= cap) { cap *= 2; buf = realloc(buf, cap); }
             buf[sz++] = AS_STR(obj)[i];
         }
         buf[sz] = '\0';
@@ -2717,7 +2736,7 @@ static Value do_slice(Interpreter *interp, Value obj, Value vstart, Value vstop,
 
     for (long long i = start; step > 0 ? i < stop : i > stop; i += step) {
         if (i < 0 || i >= src->len) continue;
-        if (is_tuple) {
+    if (is_tuple) {
             if (items_count >= items_cap) { items_cap *= 2; items_tmp = realloc(items_tmp, items_cap * sizeof(Value)); }
             items_tmp[items_count++] = AS_ARRAY(src).items[i];
         } else {
@@ -2864,7 +2883,7 @@ static Value eval_node(Interpreter *interp, ASTNode *node, Env *env) {
                 if (VAL_TYPE(obj) == VAL_ARRAY) {
                     long long i = AS_INT(idx);
                     if (i < 0) i += AS_ARRAY(obj).len;
-                    if (i >= 0 && i < AS_ARRAY(obj).len) {
+    if (i >= 0 && i < AS_ARRAY(obj).len) {
                         value_release(AS_ARRAY(obj).items[i]);
                         AS_ARRAY(obj).items[i] = value_retain(val);
                     } else {
@@ -2939,7 +2958,7 @@ static Value eval_node(Interpreter *interp, ASTNode *node, Env *env) {
             last = eval_node(interp, node->block.stmts[i], block_env);
         }
         if ((node)->type == NODE_BLOCK) env_free(block_env);
-        return last;
+    return last;
     }
 
     case NODE_EXPR_STMT: {
@@ -3092,7 +3111,7 @@ static Value eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         }
         if (node->if_stmt.else_body)
             return eval_node(interp, node->if_stmt.else_body, env);
-        return value_null();
+    return value_null();
     }
 
     /* ---- while ---- */
@@ -3466,7 +3485,7 @@ static Value eval_node(Interpreter *interp, ASTNode *node, Env *env) {
             else {
                 long long i = AS_INT(idx);
                 if (i < 0) i += AS_TUPLE(obj).len;
-                if (i < 0 || i >= AS_TUPLE(obj).len) runtime_error(interp, "tuple index out of range", node->line);
+    if (i < 0 || i >= AS_TUPLE(obj).len) runtime_error(interp, "tuple index out of range", node->line);
                 else { value_release(result); result = value_retain(AS_TUPLE(obj).items[i]); }
             }
         } else if (VAL_TYPE(obj) == VAL_STRING) {
@@ -3475,7 +3494,7 @@ static Value eval_node(Interpreter *interp, ASTNode *node, Env *env) {
                 long long i = AS_INT(idx);
                 long long slen = (long long)strlen(AS_STR(obj));
                 if (i < 0) i += slen;
-                if (i < 0 || i >= slen) runtime_error(interp, "string index out of range", node->line);
+    if (i < 0 || i >= slen) runtime_error(interp, "string index out of range", node->line);
                 else { char ch[2] = {AS_STR(obj)[i], '\0'}; value_release(result); result = value_string(ch); }
             }
         } else if (VAL_TYPE(obj) == VAL_DICT) {
@@ -3890,7 +3909,7 @@ static Value eval_node(Interpreter *interp, ASTNode *node, Env *env) {
     case NODE_SAFE_ACCESS: {
         Value obj = eval_node(interp, node->safe_access.obj, env);
         if (interp->had_error) return value_null();
-        if (VAL_TYPE(obj) == VAL_NULL) {
+    if (VAL_TYPE(obj) == VAL_NULL) {
             value_release(obj);
             return value_null();
         }
@@ -3965,7 +3984,7 @@ static Value eval_node(Interpreter *interp, ASTNode *node, Env *env) {
         bool truthy = value_truthy(cond);
         value_release(cond);
         if (truthy) return eval_node(interp, node->ternary.then_val, env);
-        return eval_node(interp, node->ternary.else_val, env);
+    return eval_node(interp, node->ternary.else_val, env);
     }
 
     /* ---- fn expression: fn(params) { body } ---- */

@@ -3,7 +3,7 @@
 import "lib/datastructures"
 
 func exampleMinHeap() {
-    print("\n=== MinHeap Example ===")
+    output("\n=== MinHeap Example ===")
     let heap = MinHeap()
     
     let nums = [9, 5, 6, 2, 3, 7, 1, 4, 8]
@@ -16,12 +16,12 @@ func exampleMinHeap() {
         push(sorted, heap.pop())
     }
     
-    print("Sorted (via heap): " + str(sorted))
+    output("Sorted (via heap): " + str(sorted))
     // Output: [1, 2, 3, 4, 5, 6, 7, 8, 9]
 }
 
 func exampleMaxHeap() {
-    print("\n=== MaxHeap Example ===")
+    output("\n=== MaxHeap Example ===")
     let heap = MaxHeap()
     
     let nums = [3, 7, 2, 9, 1]
@@ -30,12 +30,12 @@ func exampleMaxHeap() {
     }
     
     let largest = heap.pop()
-    print("Largest element: " + str(largest))
+    output("Largest element: " + str(largest))
     // Output: 9
 }
 
 func exampleTrie() {
-    print("\n=== Trie Example (Autocomplete) ===")
+    output("\n=== Trie Example (Autocomplete) ===")
     let trie = Trie()
     
     let words = ["apple", "application", "apply", "app", "banana", "band"]
@@ -46,21 +46,21 @@ func exampleTrie() {
     // Find all words with prefix
     let prefix = "app"
     let autocomplete = trie.wordsWithPrefix(prefix)
-    print("Words starting with '" + prefix + "': " + str(autocomplete))
+    output("Words starting with '" + prefix + "': " + str(autocomplete))
     // Output: ["app", "apple", "application", "apply"]
     
     // Check if word exists
-    print("Contains 'apple': " + str(trie.search("apple")))
+    output("Contains 'apple': " + str(trie.search("apple")))
     // Output: true
     
     // Delete and verify
     trie.delete("apple")
-    print("After deleting 'apple': " + str(trie.search("apple")))
+    output("After deleting 'apple': " + str(trie.search("apple")))
     // Output: false
 }
 
 func exampleGraph() {
-    print("\n=== Graph Example (Dijkstra Algorithm) ===")
+    output("\n=== Graph Example (Dijkstra Algorithm) ===")
     let graph = Graph()
     
     // Build graph: A-1-B-2-C, A-5-C
@@ -71,17 +71,17 @@ func exampleGraph() {
     
     // Find shortest paths from A
     let distances = graph.dijkstra("A")
-    print("Shortest distances from A: " + str(distances))
+    output("Shortest distances from A: " + str(distances))
     // Output: {A: 0, B: 1, C: 3, D: 4}
     
     // Verify shortest path to C
     let pathToC = distances["C"]
-    print("Shortest path A->C distance: " + str(pathToC))
+    output("Shortest path A->C distance: " + str(pathToC))
     // Output: 3
 }
 
 func exampleUnionFind() {
-    print("\n=== UnionFind Example (Connected Components) ===")
+    output("\n=== UnionFind Example (Connected Components) ===")
     let uf = UnionFind(10)
     
     // Connect vertices
@@ -92,10 +92,10 @@ func exampleUnionFind() {
     uf.union(6, 7)
     
     // Check connectivity
-    print("0 connected to 2: " + str(uf.find(0) == uf.find(2)))
+    output("0 connected to 2: " + str(uf.find(0) == uf.find(2)))
     // Output: true
     
-    print("0 connected to 4: " + str(uf.find(0) == uf.find(4)))
+    output("0 connected to 4: " + str(uf.find(0) == uf.find(4)))
     // Output: false
     
     // Count components
@@ -107,12 +107,12 @@ func exampleUnionFind() {
         }
         components[str(root)] = components[str(root)] + 1
     }
-    print("Number of connected components: " + str(len(components)))
+    output("Number of connected components: " + str(len(components)))
     // Output: 4 (components: {0,1,2}, {3,4}, {5,6,7}, {8}, {9})
 }
 
 func exampleBloomFilter() {
-    print("\n=== BloomFilter Example ===")
+    output("\n=== BloomFilter Example ===")
     let filter = BloomFilter(100, 3)
     
     let fruits = ["apple", "banana", "orange", "grape", "mango"]
@@ -121,46 +121,46 @@ func exampleBloomFilter() {
     }
     
     // Check membership
-    print("'apple' might be in set: " + str(filter.might_contain("apple")))
+    output("'apple' might be in set: " + str(filter.might_contain("apple")))
     // Output: true (definitely)
     
-    print("'strawberry' might be in set: " + str(filter.might_contain("strawberry")))
+    output("'strawberry' might be in set: " + str(filter.might_contain("strawberry")))
     // Output: false (probably)
     
     // Note: Bloom filters can have false positives but not false negatives
 }
 
 func exampleSegmentTree() {
-    print("\n=== SegmentTree Example (Range Queries) ===")
+    output("\n=== SegmentTree Example (Range Queries) ===")
     let arr = [1, 2, 3, 4, 5]
     let tree = SegmentTree(arr)
     
     // Query sum of range [0, 2]
     let sum02 = tree.rangeSum(0, 2)
-    print("Sum [0,2]: " + str(sum02))
+    output("Sum [0,2]: " + str(sum02))
     // Output: 6 (1+2+3)
     
     // Update value at index 1
     tree.update(1, 5)
     let sum02_after = tree.rangeSum(0, 2)
-    print("Sum [0,2] after update: " + str(sum02_after))
+    output("Sum [0,2] after update: " + str(sum02_after))
     // Output: 9 (1+5+3)
     
     // Query entire range
     let sumAll = tree.rangeSum(0, 4)
-    print("Sum [0,4]: " + str(sumAll))
+    output("Sum [0,4]: " + str(sumAll))
     // Output: 18 (1+5+3+4+5)
 }
 
 func exampleStackQueue() {
-    print("\n=== Stack and Queue Examples ===")
+    output("\n=== Stack and Queue Examples ===")
     
     // Stack: LIFO
     let stack = Stack()
     push(stack.items, 1)
     push(stack.items, 2)
     push(stack.items, 3)
-    print("Stack pop: " + str(pop(stack.items)))
+    output("Stack pop: " + str(pop(stack.items)))
     // Output: 3
     
     // Queue: FIFO
@@ -169,12 +169,12 @@ func exampleStackQueue() {
     push(queue.items, 2)
     push(queue.items, 3)
     let first = shift(queue.items)
-    print("Queue dequeue: " + str(first))
+    output("Queue dequeue: " + str(first))
     // Output: 1
 }
 
 func examplePractical() {
-    print("\n=== Practical Example: Task Priority Management ===")
+    output("\n=== Practical Example: Task Priority Management ===")
     let heap = MaxHeap()
     
     // Tasks with priorities
@@ -193,9 +193,9 @@ func examplePractical() {
     }
     
     // Process in priority order
-    print("Task execution order (highest priority first):")
+    output("Task execution order (highest priority first):")
     while len(heap.heap) > 0 {
-        print("  Priority: " + str(heap.pop()))
+        output("  Priority: " + str(heap.pop()))
     }
 }
 
@@ -210,4 +210,4 @@ exampleSegmentTree()
 exampleStackQueue()
 examplePractical()
 
-print("\n=== All data structure examples completed ===")
+output("\n=== All data structure examples completed ===")

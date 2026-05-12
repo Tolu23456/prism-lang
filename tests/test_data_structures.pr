@@ -7,14 +7,14 @@ func assert(label, got, expected) {
     if got == expected {
         pass += 1
     } else {
-        print("FAIL:", label, "| got:", got, "expected:", expected)
+        output("FAIL:", label, "| got:", got, "expected:", expected)
         fail += 1
     }
 }
 
 func assert_true(label, cond) {
     if cond { pass += 1 }
-    else { print("FAIL:", label); fail += 1 }
+    else { output("FAIL:", label); fail += 1 }
 }
 
 /* ── Array operations ─────────────────────────────────────── */
@@ -213,6 +213,6 @@ assert("dequeue FIFO first", dequeue(), "first")
 assert("dequeue FIFO second", dequeue(), "second")
 assert("queue len after dequeue", qlen(), 1)
 
-print("\nResults:", pass, "passed,", fail, "failed")
-if fail == 0 { print("[PASS] test_data_structures") }
-else { print("[FAIL] test_data_structures") }
+output("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { output("[PASS] test_data_structures") }
+else { output("[FAIL] test_data_structures") }

@@ -204,9 +204,13 @@ void ast_node_free(ASTNode *n) {
             break;
 
         case NODE_IMPORT:
-            free(n->import_stmt.path);
-            free(n->import_stmt.alias);
-            free(n->import_stmt.symbol);
+            if (n->import_stmt.path) free(n->import_stmt.path);
+            if (n->import_stmt.alias) free(n->import_stmt.alias);
+            if (n->import_stmt.symbols) {
+                for (int i = 0; i < n->import_stmt.symbol_count; i++)
+                    free(n->import_stmt.symbols[i]);
+                free(n->import_stmt.symbols);
+            }
             break;
 
         case NODE_CLASS_DECL:

@@ -110,7 +110,7 @@ describe("Linear Regression", fn() {
         let y = [10]
         
         reg.fit(x, y)
-        assertTrue(true)  // Should not crash
+        assertTrue(true)  # Should not crash
     })
     
     test("predict outside range", fn() {
@@ -133,7 +133,7 @@ describe("K-Means", fn() {
         let c1 = kmeans.predict([1.5, 1.5])
         let c2 = kmeans.predict([10.5, 10.5])
         
-        // Different clusters for clearly separated points
+        # Different clusters for clearly separated points
         assertTrue(true)
     })
     
@@ -222,7 +222,7 @@ describe("Feature Scaling", fn() {
         let standardized = standardize(data)
         
         let m = mean(standardized)
-        assertTrue(m < 0.01 and m > -0.01)  // Close to 0
+        assertTrue(m < 0.01 and m > -0.01)  # Close to 0
     })
 })
 
@@ -258,4 +258,4 @@ describe("Edge cases", fn() {
     })
 })
 
-print("ML test suite completed")
+output("ML test suite completed")

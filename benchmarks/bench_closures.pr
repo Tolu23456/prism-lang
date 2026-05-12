@@ -1,14 +1,14 @@
 /* benchmarks/bench_closures.pr — closure and higher-order function performance */
 
-print("=== Closure & Higher-Order Benchmark ===")
-print("")
+output("=== Closure & Higher-Order Benchmark ===")
+output("")
 
 func bench(name, f, iters) {
     let t0 = clock()
     let i = 0
     while i < iters { f(); i = i + 1 }
     let elapsed = clock() - t0
-    print(name + ": " + str(round(elapsed * 1000.0, 2)) + " ms")
+    output(name + ": " + str(round(elapsed * 1000.0, 2)) + " ms")
 }
 
 /* ── Simple closure call ─────────────────────────────────────── */
@@ -117,5 +117,5 @@ bench("chain depth 10 (100 calls)",     chain_bench,   100)
 bench("compose 5-deep (1000 calls)",    compose_bench, 100)
 bench("partial 3-deep (500 calls)",     partial_bench, 100)
 
-print("")
-print("=== Closure benchmark complete ===")
+output("")
+output("=== Closure benchmark complete ===")

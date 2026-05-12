@@ -22,7 +22,8 @@ Value gc_intern_string(PrismGC *gc, const char *s) {
     Value v = (Value)vs; InternBucket *nb = malloc(sizeof(InternBucket)); nb->key = strdup(s); nb->val = v; nb->next = gc->intern_buckets[slot]; gc->intern_buckets[slot] = nb;
     return v;
 }
-const char *gc_intern_cstr(PrismGC *gc, const char *s) { if (!s) return s; return AS_STR(gc_intern_string(gc, s)); }
+const char *gc_intern_cstr(PrismGC *gc, const char *s) { if (!s) return s;
+    return AS_STR(gc_intern_string(gc, s)); }
 
 static void vs_free_internal(ValueStruct *vs) {
     if (!vs || vs->gc_immortal) return;
@@ -39,7 +40,8 @@ static void vs_free_internal(ValueStruct *vs) {
             break;
         case VAL_FUNCTION:
             if (vs->func.owns_chunk && vs->func.chunk) { chunk_free(vs->func.chunk); free(vs->func.chunk); }
-            if (vs->func.name) free(vs->func.name); if (vs->func.closure) env_free(vs->func.closure);
+            if (vs->func.name) free(vs->func.name);
+    if (vs->func.closure) env_free(vs->func.closure);
             break;
         case VAL_BUILTIN: if (vs->builtin.name) free(vs->builtin.name); break;
         default: break;
@@ -67,12 +69,13 @@ void gc_mark_value(PrismGC *gc, Value value) {
         case VAL_DICT: for (int i = 0; i < vs->dict.cap; i++) if (vs->dict.entries[i].key) { gc_mark_value(gc, vs->dict.entries[i].key); gc_mark_value(gc, vs->dict.entries[i].val); } break;
         case VAL_FUNCTION:
             if (vs->func.closure) gc_mark_env(gc, vs->func.closure);
-            if (vs->func.chunk) gc_mark_chunk(gc, vs->func.chunk);
+    if (vs->func.chunk) gc_mark_chunk(gc, vs->func.chunk);
             break;
         default: break;
     }
 }
-void gc_mark_env(PrismGC *gc, Env *env) { if (!env) return; for (int i = 0; i < env->cap; i++) if (env->slots[i].key) gc_mark_value(gc, env->slots[i].val); if (env->parent) gc_mark_env(gc, env->parent); }
+void gc_mark_env(PrismGC *gc, Env *env) { if (!env) return; for (int i = 0; i < env->cap; i++) if (env->slots[i].key) gc_mark_value(gc, env->slots[i].val);
+    if (env->parent) gc_mark_env(gc, env->parent); }
 void gc_mark_vm(PrismGC *gc, VM *vm) {
     if (!vm) return;
     for (int i = 0; i < vm->stack_top; i++) gc_mark_value(gc, vm->stack[i]);

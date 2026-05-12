@@ -9,7 +9,7 @@ let _hooks = {}
 /* Register plugin */
 func register(name, plugin) {
     _plugins[name] = plugin
-    print("[Plugin] Registered: " + name)
+    output("[Plugin] Registered: " + name)
     
     if has(plugin, "hooks") {
         for hook_name in keys(plugin.hooks) {
@@ -40,7 +40,7 @@ func list_plugins() {
 func unregister(name) {
     if has(_plugins, name) {
         remove_key(_plugins, name)
-        print("[Plugin] Unregistered: " + name)
+        output("[Plugin] Unregistered: " + name)
     }
 }
 
@@ -55,7 +55,7 @@ func execute_hook(hook_name, context) {
                 let result = hook.handler(context)
                 push(results, {plugin: hook.plugin, result: result})
             } catch e {
-                print("[Plugin] Error in hook " + hook_name + " from " + hook.plugin + ": " + str(e))
+                output("[Plugin] Error in hook " + hook_name + " from " + hook.plugin + ": " + str(e))
             }
         }
     }

@@ -7,14 +7,14 @@ func assert(label, got, expected) {
     if got == expected {
         pass += 1
     } else {
-        print("[FAIL]", label, " got:", got, " expected:", expected)
+        output("[FAIL]", label, " got:", got, " expected:", expected)
         fail += 1
     }
 }
 
 func assert_true(label, cond) {
     if cond { pass += 1 }
-    else { print("[FAIL]", label); fail += 1 }
+    else { output("[FAIL]", label); fail += 1 }
 }
 
 /* ── Basic try/catch ──────────────────────────────────── */
@@ -158,6 +158,6 @@ let v3 = null
 try { v3 = validate(42, "z") } catch (e) { v3 = -1 }
 assert("valid passes through", v3, 42)
 
-print("\nResults:", pass, "passed,", fail, "failed")
-if fail == 0 { print("[PASS] test_error_handling") }
-else { print("[FAIL] test_error_handling") }
+output("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { output("[PASS] test_error_handling") }
+else { output("[FAIL] test_error_handling") }

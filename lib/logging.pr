@@ -58,7 +58,7 @@ class Logger {
         formatted = strings.replace(formatted, "{message}", str(message))
         formatted = strings.replace(formatted, "{logger}", this.name)
         
-        print(formatted)
+        output(formatted)
     }
 }
 
@@ -90,22 +90,22 @@ func level_name(level) {
 
 /* Simple logging functions */
 func debug(message) {
-    print("[DEBUG] " + str(message))
+    output("[DEBUG] " + str(message))
 }
 
 func info(message) {
-    print("[INFO] " + str(message))
+    output("[INFO] " + str(message))
 }
 
 func warn(message) {
-    print("[WARN] " + str(message))
+    output("[WARN] " + str(message))
 }
 
 func error(message) {
-    print("[ERROR] " + str(message))
+    output("[ERROR] " + str(message))
 }
 
 func fatal(message) {
-    print("[FATAL] " + str(message))
+    output("[FATAL] " + str(message))
     exit(1)
 }

@@ -278,4 +278,4 @@ describe("Edge cases", fn() {
     })
 })
 
-print("Database test suite completed")
+output("Database test suite completed")

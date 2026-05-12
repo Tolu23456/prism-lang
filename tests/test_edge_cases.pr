@@ -7,14 +7,14 @@ func assert(label, got, expected) {
     if got == expected {
         pass += 1
     } else {
-        print("FAIL:", label, "  got:", got, "expected:", expected)
+        output("FAIL:", label, "  got:", got, "expected:", expected)
         fail += 1
     }
 }
 
 func assert_true(label, cond) {
     if cond { pass += 1 }
-    else { print("FAIL:", label); fail += 1 }
+    else { output("FAIL:", label); fail += 1 }
 }
 
 /* ── String edge cases ─────────────────────────────────────── */
@@ -158,6 +158,6 @@ let m = 5
 while m > 0 { m -= 1 }
 assert("while counts down", m, 0)
 
-print("\nResults:", pass, "passed,", fail, "failed")
-if fail == 0 { print("[PASS] test_edge_cases") }
-else { print("[FAIL] test_edge_cases") }
+output("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { output("[PASS] test_edge_cases") }
+else { output("[FAIL] test_edge_cases") }

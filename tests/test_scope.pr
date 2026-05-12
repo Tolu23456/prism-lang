@@ -7,14 +7,14 @@ func assert(label, got, expected) {
     if got == expected {
         pass += 1
     } else {
-        print("FAIL:", label, "| got:", got, "expected:", expected)
+        output("FAIL:", label, "| got:", got, "expected:", expected)
         fail += 1
     }
 }
 
 func assert_true(label, cond) {
     if cond { pass += 1 }
-    else { print("FAIL:", label); fail += 1 }
+    else { output("FAIL:", label); fail += 1 }
 }
 
 /* ── Global scope ────────────────────────────────────────────── */
@@ -133,6 +133,6 @@ func recurse_scope(n) {
 recurse_scope(10)
 assert("deep recursive scope", depth_result, 55)
 
-print("\nResults:", pass, "passed,", fail, "failed")
-if fail == 0 { print("[PASS] test_scope") }
-else { print("[FAIL] test_scope") }
+output("\nResults:", pass, "passed,", fail, "failed")
+if fail == 0 { output("[PASS] test_scope") }
+else { output("[FAIL] test_scope") }
