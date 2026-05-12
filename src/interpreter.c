@@ -3053,7 +3053,7 @@ static Value eval_node(Interpreter *interp, ASTNode *node, Env *env) {
             return value_null();
         }
 
-        const char *symbol = node->import_stmt.symbol;
+        const char *symbol = (node->import_stmt.symbol_count > 0) ? node->import_stmt.symbols[0] : NULL;
         const char *alias  = node->import_stmt.alias;
 
         if (symbol) {

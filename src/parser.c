@@ -1727,7 +1727,9 @@ static ASTNode *parse_import_stmt(Parser *p) {
         }
         ASTNode *n = ast_node_new(NODE_IMPORT, line);
         n->import_stmt.path   = path;
-        n->import_stmt.symbol = symbol;
+        n->import_stmt.symbols = (char **)malloc(sizeof(char *));
+        n->import_stmt.symbols[0] = symbol;
+        n->import_stmt.symbol_count = 1;
         n->import_stmt.alias  = alias;
         return n;
     }
@@ -1749,7 +1751,8 @@ static ASTNode *parse_import_stmt(Parser *p) {
     }
     ASTNode *n = ast_node_new(NODE_IMPORT, line);
     n->import_stmt.path   = path;
-    n->import_stmt.symbol = NULL;
+    n->import_stmt.symbols = NULL;
+    n->import_stmt.symbol_count = 0;
     n->import_stmt.alias  = alias;
     return n;
 }
