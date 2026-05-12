@@ -42,7 +42,7 @@ func exampleLinearRegression() {
     
     let model = LinearRegression()
     
-    // Training data: temperature vs ice cream sales
+    # Training data: temperature vs ice cream sales
     let temperature = [20, 22, 24, 26, 28, 30]
     let sales = [15, 20, 30, 40, 45, 50]
     
@@ -144,7 +144,7 @@ func exampleOutlierDetection() {
     
     let mean_val = mean(data)
     let std = stddev(data)
-    let threshold = 2  // 2-sigma rule
+    let threshold = 2  # 2-sigma rule
     
     output("Data: " + str(data))
     output("Mean: " + str(mean_val))
@@ -167,7 +167,7 @@ func exampleQuartiles() {
     let sorted = data
     let n = len(sorted)
     
-    // Q1, Q2 (median), Q3
+    # Q1, Q2 (median), Q3
     let q1_idx = (n + 1) / 4
     let q2_idx = (n + 1) / 2
     let q3_idx = 3 * (n + 1) / 4
@@ -200,7 +200,7 @@ func exampleDistributionAnalysis() {
     }
 }
 
-// Run all examples
+# Run all examples
 exampleStatistics()
 exampleCorrelation()
 exampleLinearRegression()

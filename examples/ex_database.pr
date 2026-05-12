@@ -7,28 +7,28 @@ func exampleBasicCRUD() {
     
     let db = PrismaDB(":memory:")
     
-    // Create table
+    # Create table
     db.exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT, email TEXT)")
     
-    // Create (Insert)
+    # Create (Insert)
     let userId1 = db.insert("users", {name: "Alice", email: "alice@example.com"})
     let userId2 = db.insert("users", {name: "Bob", email: "bob@example.com"})
     output("Created users: " + str(userId1) + ", " + str(userId2))
     
-    // Read (Select)
+    # Read (Select)
     let user1 = db.selectOne("users", {id: userId1})
     output("Retrieved user: " + str(user1))
     
-    // Read multiple
+    # Read multiple
     let allUsers = db.select("users")
     output("Total users: " + str(len(allUsers)))
     
-    // Update
+    # Update
     db.update("users", {id: userId1}, {name: "Alice Smith"})
     let updated = db.selectOne("users", {id: userId1})
     output("Updated name: " + updated.name)
     
-    // Delete
+    # Delete
     db.delete("users", {id: userId2})
     let remaining = db.select("users")
     output("After delete: " + str(len(remaining)) + " users remaining")
@@ -40,25 +40,25 @@ func exampleQueryOperators() {
     let db = PrismaDB(":memory:")
     db.exec("CREATE TABLE products (id INTEGER PRIMARY KEY, name TEXT, price INTEGER)")
     
-    // Insert test data
+    # Insert test data
     db.insert("products", {name: "Laptop", price: 1000})
     db.insert("products", {name: "Mouse", price: 25})
     db.insert("products", {name: "Keyboard", price: 75})
     db.insert("products", {name: "Monitor", price: 300})
     
-    // Greater than
+    # Greater than
     let expensive = db.select("products", {price: {$gt: 100}})
     output("Items over $100: " + str(len(expensive)))
     
-    // Less than
+    # Less than
     let cheap = db.select("products", {price: {$lt: 100}})
     output("Items under $100: " + str(len(cheap)))
     
-    // Between (using comparison)
+    # Between (using comparison)
     let mid = db.select("products", {price: {$gte: 50, $lte: 500}})
     output("Items $50-$500: " + str(len(mid)))
     
-    // Count
+    # Count
     let count = db.count("products")
     output("Total products: " + str(count))
 }
@@ -69,7 +69,7 @@ func exampleTransactions() {
     let db = PrismaDB(":memory:")
     db.exec("CREATE TABLE accounts (id INTEGER PRIMARY KEY, name TEXT, balance INTEGER)")
     
-    // Insert accounts
+    # Insert accounts
     let acc1 = db.insert("accounts", {name: "Checking", balance: 1000})
     let acc2 = db.insert("accounts", {name: "Savings", balance: 5000})
     
@@ -79,7 +79,7 @@ func exampleTransactions() {
     output("  Checking: " + str(c1.balance))
     output("  Savings: " + str(c2.balance))
     
-    // Transaction: transfer money
+    # Transaction: transfer money
     db.transaction(fn() {
         db.update("accounts", {id: acc1}, {balance: c1.balance - 500})
         db.update("accounts", {id: acc2}, {balance: c2.balance + 500})
@@ -98,18 +98,18 @@ func exampleIndexing() {
     let db = PrismaDB(":memory:")
     db.exec("CREATE TABLE employees (id INTEGER PRIMARY KEY, email TEXT, name TEXT)")
     
-    // Create unique index on email
+    # Create unique index on email
     db.createIndex("employees", "email", {unique: true})
     
-    // Insert data
+    # Insert data
     db.insert("employees", {email: "alice@company.com", name: "Alice"})
     db.insert("employees", {email: "bob@company.com", name: "Bob"})
     
-    // Query using indexed field (faster)
+    # Query using indexed field (faster)
     let employee = db.selectOne("employees", {email: "alice@company.com"})
     output("Found employee: " + employee.name)
     
-    // List indexes
+    # List indexes
     let indexes = db.getIndexes("employees")
     output("Indexes on employees: " + str(len(indexes)))
 }
@@ -141,11 +141,11 @@ func exampleBackupRestore() {
     db.exec("CREATE TABLE data (id INTEGER, value TEXT)")
     db.insert("data", {id: 1, value: "important"})
     
-    // Export data
+    # Export data
     let exported = db.export()
     output("Database exported to JSON: " + str(len(exported)) + " bytes")
     
-    // Create new database and restore
+    # Create new database and restore
     let db2 = PrismaDB(":memory:")
     db2.import(exported)
     
@@ -159,7 +159,7 @@ func exampleBatchOperations() {
     let db = PrismaDB(":memory:")
     db.exec("CREATE TABLE items (id INTEGER PRIMARY KEY, name TEXT, stock INTEGER)")
     
-    // Batch insert using transaction
+    # Batch insert using transaction
     db.transaction(fn() {
         for i in range(1, 11) {
             db.insert("items", {name: "Item " + str(i), stock: i * 10})
@@ -169,7 +169,7 @@ func exampleBatchOperations() {
     let count = db.count("items")
     output("Batch inserted " + str(count) + " items")
     
-    // Batch update
+    # Batch update
     db.updateMany("items", {}, {stock: 0})
     let updated = db.select("items")
     output("All items restocked")
@@ -192,7 +192,7 @@ func exampleQuery() {
         db.insert("products", p)
     }
     
-    // Complex query
+    # Complex query
     let inStockElectronics = db.select("products", {
         category: "Electronics",
         inStock: 1
@@ -204,7 +204,7 @@ func exampleQuery() {
     }
 }
 
-// Run all examples
+# Run all examples
 exampleBasicCRUD()
 exampleQueryOperators()
 exampleTransactions()

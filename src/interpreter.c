@@ -1081,16 +1081,6 @@ static Value builtin_has(Value *a, int n) {
 }
 
 /* ---- utility ---- */
-static Value builtin_print(Value *a, int n) {
-    for (int i = 0; i < n; i++) {
-        if (i > 0) printf(" ");
-        char *s = value_to_string(a[i]);
-        printf("%s", s);
-        free(s);
-    }
-    printf("\n");
-    return value_null();
-}
 static Value builtin_error(Value *a, int n) {
     const char *msg = (n > 0 && VAL_TYPE(a[0]) == VAL_STRING) ? AS_STR(a[0]) : "error";
     builtin_throw(msg);

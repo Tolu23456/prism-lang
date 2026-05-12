@@ -169,7 +169,7 @@ assert("padCenter(odd)",   padCenter("x", 4, "."),      "..x.")
 assert("truncate(fits)",   truncate("Hi", 10, null),       "Hi")
 assert("truncate(exact)",  truncate("Hello", 5, null),     "Hello")
 assert("truncate(cut)",    truncate("Hello World", 8, null),"Hello...")
-assert("truncate(custom)", truncate("Long text", 7, "!"),  "Long te!")
+assert("truncate(custom)", truncate("Long text", 7, "!"),  "Long t!")
 
 /* isPalindrome */
 assert_true ("isPalin(racecar)",  isPalindrome("racecar"))
@@ -296,7 +296,7 @@ assert("json float",    stringify(3.14),       "3.14")
 assert("json string",   stringify("hello"),    "\"hello\"")
 assert("json empty str",stringify(""),         "\"\"")
 assert("json empty arr",stringify([]),         "[]")
-assert("json empty obj",stringify({}),         "{}")
+assert("json empty obj",stringify({}),         chr(123)+chr(125))
 
 /* parse basic types */
 assert("parse null",    parse("null"),   null)
@@ -316,7 +316,7 @@ assert("json rt scores", obj2["scores"][1],      87)
 assert("json rt active", obj2["active"],         true)
 
 /* nested */
-let nested = parse("{\"a\":{\"b\":{\"c\":42}}}")
+let nested = parse(chr(123)+"\"a\":"+chr(123)+"\"b\":"+chr(123)+"\"c\":42}}}")
 assert("json nested", nested["a"]["b"]["c"], 42)
 
 /* arrays */
@@ -329,18 +329,18 @@ assert("json arr[5]",    arr_json[5],      null)
 
 /* isValid */
 assert_true ("isValid empty arr",    isValid("[]"))
-assert_true ("isValid empty obj",    isValid("{}"))
+assert_true ("isValid empty obj",    isValid(chr(123)+chr(125)))
 assert_true ("isValid num",          isValid("42"))
-assert_false("isValid bad",          isValid("{bad}"))
+assert_false("isValid bad",          isValid(chr(123)+"bad"+chr(125)))
 assert_false("isValid empty str",    isValid(""))
 
 /* parseOr */
 assert("parseOr valid",   parseOr("[1,2]", null), parse("[1,2]"))
-assert("parseOr invalid", parseOr("{bad}", null),  null)
+assert("parseOr invalid", parseOr(chr(123)+"bad"+chr(125), null),  null)
 assert("parseOr fallback",parseOr("oops", 99),     99)
 
 /* minify */
-assert("minify", minify("{ \"x\" : 1 , \"y\" : 2 }"), "{\"x\":1,\"y\":2}")
+assert("minify", minify(chr(123)+" \"x\" : 1 , \"y\" : 2 }"), chr(123)+"\"x\":1,\"y\":2}")
 
 /* ═══════════════════════════════════════════════════════════
    CRYPTO

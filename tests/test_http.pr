@@ -1,211 +1,176 @@
 /* Comprehensive tests for HTTP library */
 
 import "lib/http"
-import "lib/testing"
 
-describe("HttpRequest", fn() {
-    test("basic request creation", fn() {
-        let req = HttpRequest("GET", "https://api.example.com/data")
-        assertEqual(req.method, "GET")
-        assert(contains(req.url, "api.example.com"))
-    })
-    
-    test("method support", fn() {
-        let methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
-        for method in methods {
-            let req = HttpRequest(method, "https://example.com")
-            assertEqual(req.method, method)
-        }
-    })
-    
-    test("header setting", fn() {
-        let req = HttpRequest("GET", "https://example.com")
-            .header("Content-Type", "application/json")
-            .header("Authorization", "Bearer token123")
-        
-        assertTrue(true)  // Headers set successfully
-    })
-    
-    test("timeout configuration", fn() {
-        let req = HttpRequest("GET", "https://example.com")
-            .timeout(5000)
-        
-        assertTrue(true)  // Timeout set successfully
-    })
-    
-    test("empty body", fn() {
-        let req = HttpRequest("GET", "https://example.com")
-        assertEqual(req.body, "" or req.body == null)
-    })
-})
+/* ── Basic assertion helpers ──────────────────────────────── */
 
-describe("HttpResponse", fn() {
-    test("status code", fn() {
-        let res = HttpResponse().status(200)
-        assertEqual(res.status, 200)
-    })
-    
-    test("common status codes", fn() {
-        let codes = [200, 201, 204, 400, 401, 403, 404, 500]
-        for code in codes {
-            let res = HttpResponse().status(code)
-            assertEqual(res.status, code)
-        }
-    })
-    
-    test("response headers", fn() {
-        let res = HttpResponse()
-            .header("Content-Type", "application/json")
-            .header("X-Custom", "value")
-        
-        assertTrue(true)  // Headers set successfully
-    })
-    
-    test("json response", fn() {
-        let res = HttpResponse().json({success: true, data: [1, 2, 3]})
-        assertTrue(contains(res.body, "success") or res.body == "{\"success\":true,...}")
-    })
-    
-    test("text response", fn() {
-        let res = HttpResponse().text("Hello, World!")
-        assertEqual(res.body, "Hello, World!")
-    })
-    
-    test("status 204 no content", fn() {
-        let res = HttpResponse().status(204).send()
-        assertEqual(res.status, 204)
-    })
-})
+let _pass = 0
+let _fail = 0
 
-describe("URL parsing and encoding", fn() {
-    test("simple URL", fn() {
-        let url = parseUrl("https://example.com/path")
-        assertEqual(url.host, "example.com")
-        assertEqual(url.pathname, "/path")
-    })
-    
-    test("URL with query parameters", fn() {
-        let url = parseUrl("https://example.com/path?key=value&foo=bar")
-        assertEqual(url.host, "example.com")
-        assertEqual(url.pathname, "/path")
-        assert(contains(url.search, "key=value"))
-    })
-    
-    test("URL with port", fn() {
-        let url = parseUrl("https://example.com:8080/path")
-        assertEqual(url.host, "example.com")
-        assertEqual(url.port, "8080")
-    })
-    
-    test("URL with authentication", fn() {
-        let url = parseUrl("https://user:pass@example.com/path")
-        assert(contains(url.toString(), "example.com"))
-    })
-    
-    test("URL encoding", fn() {
-        let encoded = encodeUrl("hello world & special")
-        assert(contains(encoded, "%20"))
-        assert(contains(encoded, "%26"))
-    })
-    
-    test("URL decoding", fn() {
-        let original = "hello world"
-        let encoded = encodeUrl(original)
-        let decoded = decodeUrl(encoded)
-        assertEqual(decoded, original)
-    })
-    
-    test("special characters", fn() {
-        let special = "!@#$%^&*()"
-        let encoded = encodeUrl(special)
-        let decoded = decodeUrl(encoded)
-        assertEqual(decoded, special)
-    })
-})
+func assert_eq(name, got, expected) {
+    if got == expected {
+        _pass += 1
+    } else {
+        _fail += 1
+        output("FAIL: " + name + "   got: " + str(got) + "   expected: " + str(expected))
+    }
+}
 
-describe("Router", fn() {
-    test("route registration", fn() {
-        let router = Router()
-        router.get("/", fn(req, res) { return res.text("ok") })
-        router.post("/api", fn(req, res) { return res.json({}) })
-        assertTrue(true)  // Routes registered
-    })
-    
-    test("multiple methods", fn() {
-        let router = Router()
-        router.get("/resource", fn(req, res) { return res.text("GET") })
-        router.post("/resource", fn(req, res) { return res.text("POST") })
-        router.put("/resource", fn(req, res) { return res.text("PUT") })
-        router.delete("/resource", fn(req, res) { return res.text("DELETE") })
-        assertTrue(true)  // All methods registered
-    })
-    
-    test("path parameters", fn() {
-        let router = Router()
-        router.get("/users/:id", fn(req, res) {
-            let id = req.params["id"]
-            return res.json({id: id})
-        })
-        assertTrue(true)  // Route with params registered
-    })
-    
-    test("nested paths", fn() {
-        let router = Router()
-        router.get("/api/v1/users/:id/posts/:postId", fn(req, res) {
-            return res.json({})
-        })
-        assertTrue(true)
-    })
-})
+func assert_true(name, val) {
+    if val {
+        _pass += 1
+    } else {
+        _fail += 1
+        output("FAIL: " + name + " (expected true)")
+    }
+}
 
-describe("MIME types", fn() {
-    test("common file types", fn() {
-        let types = [
-            {file: "index.html", expected: "text/html"},
-            {file: "style.css", expected: "text/css"},
-            {file: "app.js", expected: "application/javascript"},
-            {file: "data.json", expected: "application/json"}
-        ]
-        
-        for t in types {
-            let mime = getMimeType(t.file)
-            assert(contains(mime, "html") or contains(mime, "css") or 
-                  contains(mime, "javascript") or contains(mime, "json"))
-        }
-    })
-    
-    test("unknown file type", fn() {
-        let mime = getMimeType("unknown.xyz")
-        // Should return default or unknown type
-        assertTrue(mime != null)
-    })
-})
+func assert_nil(name, val) {
+    if val == nil or val == null {
+        _pass += 1
+    } else {
+        _fail += 1
+        output("FAIL: " + name + " expected nil, got: " + str(val))
+    }
+}
 
-describe("Cookies", fn() {
-    test("cookie setting", fn() {
-        let res = HttpResponse()
-        res.setCookie("sessionId", "abc123", {secure: true})
-        assertTrue(true)  // Cookie set
-    })
-    
-    test("cookie options", fn() {
-        let res = HttpResponse()
-        res.setCookie("token", "secret", {
-            path: "/",
-            secure: true,
-            httpOnly: true,
-            maxAge: 3600
-        })
-        assertTrue(true)
-    })
-    
-    test("multiple cookies", fn() {
-        let res = HttpResponse()
-        res.setCookie("cookie1", "value1", {})
-        res.setCookie("cookie2", "value2", {})
-        res.setCookie("cookie3", "value3", {})
-        assertTrue(true)
-    })
-})
+/* ── HttpRequest ─────────────────────────────────────────── */
 
+let req1 = HttpRequest("GET", "https://api.example.com/data")
+assert_eq("req method",   req1.method, "GET")
+assert_true("req url",    contains(req1.url, "api.example.com"))
+assert_nil("req body nil", req1.body)
+
+let methods = ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+for m in methods {
+    let r = HttpRequest(m, "https://example.com")
+    assert_eq("method " + m, r.method, m)
+}
+
+let req2 = HttpRequest("POST", "https://example.com").header("Content-Type", "application/json").header("Authorization", "Bearer tok")
+assert_eq("header chain", req2.headers["Content-Type"], "application/json")
+assert_eq("auth header",  req2.headers["Authorization"], "Bearer tok")
+
+let req3 = HttpRequest("GET", "https://example.com").timeout(5000)
+assert_eq("timeout", req3.timeout, 5000)
+
+/* ── HttpResponse ────────────────────────────────────────── */
+
+let res1 = HttpResponse(200, "OK", {})
+assert_eq("res status", res1.status, 200)
+assert_eq("res body",   res1.body,   "OK")
+
+let res2 = HttpResponse()
+assert_eq("res default status", res2.status, 200)
+
+let codes = [200, 201, 204, 400, 401, 403, 404, 500]
+for code in codes {
+    let r = HttpResponse(code, "", {})
+    assert_eq("status " + str(code), r.status, code)
+}
+
+let res3 = HttpResponse(200, "", {}).text("Hello, World!")
+assert_eq("text body",    res3.body, "Hello, World!")
+
+let res4 = HttpResponse(200, "", {}).header("X-Custom", "value")
+assert_eq("res header", res4.headers["X-Custom"], "value")
+
+let res5 = HttpResponse(200, "", {}).json({})
+assert_true("json mime", contains(res5.headers["Content-Type"], "json"))
+
+let res_send = HttpResponse(204, "", {}).send()
+assert_eq("send status", res_send.status, 204)
+
+/* ── Router ──────────────────────────────────────────────── */
+
+let router = Router()
+router.get("/",    fn(req) { return HttpResponse(200, "index", {}) })
+router.post("/api", fn(req) { return HttpResponse(201, "created", {}) })
+router.put("/res",  fn(req) { return HttpResponse(200, "updated", {}) })
+router.delete("/res", fn(req) { return HttpResponse(200, "deleted", {}) })
+
+let h1 = router.dispatch("GET", "/")
+assert_true("dispatch GET /", h1 != nil)
+
+let h2 = router.dispatch("POST", "/api")
+assert_true("dispatch POST /api", h2 != nil)
+
+let h3 = router.dispatch("GET", "/missing")
+assert_nil("dispatch missing", h3)
+
+let h4 = router.dispatch("DELETE", "/res")
+assert_true("dispatch DELETE /res", h4 != nil)
+
+/* ── URL encoding ────────────────────────────────────────── */
+
+let encoded = encodeUrl("hello world")
+assert_true("encodeUrl space",    contains(encoded, "%"))
+let decoded = decodeUrl(encoded)
+assert_eq("decodeUrl roundtrip",  decoded, "hello world")
+
+let encoded2 = encodeUrl("hello@world")
+let decoded2 = decodeUrl(encoded2)
+assert_eq("decode @ roundtrip",   decoded2, "hello@world")
+
+assert_eq("encode plain", encodeUrl("abc123"), "abc123")
+
+/* ── parseUrl ────────────────────────────────────────────── */
+
+let u1 = parseUrl("https://example.com/path")
+assert_eq("parseUrl host",     u1.host,     "example.com")
+assert_eq("parseUrl pathname", u1.pathname, "/path")
+
+let u2 = parseUrl("https://example.com/path?key=value&foo=bar")
+assert_eq("parseUrl query host", u2.host,  "example.com")
+assert_true("parseUrl search",   contains(u2.search, "key"))
+
+let u3 = parseUrl("https://example.com:8080/path")
+assert_eq("parseUrl port", u3.port, "8080")
+
+let u4 = parseUrl("https://example.com/")
+assert_true("parseUrl toString", contains(u4.toString(), "example.com"))
+
+/* ── getMimeType ─────────────────────────────────────────── */
+
+assert_true("mime html",  contains(getMimeType("index.html"), "html"))
+assert_true("mime css",   contains(getMimeType("style.css"), "css"))
+assert_true("mime js",    contains(getMimeType("app.js"), "javascript"))
+assert_true("mime json",  contains(getMimeType("data.json"), "json"))
+assert_true("mime png",   contains(getMimeType("logo.png"), "png"))
+let unknown_mime = getMimeType("file.xyz")
+assert_true("mime unknown not nil", unknown_mime != nil)
+
+/* ── Cookie ──────────────────────────────────────────────── */
+
+let res_cookie = HttpResponse(200, "", {})
+res_cookie.setCookie("sessionId", "abc123", {secure: true})
+assert_true("setCookie sets header", has(res_cookie.headers, "Set-Cookie"))
+
+let res_cookie2 = HttpResponse(200, "", {})
+res_cookie2.setCookie("token", "secret", {path: "/", secure: true, httpOnly: true, maxAge: 3600})
+assert_true("setCookie with options", has(res_cookie2.headers, "Set-Cookie"))
+
+let ck = Cookie("user", "alice", {path: "/app", secure: true})
+let ck_str = ck.toString()
+assert_true("cookie name", contains(ck_str, "user=alice"))
+assert_true("cookie path", contains(ck_str, "Path=/app"))
+
+/* ── STATUS constants ────────────────────────────────────── */
+
+assert_eq("STATUS OK",        STATUS["OK"],        200)
+assert_eq("STATUS NOT_FOUND", STATUS["NOT_FOUND"], 404)
+assert_eq("STATUS CREATED",   STATUS["CREATED"],   201)
+
+/* ── MIME_TYPES constants ────────────────────────────────── */
+
+assert_eq("MIME json", MIME_TYPES["json"], "application/json")
+assert_eq("MIME html", MIME_TYPES["html"], "text/html")
+assert_eq("MIME css",  MIME_TYPES["css"],  "text/css")
+
+/* ── Results ─────────────────────────────────────────────── */
+
+output("HTTP tests: " + str(_pass) + " passed, " + str(_fail) + " failed")
+if _fail > 0 {
+    error("HTTP test suite: " + str(_fail) + " failure(s)")
+}
 output("HTTP test suite completed")

@@ -107,10 +107,10 @@ func exampleDataIntegrity() {
     let file = "database.pdb"
     let data = "database content here"
     
-    // Create checksum
+    # Create checksum
     let checksum = crc32(data)
     
-    // Verify later
+    # Verify later
     let dataLater = "database content here"
     let checksumLater = crc32(dataLater)
     
@@ -126,7 +126,7 @@ func exampleCompression() {
     
     let text = "mississippi river"
     
-    // Try both compression methods
+    # Try both compression methods
     let rle = rleEncode(text)
     let lz77 = lz77Compress(text)
     
@@ -149,7 +149,7 @@ func exampleSafeTransmission() {
     
     output("Sending over network: " + encoded)
     
-    // Receive and decode
+    # Receive and decode
     let received = encoded
     let decoded = base64Decode(received)
     
@@ -157,7 +157,7 @@ func exampleSafeTransmission() {
     output("Integrity: " + str(password == decoded))
 }
 
-// Run all examples
+# Run all examples
 exampleBase64()
 exampleHex()
 exampleURLEncoding()

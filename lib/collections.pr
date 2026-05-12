@@ -11,21 +11,13 @@ import "lib/iter"
 
 /* ── Array Utilities ────────────────────────────────────── */
 
-/* Alias iter.flatten for compatibility */
-func flatten(arr, depth) { return iter.flatten(arr, depth) }
-
-/* Alias iter.deepFlatten for compatibility */
-func deepFlatten(arr) { return iter.deepFlatten(arr) }
-
-/* Alias iter.uniqueBy for compatibility */
-func uniqueBy(arr, key_fn) { return iter.uniqueBy(arr, key_fn) }
 
 func uniqueArr(arr) {
     return uniqueBy(arr, fn(x) => x)
 }
 
 func zipArrays(a, b) {
-    return iter.zip(a, b)
+    return zip(a, b)
 }
 
 func zipWith(f, a, b) {
@@ -39,11 +31,6 @@ func zipWith(f, a, b) {
     return result
 }
 
-/* Alias iter.unzip for compatibility */
-func unzip(pairs) { return iter.unzip(pairs) }
-
-/* Alias iter.groupBy for compatibility */
-func groupBy(arr, key_fn) { return iter.groupBy(arr, key_fn) }
 
 func chunk(arr, size) {
     if size <= 0 { error("chunk: size must be > 0") }
@@ -284,9 +271,8 @@ func windowSlide(arr, size) {
     return result
 }
 
-/* Use iter.accumulate for general scan operations */
 func scan(arr, f, init) {
-    return iter.accumulate(arr, f, init)
+    return accumulate(arr, f, init)
 }
 
 /* ── Dict Utilities ──────────────────────────────��──────── */

@@ -1011,16 +1011,14 @@ static void compile_expr(Compiler *c, ASTNode *node) {
         break;
 
     case NODE_RANGE: {
-        uint16_t name_idx = name_const(c, "range");
-        emit3(c, OP_LOAD_NAME, name_idx, ln);
         compile_expr(c, node->range_lit.start);
         compile_expr(c, node->range_lit.end);
+        uint16_t range_flags = node->range_lit.inclusive ? 2 : 0;
         if (node->range_lit.step) {
             compile_expr(c, node->range_lit.step);
-            emit3(c, OP_CALL, 3, ln);
-        } else {
-            emit3(c, OP_CALL, 2, ln);
+            range_flags |= 1;
         }
+        emit3(c, OP_MAKE_RANGE, range_flags, ln);
         break;
     }
 

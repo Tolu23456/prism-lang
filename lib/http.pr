@@ -5,262 +5,395 @@
 
 /* ── HTTP Methods ───────────────────────────────────────── */
 
-const GET = "GET"
-const POST = "POST"
-const PUT = "PUT"
-const DELETE = "DELETE"
-const PATCH = "PATCH"
-const HEAD = "HEAD"
+const GET     = "GET"
+const POST    = "POST"
+const PUT     = "PUT"
+const DELETE  = "DELETE"
+const PATCH   = "PATCH"
+const HEAD    = "HEAD"
 const OPTIONS = "OPTIONS"
 
 /* ── Status Codes ───────────────────────────────────────── */
 
 const STATUS = {
-    OK: 200,
-    CREATED: 201,
-    ACCEPTED: 202,
-    NO_CONTENT: 204,
-    BAD_REQUEST: 400,
-    UNAUTHORIZED: 401,
-    FORBIDDEN: 403,
-    NOT_FOUND: 404,
-    METHOD_NOT_ALLOWED: 405,
-    CONFLICT: 409,
-    UNPROCESSABLE_ENTITY: 422,
-    INTERNAL_SERVER_ERROR: 500,
-    NOT_IMPLEMENTED: 501,
-    SERVICE_UNAVAILABLE: 503,
+    "OK": 200,
+    "CREATED": 201,
+    "ACCEPTED": 202,
+    "NO_CONTENT": 204,
+    "BAD_REQUEST": 400,
+    "UNAUTHORIZED": 401,
+    "FORBIDDEN": 403,
+    "NOT_FOUND": 404,
+    "METHOD_NOT_ALLOWED": 405,
+    "CONFLICT": 409,
+    "UNPROCESSABLE_ENTITY": 422,
+    "INTERNAL_SERVER_ERROR": 500,
+    "NOT_IMPLEMENTED": 501,
+    "SERVICE_UNAVAILABLE": 503,
 }
 
-/* ── MIME Types ─────────────────────────────────────────– */
+/* ── MIME Types ─────────────────────────────────────────── */
 
 const MIME_TYPES = {
-    json: "application/json",
-    html: "text/html",
-    xml: "application/xml",
-    text: "text/plain",
-    csv: "text/csv",
-    pdf: "application/pdf",
-    jpeg: "image/jpeg",
-    png: "image/png",
-    gif: "image/gif",
-    svg: "image/svg+xml",
-    javascript: "application/javascript",
-    css: "text/css",
-    zip: "application/zip",
-    form: "application/x-www-form-urlencoded",
-    multipart: "multipart/form-data",
+    "json":       "application/json",
+    "html":       "text/html",
+    "xml":        "application/xml",
+    "text":       "text/plain",
+    "csv":        "text/csv",
+    "pdf":        "application/pdf",
+    "jpeg":       "image/jpeg",
+    "jpg":        "image/jpeg",
+    "png":        "image/png",
+    "gif":        "image/gif",
+    "svg":        "image/svg+xml",
+    "js":         "application/javascript",
+    "javascript": "application/javascript",
+    "css":        "text/css",
+    "zip":        "application/zip",
+    "form":       "application/x-www-form-urlencoded",
+    "multipart":  "multipart/form-data",
+}
+
+/* ── MIME lookup by filename ────────────────────────────── */
+
+func getMimeType(filename) {
+    let parts = split(filename, ".")
+    if len(parts) < 2 { return "application/octet-stream" }
+    let ext = lower(parts[len(parts) - 1])
+    if has(MIME_TYPES, ext) { return MIME_TYPES[ext] }
+    return "application/octet-stream"
+}
+
+/* ── URL encode / decode ─────────────────────────────────── */
+
+func _http_toHex(n) {
+    if n == 0 { return "0" }
+    let hex = ""
+    while n > 0 {
+        let d = n % 16
+        hex = (d < 10 ? str(d) : chr(65 + d - 10)) + hex
+        n = n // 16
+    }
+    return hex
+}
+
+func encodeUrl(s) {
+    let result = ""
+    for ch in chars(s) {
+        if (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or
+           (ch >= "0" and ch <= "9") or ch == "-" or ch == "_" or
+           ch == "." or ch == "~" {
+            result = result + ch
+        } else {
+            let code = ord(ch)
+            let h = upper(_http_toHex(code))
+            if len(h) < 2 { h = "0" + h }
+            result = result + "%" + h
+        }
+    }
+    return result
+}
+
+func decodeUrl(s) {
+    let result = ""
+    let i = 0
+    while i < len(s) {
+        let ch = slice(s, i, i+1)
+        if ch == "%" and i + 2 < len(s) {
+            let hex_str = slice(s, i+1, i+3)
+            result = result + chr(int("0x" + hex_str))
+            i += 3
+        } else {
+            result = result + ch
+            i += 1
+        }
+    }
+    return result
+}
+
+/* ── URL Parser ──────────────────────────────────────────── */
+
+func parseUrl(url) {
+    let proto = ""
+    let rest  = url
+    let proto_end = index(url, "://")
+    if proto_end >= 0 {
+        proto = slice(url, 0, proto_end)
+        rest  = slice(url, proto_end + 3)
+    }
+
+    let search = ""
+    let query_start = index(rest, "?")
+    if query_start >= 0 {
+        search = slice(rest, query_start)
+        rest   = slice(rest, 0, query_start)
+    }
+
+    let pathname = "/"
+    let host_port = rest
+    let path_start = index(rest, "/")
+    if path_start >= 0 {
+        host_port = slice(rest, 0, path_start)
+        pathname  = slice(rest, path_start)
+    }
+
+    let host = host_port
+    let port = ""
+    let at_pos = index(host_port, "@")
+    if at_pos >= 0 {
+        host_port = slice(host_port, at_pos + 1)
+        host = host_port
+    }
+    let colon_pos = index(host_port, ":")
+    if colon_pos >= 0 {
+        host = slice(host_port, 0, colon_pos)
+        port = slice(host_port, colon_pos + 1)
+    }
+
+    let parsed = {}
+    parsed.protocol = proto
+    parsed.host     = host
+    parsed.port     = port
+    parsed.pathname = pathname
+    parsed.search   = search
+    parsed.href     = url
+    parsed.toString = fn() { return url }
+
+    return parsed
 }
 
 /* ── Request Builder ────────────────────────────────────── */
 
 func HttpRequest(method, url) {
-    let req = {
-        method: method,
-        url: url,
-        headers: {},
-        body: nil,
-        params: {},
-        timeout: 30000,
-    }
-    
+    let req = {}
+    req.method  = method
+    req.url     = url
+    req.headers = {}
+    req.body    = null
+    req.params  = {}
+    req.timeout = 30000
+
     req.setHeader = fn(key, value) {
         req.headers[key] = value
         return req
     }
-    
+
+    req.header = fn(key, value) {
+        req.headers[key] = value
+        return req
+    }
+
     req.setBody = fn(data) {
         req.body = data
         return req
     }
-    
+
     req.setParam = fn(key, value) {
         req.params[key] = value
         return req
     }
-    
+
     req.setTimeout = fn(ms) {
         req.timeout = ms
         return req
     }
-    
+
+    req.timeout = fn(ms) {
+        req.timeout = ms
+        return req
+    }
+
     req.asJson = fn() {
-        req.setHeader("Content-Type", MIME_TYPES.json)
+        req.headers["Content-Type"] = MIME_TYPES["json"]
         return req
     }
-    
+
     req.asFormData = fn() {
-        req.setHeader("Content-Type", MIME_TYPES.form)
+        req.headers["Content-Type"] = MIME_TYPES["form"]
         return req
     }
-    
+
     req.withAuth = fn(token) {
-        req.setHeader("Authorization", "Bearer " + token)
+        req.headers["Authorization"] = "Bearer " + token
         return req
     }
-    
+
     req.build = fn() {
-        let url_with_params = req.url
-        if len(req.params) > 0 {
-            let params = []
-            for k in keys(req.params) {
-                push(params, k + "=" + encodeURIComponent(str(req.params[k])))
-            }
-            url_with_params = url_with_params + "?" + join("&", params)
-        }
-        return {
-            method: req.method,
-            url: url_with_params,
-            headers: req.headers,
-            body: req.body,
-            timeout: req.timeout,
-        }
+        let out = {}
+        out.method  = req.method
+        out.url     = req.url
+        out.headers = req.headers
+        out.body    = req.body
+        out.timeout = req.timeout
+        return out
     }
-    
+
     return req
 }
 
-/* ── Response Handler ───────────────────────────────────── */
+/* ── Response Builder ───────────────────────────────────── */
 
-func HttpResponse(status, body, headers) {
-    headers = headers ?? {}
-    let resp = {
-        status: status,
-        body: body,
-        headers: headers,
+func HttpResponse(status_code, body_text, headers_dict) {
+    status_code  = status_code  ?? 200
+    body_text    = body_text    ?? ""
+    headers_dict = headers_dict ?? {}
+
+    let resp = {}
+    resp.status  = status_code
+    resp.body    = body_text
+    resp.headers = headers_dict
+
+    resp.setStatus = fn(code) {
+        resp.status = code
+        return resp
     }
-    
+
+    resp.status = fn(code) {
+        resp.status = code
+        return resp
+    }
+
     resp.setHeader = fn(key, value) {
         resp.headers[key] = value
         return resp
     }
-    
+
+    resp.header = fn(key, value) {
+        resp.headers[key] = value
+        return resp
+    }
+
     resp.json = fn(data) {
-        resp.body = JSON.stringify(data)
-        resp.setHeader("Content-Type", MIME_TYPES.json)
+        resp.body = str(data)
+        resp.headers["Content-Type"] = MIME_TYPES["json"]
         return resp
     }
-    
-    resp.text = fn(text) {
-        resp.body = text
-        resp.setHeader("Content-Type", MIME_TYPES.text)
+
+    resp.text = fn(text_val) {
+        resp.body = text_val
+        resp.headers["Content-Type"] = MIME_TYPES["text"]
         return resp
     }
-    
-    resp.html = fn(html) {
-        resp.body = html
-        resp.setHeader("Content-Type", MIME_TYPES.html)
+
+    resp.html = fn(html_val) {
+        resp.body = html_val
+        resp.headers["Content-Type"] = MIME_TYPES["html"]
         return resp
     }
-    
+
     resp.redirect = fn(location) {
         resp.status = 302
-        resp.setHeader("Location", location)
+        resp.headers["Location"] = location
         return resp
     }
-    
-    resp.send = fn() {
-        return {
-            status: resp.status,
-            body: resp.body,
-            headers: resp.headers,
-        }
+
+    resp.setCookie = fn(name, value, options) {
+        options = options ?? {}
+        let cs = name + "=" + value
+        if has(options, "path")     { cs = cs + "; Path=" + options["path"] }
+        if has(options, "maxAge")   { cs = cs + "; Max-Age=" + str(options["maxAge"]) }
+        if has(options, "secure")   and options["secure"]   { cs = cs + "; Secure" }
+        if has(options, "httpOnly") and options["httpOnly"] { cs = cs + "; HttpOnly" }
+        resp.headers["Set-Cookie"] = cs
+        return resp
     }
-    
+
+    resp.send = fn() {
+        let out = {}
+        out.status  = resp.status
+        out.body    = resp.body
+        out.headers = resp.headers
+        return out
+    }
+
     return resp
 }
 
-/* ── Router ─────────────────────────────────────────────– */
+/* ── Router ─────────────────────────────────────────────── */
 
 func Router() {
-    let router = {
-        routes: {
-            GET: {},
-            POST: {},
-            PUT: {},
-            DELETE: {},
-            PATCH: {},
-        },
-    }
-    
-    func route(method, path, handler) {
+    let router = {}
+    router.routes = {}
+
+    func _route(method, path, handler) {
         if not has(router.routes, method) {
             router.routes[method] = {}
         }
         router.routes[method][path] = handler
     }
-    
-    router.get = fn(path, handler) { route(GET, path, handler) }
-    router.post = fn(path, handler) { route(POST, path, handler) }
-    router.put = fn(path, handler) { route(PUT, path, handler) }
-    router.delete = fn(path, handler) { route(DELETE, path, handler) }
-    router.patch = fn(path, handler) { route(PATCH, path, handler) }
-    
-    router.match = fn(method, path) {
-        if not has(router.routes, method) { return nil }
-        if has(router.routes[method], path) {
-            return router.routes[method][path]
+
+    router.get    = fn(path, handler) { _route(GET,    path, handler) }
+    router.post   = fn(path, handler) { _route(POST,   path, handler) }
+    router.put    = fn(path, handler) { _route(PUT,    path, handler) }
+    router.delete = fn(path, handler) { _route(DELETE, path, handler) }
+    router.patch  = fn(path, handler) { _route(PATCH,  path, handler) }
+
+    router.dispatch = fn(method, path) {
+        if not has(router.routes, method) { return null }
+        let method_routes = router.routes[method]
+        if has(method_routes, path) {
+            return method_routes[path]
         }
-        
-        for route_path in keys(router.routes[method]) {
+        for route_path in keys(method_routes) {
             if startsWith(route_path, ":") {
-                return router.routes[method][route_path]
+                return method_routes[route_path]
             }
         }
-        return nil
+        return null
     }
-    
+
     router.handleRequest = fn(method, path, req_body) {
-        let handler = router.match(method, path)
-        if handler == nil {
-            return HttpResponse(STATUS.NOT_FOUND, "Not Found")
+        let handler = router.dispatch(method, path)
+        if handler == null {
+            return HttpResponse(STATUS["NOT_FOUND"], "Not Found", {})
         }
         return handler(req_body)
     }
-    
+
     return router
 }
 
-/* ── Middleware ─────────────────────────────────────────– */
+/* ── Middleware ─────────────────────────────────────────── */
 
 func Middleware() {
-    let middleware_chain = []
-    
-    let mw = {
-        chain: middleware_chain,
-    }
-    
+    let mw = {}
+    mw.chain = []
+
     mw.use = fn(handler) {
-        push(middleware_chain, handler)
+        push(mw.chain, handler)
         return mw
     }
-    
+
     mw.execute = fn(req, res) {
         let i = 0
-        
-        func next() {
-            if i < len(middleware_chain) {
-                let handler = middleware_chain[i]
+        let chain = mw.chain
+        let next = fn() {
+            if i < len(chain) {
+                let handler = chain[i]
                 i += 1
                 handler(req, res, next)
             }
         }
-        
         next()
         return res
     }
-    
+
     return mw
 }
 
-/* ── Middleware Helpers ─────────────────────────────────– */
+/* ── Middleware Helpers ─────────────────────────────────── */
 
 func corsMiddleware(allowed_origins) {
     allowed_origins = allowed_origins ?? ["*"]
-    
     return fn(req, res, next) {
-        let origin = req.headers.Origin ?? "*"
-        if has(allowed_origins, origin) or has(allowed_origins, "*") {
+        let origin = req.headers["Origin"] ?? "*"
+        let allow = false
+        let i = 0
+        while i < len(allowed_origins) {
+            if allowed_origins[i] == origin or allowed_origins[i] == "*" { allow = true }
+            i += 1
+        }
+        if allow {
             res.setHeader("Access-Control-Allow-Origin", origin)
             res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, PATCH")
             res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -271,9 +404,9 @@ func corsMiddleware(allowed_origins) {
 
 func authMiddleware(secret) {
     return fn(req, res, next) {
-        let token = req.headers.Authorization
-        if token == nil or token == "" {
-            res.status = STATUS.UNAUTHORIZED
+        let token = req.headers["Authorization"]
+        if token == null or token == "" {
+            res.status = STATUS["UNAUTHORIZED"]
             return res
         }
         next()
@@ -282,8 +415,7 @@ func authMiddleware(secret) {
 
 func loggingMiddleware() {
     return fn(req, res, next) {
-        let timestamp = str(now())
-        output("[" + timestamp + "] " + req.method + " " + req.path)
+        output("[LOG] " + req.method + " " + req.url)
         next()
     }
 }
@@ -291,111 +423,57 @@ func loggingMiddleware() {
 func rateLimitMiddleware(max_requests, time_window) {
     time_window = time_window ?? 60000
     let request_counts = {}
-    
     return fn(req, res, next) {
         let ip = req.ip ?? "unknown"
         let now_time = now()
-        
         if not has(request_counts, ip) {
-            request_counts[ip] = {count: 0, reset_time: now_time + time_window}
+            let entry = {}
+            entry.count = 0
+            entry.reset_time = now_time + time_window
+            request_counts[ip] = entry
         }
-        
         let entry = request_counts[ip]
         if now_time > entry.reset_time {
             entry.count = 0
             entry.reset_time = now_time + time_window
         }
-        
         entry.count += 1
         if entry.count > max_requests {
             res.status = 429
-            res.setHeader("Retry-After", str((entry.reset_time - now_time) / 1000))
+            res.setHeader("Retry-After", str((entry.reset_time - now_time) // 1000))
             return res
         }
-        
         next()
     }
 }
 
-/* ── URL Utilities ───────────────────────────────────────– */
-
-func parseUrl(url) {
-    let parts = split("?", url)
-    let base = parts[0]
-    let query_string = len(parts) > 1 ? parts[1] : ""
-    
-    let params = {}
-    if query_string != "" {
-        let pairs = split("&", query_string)
-        for pair in pairs {
-            let kv = split("=", pair)
-            if len(kv) == 2 {
-                params[kv[0]] = decodeURIComponent(kv[1])
-            }
-        }
-    }
-    
-    return {
-        path: base,
-        query: params,
-    }
-}
-
-func encodeURIComponent(str) {
-    let result = ""
-    for ch in chars(str) {
-        if (ch >= "a" and ch <= "z") or (ch >= "A" and ch <= "Z") or 
-           (ch >= "0" and ch <= "9") or ch == "-" or ch == "_" or 
-           ch == "." or ch == "~" {
-            result = result + ch
-        } else {
-            result = result + "%" + substr(upper("00" + toHex(ord(ch))), -2)
-        }
-    }
-    return result
-}
-
-func decodeURIComponent(str) {
-    return str
-}
-
-func toHex(n) {
-    let hex = ""
-    while n > 0 {
-        let d = n % 16
-        hex = (d < 10 ? str(d) : chr(65 + d - 10)) + hex
-        n = n / 16
-    }
-    return hex == "" ? "0" : hex
-}
-
-/* ── Cookie Utilities ───────────────────────────────────– */
+/* ── Cookie Builder ──────────────────────────────────────── */
 
 func Cookie(name, value, options) {
     options = options ?? {}
-    let cookie = {
-        name: name,
-        value: value,
-        path: options.path ?? "/",
-        domain: options.domain ?? nil,
-        expires: options.expires ?? nil,
-        maxAge: options.maxAge ?? nil,
-        secure: options.secure ?? false,
-        httpOnly: options.httpOnly ?? true,
-        sameSite: options.sameSite ?? "Strict",
-    }
-    
+
+    let cookie = {}
+    cookie.name     = name
+    cookie.value    = value
+    cookie.path     = options["path"]     ?? "/"
+    cookie.domain   = options["domain"]   ?? null
+    cookie.expires  = options["expires"]  ?? null
+    cookie.maxAge   = options["maxAge"]   ?? null
+    cookie.secure   = options["secure"]   ?? false
+    cookie.httpOnly = options["httpOnly"] ?? true
+    cookie.sameSite = options["sameSite"] ?? "Strict"
+
     cookie.toString = fn() {
-        let str = cookie.name + "=" + cookie.value
-        if cookie.path { str = str + "; Path=" + cookie.path }
-        if cookie.domain { str = str + "; Domain=" + cookie.domain }
-        if cookie.expires { str = str + "; Expires=" + cookie.expires }
-        if cookie.maxAge { str = str + "; Max-Age=" + cookie.maxAge }
-        if cookie.secure { str = str + "; Secure" }
-        if cookie.httpOnly { str = str + "; HttpOnly" }
-        if cookie.sameSite { str = str + "; SameSite=" + cookie.sameSite }
-        return str
+        let s = cookie.name + "=" + cookie.value
+        if cookie.path    { s = s + "; Path=" + cookie.path }
+        if cookie.domain  { s = s + "; Domain=" + cookie.domain }
+        if cookie.expires { s = s + "; Expires=" + str(cookie.expires) }
+        if cookie.maxAge  { s = s + "; Max-Age=" + str(cookie.maxAge) }
+        if cookie.secure  { s = s + "; Secure" }
+        if cookie.httpOnly { s = s + "; HttpOnly" }
+        if cookie.sameSite { s = s + "; SameSite=" + cookie.sameSite }
+        return s
     }
-    
+
     return cookie
 }

@@ -443,20 +443,20 @@ func precision(y_true, y_pred, positive_class) {
 
 func recall(y_true, y_pred, positive_class) {
     let tp = 0
-    let fn = 0
+    let false_neg = 0
     let i = 0
     while i < len(y_true) {
         if y_true[i] == positive_class {
             if y_pred[i] == positive_class {
                 tp += 1
             } else {
-                fn += 1
+                false_neg += 1
             }
         }
         i += 1
     }
-    if tp + fn == 0 { return 0 }
-    return tp / (tp + fn)
+    if tp + false_neg == 0 { return 0 }
+    return tp / (tp + false_neg)
 }
 
 func f1Score(y_true, y_pred, positive_class) {

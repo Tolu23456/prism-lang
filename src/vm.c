@@ -467,16 +467,6 @@ static Value vm_builtin_sqrt(Value *args, int argc) {
     double v = VAL_TYPE(args[0]) == VAL_INT ? (double)AS_INT(args[0]) : AS_FLOAT(args[0]);
     return value_float(sqrt(v));
 }
-static Value vm_builtin_print(Value *args, int argc) {
-    for (int i = 0; i < argc; i++) {
-        if (i > 0) printf(" ");
-        char *s = value_to_string(args[i]);
-        printf("%s", s);
-        free(s);
-    }
-    printf("\n");
-    return value_null();
-}
 
 /* ================================================================== stdlib builtins */
 
@@ -3634,6 +3624,72 @@ int vm_run(VM *vm, Chunk *chunk) {
             } else {
                 method_id = vm_resolve_method_id(VAL_TYPE(obj), method_name);
                 if (cache) { cache->opcode = OP_CALL_METHOD; cache->name_idx = name_idx; cache->receiver_type = VAL_TYPE(obj); cache->method_id = method_id; }
+            }
+            /* Fallback: for dicts, check if there is a function-valued field */
+            if (method_id == VM_METHOD_UNKNOWN && VAL_TYPE(obj) == VAL_DICT) {
+                Value fkey = value_string(method_name);
+                Value fn = value_dict_get(obj, fkey);
+                value_release(fkey);
+                if (!IS_NULL(fn) && VAL_TYPE(fn) == VAL_FUNCTION && AS_FUNC(fn).chunk) {
+                    if (PRISM_UNLIKELY(vm->frame_count >= VM_FRAME_MAX)) {
+                        vm_error(vm, "call frame overflow", line);
+                        /* fn is borrowed from value_dict_get — do NOT release it */
+                        for (int i = 0; i < argc; i++) value_release(args[i]);
+                        if (argc > VM_CALL_STACK_BUF) free(args);
+                        value_release(obj); PUSH(value_null()); DISPATCH();
+                    }
+                    Chunk *fn_chunk = AS_FUNC(fn).chunk;
+                    Env *closure = AS_FUNC(fn).closure ? AS_FUNC(fn).closure : vm->globals;
+                    int pc = AS_FUNC(fn).param_count;
+                    int lc = pc < VM_LOCALS_MAX ? pc : VM_LOCALS_MAX;
+                    CallFrame *new_frame = &vm->frames[vm->frame_count++];
+                    new_frame->func = value_retain(fn);
+                    new_frame->chunk = fn_chunk;
+                    new_frame->ip = 0; new_frame->stack_base = vm->stack_top;
+                    new_frame->owns_chunk = 0;
+                    if (PRISM_LIKELY(fn_chunk->no_env)) {
+                        new_frame->env      = closure;
+                        new_frame->root_env = closure;
+                        new_frame->owns_env = 0;
+                        for (int i = 0; i < lc; i++)
+                            new_frame->locals[i] = (i < argc) ? args[i] : value_null();
+                        for (int i = lc; i < argc; i++) value_release(args[i]);
+                    } else {
+                        Env *fn_env = env_new(closure);
+                        new_frame->env      = fn_env;
+                        new_frame->root_env = fn_env;
+                        new_frame->owns_env = 1;
+                        for (int i = 0; i < pc; i++) {
+                            Value arg = (i < argc) ? args[i] : value_null();
+                            env_set(fn_env, AS_FUNC(fn).params[i].name, arg, false);
+                            if (i < lc) new_frame->locals[i] = value_retain(arg);
+                        }
+                        for (int i = 0; i < argc; i++) value_release(args[i]);
+                    }
+                    {
+                        int clr_end = (int)fn_chunk->local_count_max;
+                        if (clr_end < lc) clr_end = lc;
+                        if (clr_end > VM_LOCALS_MAX) clr_end = VM_LOCALS_MAX;
+                        if (clr_end > lc)
+                            memset(&new_frame->locals[lc], 0,
+                                   (size_t)(clr_end - lc) * sizeof(Value));
+                        new_frame->local_count = clr_end;
+                    }
+                    if (argc > VM_CALL_STACK_BUF) free(args);
+                    /* fn is a borrowed ref from value_dict_get (no retain was done).
+                     * new_frame->func already holds a retained reference via value_retain(fn).
+                     * Do NOT release fn here — that would steal the dict's ownership. */
+                    value_release(obj);
+                    frame = new_frame; DISPATCH();
+                } else if (!IS_NULL(fn) && VAL_TYPE(fn) == VAL_BUILTIN) {
+                    Value result2 = AS_BUILTIN(fn).fn(args, argc);
+                    for (int i = 0; i < argc; i++) value_release(args[i]);
+                    if (argc > VM_CALL_STACK_BUF) free(args);
+                    /* fn is a borrowed ref from value_dict_get — do NOT release it. */
+                    value_release(obj);
+                    PUSH(result2 ? result2 : value_null());
+                    DISPATCH();
+                }
             }
             Value result = vm_dispatch_method_cached(vm, obj, method_name, method_id, args, argc, line);
             for (int i = 0; i < argc; i++) value_release(args[i]);

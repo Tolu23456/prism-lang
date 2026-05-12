@@ -1,77 +1,183 @@
 /* Prism Standard Library — database module
-   Pure Prism implementation.
-   PrismaDB (.pdb) native database, SQL query builders,
-   connection pooling, migrations, and ORM patterns.
+   Pure Prism implementation using field-assignment pattern
+   to avoid unquoted dict-key / variable-lookup issues.
 */
 
-/* ── PrismaDB (Native Prism Database) ────────────────────– */
+/* ── Query helper: match a row against a dict filter ────────── */
+
+func _db_match(row, query) {
+    for key in keys(query) {
+        let cond = query[key]
+        let rv = has(row, key) ? row[key] : null
+        if type(cond) == "dict" {
+            if has(cond, "$gt")  and not (rv > cond["$gt"])   { return false }
+            if has(cond, "$gte") and not (rv >= cond["$gte"])  { return false }
+            if has(cond, "$lt")  and not (rv < cond["$lt"])   { return false }
+            if has(cond, "$lte") and not (rv <= cond["$lte"])  { return false }
+            if has(cond, "$ne")  and not (rv != cond["$ne"])   { return false }
+            if has(cond, "$eq")  and rv != cond["$eq"]         { return false }
+        } else {
+            if rv != cond { return false }
+        }
+    }
+    return true
+}
+
+func _db_where(filter) {
+    if filter == null { return fn(row) { return true } }
+    if type(filter) == "dict" {
+        let q = filter
+        return fn(row) { return _db_match(row, q) }
+    }
+    return filter
+}
+
+/* ── PrismaDB ─────────────────────────────────────────────── */
 
 func PrismaDB(filename) {
     filename = filename ?? "prism.pdb"
-    let db = {
-        filename: filename,
-        tables: {},
-        indexes: {},
-        version: "1.0",
-        metadata: {
-            created: now(),
-            modified: now(),
-            record_count: 0,
-        }
-    }
-    
-    db.createTable = fn(name, schema) {
-        if has(db.tables, name) {
-            error("PrismaDB: Table " + name + " already exists")
-        }
-        db.tables[name] = {
-            name: name,
-            schema: schema,
-            rows: [],
-            primary_key: nil,
-            indices: {},
-        }
-        
-        for col_name in keys(schema) {
-            if schema[col_name].primary {
-                db.tables[name].primary_key = col_name
+
+    let meta = {}
+    meta.created      = time()
+    meta.modified     = time()
+    meta.record_count = 0
+
+    let db = {}
+    db.filename = filename
+    db.tables   = {}
+    db.indexes  = {}
+    db.version  = "1.0"
+    db.metadata = meta
+
+    /* Simple SQL CREATE TABLE / DROP TABLE executor */
+    db.exec = fn(sql) {
+        let s = sql
+        let si = 0
+        while si < len(s) and (slice(s, si, si+1) == " " or slice(s, si, si+1) == "\t") { si += 1 }
+        s = slice(s, si)
+
+        if slice(s, 0, 12) == "CREATE TABLE" {
+            si = 13
+            while si < len(s) and slice(s, si, si+1) == " " { si += 1 }
+            let ni = si
+            while ni < len(s) and slice(s, ni, ni+1) != " " and slice(s, ni, ni+1) != "(" { ni += 1 }
+            let tname = slice(s, si, ni)
+            if has(db.tables, tname) { return }
+
+            let pi = ni
+            while pi < len(s) and slice(s, pi, pi+1) != "(" { pi += 1 }
+            pi += 1
+            let pe = len(s) - 1
+            while pe > pi and slice(s, pe, pe+1) != ")" { pe -= 1 }
+
+            let cols_s = slice(s, pi, pe)
+            let col_list = split(cols_s, ",")
+            let schema = {}
+            let pk = null
+
+            for col_raw in col_list {
+                let cr = col_raw
+                let ci = 0
+                while ci < len(cr) and slice(cr, ci, ci+1) == " " { ci += 1 }
+                cr = slice(cr, ci)
+                let ce = len(cr) - 1
+                while ce > 0 and slice(cr, ce, ce+1) == " " { ce -= 1 }
+                if ce >= 0 { cr = slice(cr, 0, ce + 1) }
+                if len(cr) == 0 { continue }
+
+                let words = split(cr, " ")
+                let cname = words[0]
+                if len(cname) == 0 { continue }
+                let col_type = len(words) > 1 ? words[1] : "TEXT"
+                let is_pk = contains(cr, "PRIMARY KEY")
+
+                let col_def = {}
+                col_def["col_type"] = col_type
+                col_def["is_primary"] = is_pk
+                schema[cname] = col_def
+
+                if is_pk and pk == null { pk = cname }
+            }
+
+            let table = {}
+            table.name        = tname
+            table.schema      = schema
+            table.rows        = []
+            table.primary_key = pk ?? "_id"
+            table.indices     = {}
+            table._next_id    = 1
+
+            db.tables[tname] = table
+            db.metadata.modified = time()
+
+        } elif slice(s, 0, 10) == "DROP TABLE" {
+            si = 11
+            while si < len(s) and slice(s, si, si+1) == " " { si += 1 }
+            let words2 = split(slice(s, si), " ")
+            let tname2 = words2[0]
+            if has(db.tables, tname2) {
+                del(db.tables, tname2)
+                db.metadata.modified = time()
             }
         }
-        
-        db.metadata.modified = now()
     }
-    
+
+    db.createTable = fn(tbl_name, tbl_schema) {
+        if has(db.tables, tbl_name) {
+            error("PrismaDB: Table " + tbl_name + " already exists")
+        }
+
+        let table = {}
+        table.name        = tbl_name
+        table.schema      = tbl_schema
+        table.rows        = []
+        table.primary_key = "_id"
+        table.indices     = {}
+        table._next_id    = 1
+
+        for col_name in keys(tbl_schema) {
+            let col_def = tbl_schema[col_name]
+            if has(col_def, "primary") and col_def["primary"] {
+                table.primary_key = col_name
+            }
+        }
+
+        db.tables[tbl_name] = table
+        db.metadata.modified = time()
+    }
+
     db.insert = fn(table_name, data) {
         if not has(db.tables, table_name) {
             error("PrismaDB: Table " + table_name + " does not exist")
         }
-        
+
         let table = db.tables[table_name]
         let row = copy(data)
-        row._id = len(table.rows)
-        row._created = now()
-        row._modified = now()
-        
-        for col_name in keys(table.schema) {
-            if table.schema[col_name].required and not has(row, col_name) {
-                error("PrismaDB: Missing required column " + col_name)
-            }
+        let next_id = table._next_id
+        table._next_id = next_id + 1
+
+        row._id       = next_id
+        row._created  = time()
+        row._modified = time()
+
+        let pk = table.primary_key
+        if pk != "_id" and not has(row, pk) {
+            row[pk] = next_id
         }
-        
+
         push(table.rows, row)
         db.metadata.record_count += 1
-        db.metadata.modified = now()
-        
-        return row._id
+        db.metadata.modified = time()
+
+        return next_id
     }
-    
-    db.select = fn(table_name, where_fn) {
-        where_fn = where_fn ?? fn(row) { return true }
-        
+
+    db.select = fn(table_name, filter) {
         if not has(db.tables, table_name) {
             error("PrismaDB: Table " + table_name + " does not exist")
         }
-        
+
+        let where_fn = _db_where(filter)
         let results = []
         for row in db.tables[table_name].rows {
             if where_fn(row) {
@@ -80,67 +186,111 @@ func PrismaDB(filename) {
         }
         return results
     }
-    
-    db.selectOne = fn(table_name, where_fn) {
-        let results = db.select(table_name, where_fn)
-        return len(results) > 0 ? results[0] : nil
+
+    db.selectOne = fn(table_name, filter) {
+        let results = db.select(table_name, filter)
+        return len(results) > 0 ? results[0] : null
     }
-    
-    db.update = fn(table_name, id, updates) {
+
+    db.update = fn(table_name, id_or_filter, updates) {
         if not has(db.tables, table_name) {
             error("PrismaDB: Table " + table_name + " does not exist")
         }
-        
+
         let table = db.tables[table_name]
-        let i = 0
-        while i < len(table.rows) {
-            if table.rows[i]._id == id {
-                for key in keys(updates) {
-                    table.rows[i][key] = updates[key]
+
+        if type(id_or_filter) == "dict" {
+            let q = id_or_filter
+            let updated = 0
+            let i = 0
+            while i < len(table.rows) {
+                if _db_match(table.rows[i], q) {
+                    for key in keys(updates) {
+                        table.rows[i][key] = updates[key]
+                    }
+                    table.rows[i]._modified = time()
+                    updated += 1
                 }
-                table.rows[i]._modified = now()
-                db.metadata.modified = now()
-                return table.rows[i]
+                i += 1
             }
-            i += 1
+            db.metadata.modified = time()
+            return updated
+        } else {
+            let target_id = id_or_filter
+            let i = 0
+            while i < len(table.rows) {
+                if table.rows[i]._id == target_id {
+                    for key in keys(updates) {
+                        table.rows[i][key] = updates[key]
+                    }
+                    table.rows[i]._modified = time()
+                    db.metadata.modified = time()
+                    return table.rows[i]
+                }
+                i += 1
+            }
         }
-        return nil
+        return null
     }
-    
-    db.delete = fn(table_name, id) {
+
+    db.delete = fn(table_name, id_or_filter) {
         if not has(db.tables, table_name) {
             error("PrismaDB: Table " + table_name + " does not exist")
         }
-        
+
         let table = db.tables[table_name]
-        let i = 0
-        while i < len(table.rows) {
-            if table.rows[i]._id == id {
-                let deleted = pop(table.rows, i)
-                db.metadata.record_count -= 1
-                db.metadata.modified = now()
-                return deleted
+
+        if type(id_or_filter) == "dict" {
+            let q = id_or_filter
+            let new_rows = []
+            let deleted_count = 0
+            for row in table.rows {
+                if _db_match(row, q) {
+                    deleted_count += 1
+                } else {
+                    push(new_rows, row)
+                }
             }
-            i += 1
+            table.rows = new_rows
+            db.metadata.record_count -= deleted_count
+            db.metadata.modified = time()
+            return deleted_count
+        } else {
+            let target_id = id_or_filter
+            let deleted2 = null
+            let new_rows3 = []
+            for row in table.rows {
+                if row._id == target_id and deleted2 == null {
+                    deleted2 = row
+                } else {
+                    push(new_rows3, row)
+                }
+            }
+            if deleted2 != null {
+                table.rows = new_rows3
+                db.metadata.record_count -= 1
+                db.metadata.modified = time()
+                return deleted2
+            }
         }
-        return nil
+        return null
     }
-    
+
     db.count = fn(table_name) {
         if not has(db.tables, table_name) {
             error("PrismaDB: Table " + table_name + " does not exist")
         }
         return len(db.tables[table_name].rows)
     }
-    
-    db.createIndex = fn(table_name, column_name) {
+
+    db.createIndex = fn(table_name, column_name, options) {
         if not has(db.tables, table_name) {
             error("PrismaDB: Table " + table_name + " does not exist")
         }
-        
+
         let table = db.tables[table_name]
         let index = {}
-        
+
         for row in table.rows {
             let key = str(row[column_name])
             if not has(index, key) {
@@ -148,25 +298,30 @@ func PrismaDB(filename) {
             }
             push(index[key], row._id)
         }
-        
+
         table.indices[column_name] = index
-        db.metadata.modified = now()
+        db.metadata.modified = time()
     }
-    
+
+    db.getIndexes = fn(table_name) {
+        if not has(db.tables, table_name) { return [] }
+        return keys(db.tables[table_name].indices)
+    }
+
     db.findByIndex = fn(table_name, column_name, value) {
         if not has(db.tables, table_name) {
             error("PrismaDB: Table " + table_name + " does not exist")
         }
-        
+
         let table = db.tables[table_name]
         if not has(table.indices, column_name) {
             db.createIndex(table_name, column_name)
         }
-        
+
         let key = str(value)
         let index = table.indices[column_name]
         if not has(index, key) { return [] }
-        
+
         let ids = index[key]
         let results = []
         for id in ids {
@@ -179,333 +334,315 @@ func PrismaDB(filename) {
         }
         return results
     }
-    
+
     db.backup = fn() {
-        let backup = {
-            version: db.version,
-            timestamp: now(),
-            tables: {},
-            metadata: copy(db.metadata),
-        }
-        
-        for tbl_name in keys(db.tables) {
-            backup.tables[tbl_name] = {
-                schema: copy(db.tables[tbl_name].schema),
-                rows: deepCopy(db.tables[tbl_name].rows),
-            }
-        }
-        
+        let backup = {}
+        backup.version   = db.version
+        backup.timestamp = time()
+        backup.tables    = copy(db.tables)
+        backup.metadata  = copy(db.metadata)
         return backup
     }
-    
+
     db.export = fn() {
-        return JSON.stringify(db)
+        return copy(db.tables)
     }
-    
-    db.import = fn(json_str) {
-        let data = JSON.parse(json_str)
-        db.tables = data.tables
-        db.metadata = data.metadata
-        db.version = data.version
+
+    db.importData = fn(data) {
+        if type(data) == "dict" {
+            db.tables = data
+        }
     }
-    
+
     db.dropTable = fn(table_name) {
         if has(db.tables, table_name) {
             let count = len(db.tables[table_name].rows)
             del(db.tables, table_name)
             db.metadata.record_count -= count
-            db.metadata.modified = now()
+            db.metadata.modified = time()
             return true
         }
         return false
     }
-    
+
     db.transaction = fn(operations) {
-        let backup = db.backup()
-        
-        func rollback() {
-            db.tables = backup.tables
-            db.metadata = backup.metadata
+        let backup_data = db.backup()
+        let do_rollback = fn() {
+            db.tables   = backup_data.tables
+            db.metadata = backup_data.metadata
         }
-        
-        let success = false
         try {
-            for op in operations {
-                op(db)
-            }
-            success = true
-        } catch {
-            rollback()
-            error("Transaction failed: " + catch)
+            operations()
+            return true
+        } catch err {
+            do_rollback()
+            return false
         }
-        
-        return success
     }
-    
+
     return db
 }
 
-/* ── SQL Query Builder ──────────────────────────────────– */
+/* ── SQL Query Builder ──────────────────────────────────── */
 
 func QueryBuilder(table_name) {
-    let query = {
-        select: "*",
-        from_table: table_name,
-        where_conditions: [],
-        joins: [],
-        limit_val: nil,
-        offset_val: nil,
-        order_by_val: nil,
-        group_by_val: nil,
-    }
-    
-    query.select = fn(cols) {
-        query.select = cols
+    let query = {}
+    query.select_cols    = "*"
+    query.from_table     = table_name
+    query.where_parts    = []
+    query.join_list      = []
+    query.limit_val      = null
+    query.offset_val     = null
+    query.order_by_val   = null
+    query.group_by_val   = null
+
+    query.selectCols = fn(cols) {
+        query.select_cols = cols
         return query
     }
-    
+
     query.where = fn(condition) {
-        push(query.where_conditions, condition)
+        push(query.where_parts, condition)
         return query
     }
-    
+
     query.join = fn(other_table, on_condition) {
-        push(query.joins, {table: other_table, condition: on_condition})
+        let j = {}
+        j.table     = other_table
+        j.condition = on_condition
+        j.join_type = "INNER"
+        push(query.join_list, j)
         return query
     }
-    
+
     query.leftJoin = fn(other_table, on_condition) {
-        push(query.joins, {table: other_table, condition: on_condition, type: "LEFT"})
+        let j = {}
+        j.table     = other_table
+        j.condition = on_condition
+        j.join_type = "LEFT"
+        push(query.join_list, j)
         return query
     }
-    
+
     query.orderBy = fn(column, direction) {
         direction = direction ?? "ASC"
-        query.order_by_val = {column: column, direction: direction}
+        let ord = {}
+        ord.column    = column
+        ord.direction = direction
+        query.order_by_val = ord
         return query
     }
-    
+
     query.groupBy = fn(column) {
         query.group_by_val = column
         return query
     }
-    
+
     query.limit = fn(n) {
         query.limit_val = n
         return query
     }
-    
+
     query.offset = fn(n) {
         query.offset_val = n
         return query
     }
-    
+
     query.build = fn() {
-        let sql = "SELECT " + query.select + " FROM " + query.from_table
-        
-        for join in query.joins {
-            sql = sql + " " + (join.type ?? "INNER") + " JOIN " + join.table
-            sql = sql + " ON " + join.condition
+        let sql = "SELECT " + query.select_cols + " FROM " + query.from_table
+
+        for j in query.join_list {
+            sql = sql + " " + j.join_type + " JOIN " + j.table
+            sql = sql + " ON " + j.condition
         }
-        
-        if len(query.where_conditions) > 0 {
+
+        if len(query.where_parts) > 0 {
             sql = sql + " WHERE "
-            sql = sql + join(" AND ", query.where_conditions)
+            sql = sql + join(" AND ", query.where_parts)
         }
-        
+
         if query.group_by_val {
             sql = sql + " GROUP BY " + query.group_by_val
         }
-        
+
         if query.order_by_val {
             sql = sql + " ORDER BY " + query.order_by_val.column
             sql = sql + " " + query.order_by_val.direction
         }
-        
+
         if query.limit_val {
             sql = sql + " LIMIT " + str(query.limit_val)
         }
-        
+
         if query.offset_val {
             sql = sql + " OFFSET " + str(query.offset_val)
         }
-        
+
         return sql
     }
-    
+
     query.execute = fn() {
         return query.build()
     }
-    
+
     return query
 }
 
-/* ── Connection Pool ────────────────────────────────────– */
+/* ── Connection Pool ────────────────────────────────────── */
 
 func ConnectionPool(max_connections) {
     max_connections = max_connections ?? 10
-    let pool = {
-        connections: [],
-        available: [],
-        in_use: [],
-        max_size: max_connections,
-    }
-    
+
+    let pool = {}
+    pool.available = []
+    pool.in_use    = []
+    pool.max_size  = max_connections
+
     let i = 0
     while i < max_connections {
-        push(pool.available, {id: i, active: true})
+        let conn = {}
+        conn.id     = i
+        conn.active = true
+        push(pool.available, conn)
         i += 1
     }
-    
+
     pool.acquire = fn() {
         if len(pool.available) == 0 {
             error("ConnectionPool: No connections available")
         }
-        let conn = shift(pool.available)
+        let conn = pool.available[0]
+        let new_avail = []
+        let ai = 1
+        while ai < len(pool.available) {
+            push(new_avail, pool.available[ai])
+            ai += 1
+        }
+        pool.available = new_avail
         push(pool.in_use, conn)
         return conn
     }
-    
+
     pool.release = fn(conn) {
-        let i = 0
-        while i < len(pool.in_use) {
-            if pool.in_use[i].id == conn.id {
-                remove(pool.in_use, i)
-                push(pool.available, conn)
-                return
-            }
-            i += 1
+        let new_in_use = []
+        for c in pool.in_use {
+            if c.id != conn.id { push(new_in_use, c) }
         }
+        pool.in_use = new_in_use
+        push(pool.available, conn)
     }
-    
+
     pool.getAvailableCount = fn() {
         return len(pool.available)
     }
-    
+
     pool.getActiveCount = fn() {
         return len(pool.in_use)
     }
-    
+
     return pool
 }
 
-/* ── ORM Base Model ────────────────────────────────────– */
+/* ── ORM Base Model ────────────────────────────────────── */
 
 func Model(table_name, schema) {
-    let model = {
-        table: table_name,
-        schema: schema,
-        db: nil,
-    }
-    
+    let model = {}
+    model.table  = table_name
+    model.schema = schema
+    model.db     = null
+
     model.setDB = fn(database) {
         model.db = database
         return model
     }
-    
+
     model.create = fn(data) {
-        if model.db == nil {
-            error("Model: Database not set")
-        }
+        if model.db == null { error("Model: Database not set") }
         return model.db.insert(model.table, data)
     }
-    
+
     model.findAll = fn() {
-        if model.db == nil {
-            error("Model: Database not set")
-        }
-        return model.db.select(model.table)
+        if model.db == null { error("Model: Database not set") }
+        return model.db.select(model.table, null)
     }
-    
+
     model.findById = fn(id) {
-        if model.db == nil {
-            error("Model: Database not set")
-        }
+        if model.db == null { error("Model: Database not set") }
         return model.db.selectOne(model.table, fn(row) { return row._id == id })
     }
-    
+
     model.findBy = fn(column, value) {
-        if model.db == nil {
-            error("Model: Database not set")
-        }
+        if model.db == null { error("Model: Database not set") }
         return model.db.select(model.table, fn(row) { return row[column] == value })
     }
-    
+
     model.update = fn(id, data) {
-        if model.db == nil {
-            error("Model: Database not set")
-        }
+        if model.db == null { error("Model: Database not set") }
         return model.db.update(model.table, id, data)
     }
-    
+
     model.delete = fn(id) {
-        if model.db == nil {
-            error("Model: Database not set")
-        }
+        if model.db == null { error("Model: Database not set") }
         return model.db.delete(model.table, id)
     }
-    
+
     model.count = fn() {
-        if model.db == nil {
-            error("Model: Database not set")
-        }
+        if model.db == null { error("Model: Database not set") }
         return model.db.count(model.table)
     }
-    
+
     return model
 }
 
-/* ── Migration System ───────────────────────────────────– */
+/* ── Migration System ───────────────────────────────────── */
 
 func Migration(name) {
-    let migration = {
-        name: name,
-        timestamp: now(),
-        up_fn: nil,
-        down_fn: nil,
-        executed: false,
-    }
-    
-    migration.up = fn(func) {
-        migration.up_fn = func
+    let migration = {}
+    migration.name      = name
+    migration.timestamp = time()
+    migration.up_fn     = null
+    migration.down_fn   = null
+    migration.executed  = false
+
+    migration.up = fn(f) {
+        migration.up_fn = f
         return migration
     }
-    
-    migration.down = fn(func) {
-        migration.down_fn = func
+
+    migration.down = fn(f) {
+        migration.down_fn = f
         return migration
     }
-    
+
     migration.execute = fn(db) {
-        if migration.up_fn != nil {
+        if migration.up_fn != null {
             migration.up_fn(db)
             migration.executed = true
         }
     }
-    
+
     migration.rollback = fn(db) {
-        if migration.down_fn != nil {
+        if migration.down_fn != null {
             migration.down_fn(db)
             migration.executed = false
         }
     }
-    
+
     return migration
 }
 
-/* ── Migration Runner ───────────────────────────────────– */
+/* ── Migration Runner ───────────────────────────────────── */
 
 func MigrationRunner() {
-    let runner = {
-        migrations: [],
-        executed_migrations: [],
-    }
-    
+    let runner = {}
+    runner.migrations          = []
+    runner.executed_migrations = []
+
     runner.addMigration = fn(migration) {
         push(runner.migrations, migration)
         return runner
     }
-    
+
     runner.runMigrations = fn(db) {
         for migration in runner.migrations {
             if not migration.executed {
@@ -514,7 +651,7 @@ func MigrationRunner() {
             }
         }
     }
-    
+
     runner.rollbackAll = fn(db) {
         let i = len(runner.migrations) - 1
         while i >= 0 {
@@ -523,14 +660,14 @@ func MigrationRunner() {
         }
         runner.executed_migrations = []
     }
-    
+
     runner.getStatus = fn() {
-        return {
-            total_migrations: len(runner.migrations),
-            executed: len(runner.executed_migrations),
-            pending: len(runner.migrations) - len(runner.executed_migrations),
-        }
+        let st = {}
+        st.total_migrations = len(runner.migrations)
+        st.executed         = len(runner.executed_migrations)
+        st.pending          = len(runner.migrations) - len(runner.executed_migrations)
+        return st
     }
-    
+
     return runner
 }

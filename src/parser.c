@@ -159,7 +159,15 @@ static ASTNode *parse_brace_literal(Parser *p, int line) {
     skip_newlines(p);
 
     if (check(p, TOKEN_COLON)) {
-        /* dict literal */
+        /* dict literal — bare identifier keys are promoted to string literals */
+#define PROMOTE_DICT_KEY(k) do { \
+    if ((k) && (k)->type == NODE_IDENT) { \
+        ASTNode *_sk = ast_node_new(NODE_STRING_LIT, (k)->line); \
+        _sk->string_lit.value = strdup((k)->ident.name); \
+        ast_node_free(k); \
+        (k) = _sk; \
+    } \
+} while(0)
         advance(p); /* consume ':' */
         skip_newlines(p);
         ASTNode *n = ast_node_new(NODE_DICT_LIT, line);
@@ -167,6 +175,7 @@ static ASTNode *parse_brace_literal(Parser *p, int line) {
         n->dict_lit.keys = malloc(cap * sizeof(ASTNode *));
         n->dict_lit.vals = malloc(cap * sizeof(ASTNode *));
         n->dict_lit.count = 0;
+        PROMOTE_DICT_KEY(first);
         n->dict_lit.keys[n->dict_lit.count] = first;
         n->dict_lit.vals[n->dict_lit.count] = parse_expr(p);
         n->dict_lit.count++;
@@ -179,13 +188,16 @@ static ASTNode *parse_brace_literal(Parser *p, int line) {
                 n->dict_lit.keys = realloc(n->dict_lit.keys, cap * sizeof(ASTNode *));
                 n->dict_lit.vals = realloc(n->dict_lit.vals, cap * sizeof(ASTNode *));
             }
-            n->dict_lit.keys[n->dict_lit.count] = parse_expr(p);
+            ASTNode *kn = parse_expr(p);
             if (p->had_error) { ast_node_free(n); return NULL; }
+            PROMOTE_DICT_KEY(kn);
+            n->dict_lit.keys[n->dict_lit.count] = kn;
             expect(p, TOKEN_COLON, "expected ':' in dict literal");
             n->dict_lit.vals[n->dict_lit.count] = parse_expr(p);
             n->dict_lit.count++;
             skip_newlines(p);
         }
+#undef PROMOTE_DICT_KEY
         expect(p, TOKEN_RBRACE, "expected '}' after dict literal");
         return n;
     } else {

@@ -182,7 +182,7 @@ func padCenter(s, width, ch) {
     let out       = str(s)
     let total_pad = width - utf8_len(out)
     if total_pad <= 0 { return out }
-    let left_pad  = (total_pad + 1) / 2
+    let left_pad  = (total_pad + 1) // 2
     let right_pad = total_pad - left_pad
     return _repeat_string(ch, left_pad) + out + _repeat_string(ch, right_pad)
 }

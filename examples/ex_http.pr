@@ -7,19 +7,19 @@ func exampleBasicRouting() {
     
     let router = Router()
     
-    // GET endpoint
+    # GET endpoint
     router.get("/", fn(req, res) {
         return res.text("Hello, World!")
     })
     
-    // GET with URL params
+    # GET with URL params
     router.get("/users/:id", fn(req, res) {
         let id = req.params["id"]
         let user = {id: id, name: "User " + id}
         return res.json(user)
     })
     
-    // POST endpoint
+    # POST endpoint
     router.post("/api/data", fn(req, res) {
         let body = req.body
         return res.status(201).json({message: "Created", data: body})
@@ -31,7 +31,7 @@ func exampleBasicRouting() {
 func exampleRequestBuilding() {
     output("\n=== HTTP Request Building ===")
     
-    let req = HttpRequest("GET", "https://api.example.com/data")
+    let req = HttpRequest("GET", "https:#api.example.com/data")
         .header("Authorization", "Bearer token123")
         .header("User-Agent", "Prism-HTTP-Client/1.0")
         .timeout(5000)
@@ -41,7 +41,7 @@ func exampleRequestBuilding() {
     output("  Method: " + req.method)
     output("  URL: " + req.url)
     output("  Timeout: 5000ms")
-    // output("  Headers: " + str(req.headers))
+    # output("  Headers: " + str(req.headers))
 }
 
 func exampleResponseBuilding() {
@@ -60,7 +60,7 @@ func exampleResponseBuilding() {
 func exampleURLParsing() {
     output("\n=== URL Parsing ===")
     
-    let url = "https://user:pass@example.com:8080/path/to/resource?key=value&foo=bar#section"
+    let url = "https:#user:pass@example.com:8080/path/to/resource?key=value&foo=bar#section"
     let parsed = parseUrl(url)
     
     output("Parsed URL:")
@@ -110,7 +110,7 @@ func exampleCookies() {
     
     let res = HttpResponse()
     
-    // Set cookie with options
+    # Set cookie with options
     res.setCookie("sessionId", "abc123def456", {
         path: "/",
         secure: true,
@@ -119,7 +119,7 @@ func exampleCookies() {
         maxAge: 3600
     })
     
-    // Set another cookie
+    # Set another cookie
     res.setCookie("preferences", "dark_mode=true", {
         path: "/",
         maxAge: 86400
@@ -133,7 +133,7 @@ func exampleCookies() {
 func exampleRESTAPI() {
     output("\n=== Complete REST API Example ===")
     
-    // Simple in-memory data store
+    # Simple in-memory data store
     let users = [
         {id: 1, name: "Alice", email: "alice@example.com"},
         {id: 2, name: "Bob", email: "bob@example.com"}
@@ -141,12 +141,12 @@ func exampleRESTAPI() {
     
     let router = Router()
     
-    // GET /users - list all
+    # GET /users - list all
     router.get("/users", fn(req, res) {
         return res.json(users)
     })
     
-    // GET /users/:id - get specific
+    # GET /users/:id - get specific
     router.get("/users/:id", fn(req, res) {
         let id = int(req.params["id"])
         for user in users {
@@ -157,7 +157,7 @@ func exampleRESTAPI() {
         return res.status(404).json({error: "User not found"})
     })
     
-    // POST /users - create
+    # POST /users - create
     router.post("/users", fn(req, res) {
         let body = req.body
         let newId = len(users) + 1
@@ -166,7 +166,7 @@ func exampleRESTAPI() {
         return res.status(201).json(newUser)
     })
     
-    // PUT /users/:id - update
+    # PUT /users/:id - update
     router.put("/users/:id", fn(req, res) {
         let id = int(req.params["id"])
         let body = req.body
@@ -180,7 +180,7 @@ func exampleRESTAPI() {
         return res.status(404).json({error: "User not found"})
     })
     
-    // DELETE /users/:id - delete
+    # DELETE /users/:id - delete
     router.delete("/users/:id", fn(req, res) {
         let id = int(req.params["id"])
         let index = 0
@@ -231,7 +231,7 @@ func exampleErrorHandling() {
     output("Error handling configured")
 }
 
-// Run all examples
+# Run all examples
 exampleBasicRouting()
 exampleRequestBuilding()
 exampleResponseBuilding()

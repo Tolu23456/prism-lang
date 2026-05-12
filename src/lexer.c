@@ -78,6 +78,7 @@ static const KW KEYWORDS[] = {
     {"false",    TOKEN_FALSE},
     {"unknown",  TOKEN_UNKNOWN},
     {"null",     TOKEN_NULL},
+    {"nil",      TOKEN_NULL},
     {"break",    TOKEN_BREAK},
     {"continue", TOKEN_CONTINUE},
     {"import",   TOKEN_IMPORT},
@@ -325,10 +326,10 @@ Token *lexer_next(Lexer *l) {
     }
 
     /* ---- identifiers / keywords ---- */
-    if (isalpha(c) || c == '_') {
+    if (isalpha(c) || c == '_' || c == '$') {
         int   cap = 64, sz = 0;
         char *buf = malloc(cap);
-        while (isalnum(cur(l)) || cur(l) == '_') {
+        while (isalnum(cur(l)) || cur(l) == '_' || cur(l) == '$') {
             if (sz+1 >= cap) { cap *= 2; buf = realloc(buf, cap); }
             buf[sz++] = cur(l);
             advance(l);

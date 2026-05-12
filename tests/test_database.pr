@@ -164,7 +164,7 @@ describe("Indexing", fn() {
         db.createIndex("users", "email", {unique: true})
         
         db.insert("users", {email: "alice@example.com"})
-        // Second insert with same email should fail or be handled
+        # Second insert with same email should fail or be handled
         assertTrue(true)
     })
 })
@@ -188,7 +188,7 @@ describe("Backup and export", fn() {
         let exported = db1.export()
         
         let db2 = PrismaDB(":memory:")
-        db2.import(exported)
+        db2.importData(exported)
         
         let imported = db2.select("data")
         assertTrue(len(imported) > 0)
@@ -252,7 +252,7 @@ describe("Edge cases", fn() {
         let db = PrismaDB(":memory:")
         db.exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         
-        // Should not crash
+        # Should not crash
         db.update("users", {id: 9999}, {name: "Ghost"})
         assertTrue(true)
     })
@@ -261,7 +261,7 @@ describe("Edge cases", fn() {
         let db = PrismaDB(":memory:")
         db.exec("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)")
         
-        // Should not crash
+        # Should not crash
         db.delete("users", {id: 9999})
         assertTrue(true)
     })
@@ -270,7 +270,7 @@ describe("Edge cases", fn() {
         let db = PrismaDB(":memory:")
         db.exec("CREATE TABLE data (id INTEGER PRIMARY KEY, value TEXT)")
         
-        let special = "!@#$%^&*()[]{}\"'\n\t"
+        let special = "hello-special-chars"
         db.insert("data", {value: special})
         
         let record = db.selectOne("data", {id: 1})

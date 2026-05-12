@@ -1,6 +1,5 @@
 /* Advanced xgui Demo - Showcasing new 20+ widgets and layouts */
 
-import "lib/gui"
 import "lib/xgui_advanced"
 
 /* Initialize GUI */
